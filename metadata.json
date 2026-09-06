@@ -1,0 +1,8 @@
+{
+  "name": "Halley Insights",
+  "description": "Sistema integral de contabilidad, preventa móvil de vendedores, control de inventario y facturación fiscal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

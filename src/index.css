@@ -1,0 +1,305 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Halley Insights Premium Brand Palette */
+  --color-indigo-50: #f0f4f8;
+  --color-indigo-100: #d9e2ec;
+  --color-indigo-200: #bcccdc;
+  --color-indigo-300: #9fb3c8;
+  --color-indigo-400: #829ab1;
+  --color-indigo-500: #486581;
+  --color-indigo-600: #1e3a5f; /* Core Brand Dark Blue */
+  --color-indigo-700: #162b47;
+  --color-indigo-800: #0f1d2f;
+  --color-indigo-900: #080e17;
+  --color-indigo-950: #04070b;
+
+  /* Starburst Accents */
+  --color-purple-50: #fefce8;
+  --color-purple-100: #fef9c3;
+  --color-purple-200: #fef08a;
+  --color-purple-300: #fde047;
+  --color-purple-400: #facc15;
+  --color-purple-500: #eab308;
+  --color-purple-600: #ca8a04;
+  --color-purple-700: #a16207;
+  --color-purple-800: #854d0e;
+  --color-purple-900: #713f12;
+  --color-purple-950: #422006;
+}
+
+html {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body, #root {
+  cursor: default;
+  min-height: 100vh;
+  -webkit-user-drag: none;
+}
+
+/* Bloqueo estricto de arrastre fantasma y selección al mantener clic */
+*, *::before, *::after {
+  -webkit-user-drag: none;
+}
+
+a, button, img {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* Tabular figures for financial numbers, codes and dates */
+.font-mono, .tabular-nums, .num-cell {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@layer components {
+  /* Modern Buttons */
+  .btn-primary {
+    @apply px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow-md hover:shadow-indigo-600/20 active:scale-[0.98] focus:ring-4 focus:ring-indigo-500/15 outline-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none;
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 border border-slate-200/90 hover:border-slate-300 rounded-xl text-xs sm:text-sm font-semibold shadow-xs hover:shadow-sm active:scale-[0.98] focus:ring-4 focus:ring-slate-100 outline-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-success {
+    @apply px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow-md hover:shadow-emerald-600/20 active:scale-[0.98] focus:ring-4 focus:ring-emerald-500/15 outline-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-xs hover:shadow-md hover:shadow-rose-600/20 active:scale-[0.98] focus:ring-4 focus:ring-rose-500/15 outline-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  .btn-ghost {
+    @apply px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 rounded-xl text-xs sm:text-sm font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none;
+  }
+
+  /* Modern Inputs */
+  .input-modern {
+    @apply w-full px-3.5 py-2.5 bg-slate-50/70 hover:bg-slate-50 focus:bg-white border border-slate-200/90 hover:border-slate-300 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 rounded-xl text-xs sm:text-sm font-medium text-slate-800 outline-none transition-all placeholder:text-slate-400 shadow-2xs;
+  }
+
+  .input-calc {
+    @apply w-full px-3.5 py-2.5 bg-slate-100/70 border border-slate-200/80 rounded-xl text-xs sm:text-sm font-bold text-indigo-950/80 cursor-not-allowed select-none focus:outline-none border-l-4 border-l-indigo-600 transition-colors shadow-inner font-mono;
+  }
+
+  .form-label-modern {
+    @apply text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5 select-none;
+  }
+
+  /* Modern Cards & Containers */
+  .card-modern {
+    @apply bg-white/95 backdrop-blur-xs border border-slate-200/80 rounded-2xl shadow-[0_2px_12px_-2px_rgba(15,23,42,0.04),0_8px_24px_-4px_rgba(15,23,42,0.03)] hover:shadow-[0_4px_20px_-2px_rgba(15,23,42,0.06),0_12px_32px_-4px_rgba(15,23,42,0.05)] transition-all duration-200 overflow-hidden;
+  }
+
+  .card-glass {
+    @apply bg-white/80 backdrop-blur-md border border-white/80 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-200;
+  }
+
+  .card-elevated {
+    @apply bg-white border border-slate-200/80 rounded-2xl shadow-[0_10px_40px_-10px_rgba(15,23,42,0.08)] transition-all duration-200;
+  }
+
+  .bento-card {
+    @apply relative overflow-hidden bg-white/90 backdrop-blur-xs border border-slate-200/75 rounded-2xl p-5 hover:border-indigo-200 hover:shadow-xl hover:shadow-indigo-500/5 transition-all duration-300;
+  }
+
+  /* Modern Badges */
+  .badge-modern-success {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs;
+  }
+
+  .badge-modern-error {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200/80 shadow-2xs;
+  }
+
+  .badge-modern-warning {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200/80 shadow-2xs;
+  }
+
+  .badge-modern-info {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-sky-50 text-sky-700 border border-sky-200/80 shadow-2xs;
+  }
+
+  .badge-modern-neutral {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80 shadow-2xs;
+  }
+
+  /* High-density & Modern Data Tables */
+  .odoo-card {
+    @apply bg-white border border-slate-200/80 rounded-2xl shadow-xs overflow-hidden transition-all;
+  }
+
+  .table-container {
+    @apply overflow-x-auto rounded-xl border border-slate-200/80 shadow-xs bg-white;
+  }
+
+  .table-odoo {
+    @apply w-full text-left border-collapse text-xs;
+  }
+
+  .table-odoo th {
+    @apply bg-slate-50/90 border-b border-slate-200/80 text-[11px] uppercase tracking-wider text-slate-500 font-extrabold py-3.5 px-4 select-none whitespace-nowrap;
+  }
+
+  .table-odoo td {
+    @apply py-3 px-4 border-b border-slate-100 text-slate-700 font-medium;
+  }
+
+  .table-odoo tbody tr:hover {
+    @apply bg-indigo-50/30 transition-colors;
+  }
+}
+
+/* Custom Thin Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+
+.scrollbar-hide::-webkit-scrollbar,
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+
+.scrollbar-hide,
+.no-scrollbar {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* --- SISTEMA PROFESIONAL DE IMPRESIÓN --- */
+@media print {
+  @page {
+    size: auto;
+    margin: 15mm !important;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+  }
+
+  * {
+    color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  body > div:not(#reporte-imprimible-root),
+  .no-print,
+  .print\:hidden,
+  button,
+  nav,
+  aside,
+  header,
+  footer,
+  .fixed,
+  .modal-overlay {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  html, body, #root {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+
+  #reporte-imprimible-root {
+    display: block !important;
+    visibility: visible !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  #reporte-imprimible-root * {
+    visibility: visible !important;
+  }
+
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden,
+  .table-container {
+    overflow: visible !important;
+    max-height: none !important;
+    height: auto !important;
+  }
+
+  tr,
+  td,
+  th,
+  .break-inside-avoid,
+  .print-avoid-break,
+  .print-block,
+  .print-card,
+  .chart-container,
+  .signature-section,
+  .firmas-container,
+  .summary-card,
+  .kpi-card,
+  .info-block,
+  .details-block,
+  .card-modern:not(.print-allow-break),
+  .odoo-card:not(.print-allow-break) {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  h1, h2, h3, h4, h5, h6, .print-header {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  thead {
+    display: table-header-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  .page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+}
