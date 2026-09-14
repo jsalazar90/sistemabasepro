@@ -1,0 +1,39 @@
+Created At: 2026-09-12T17:39:10-04:00
+Completed At: 2026-09-12T17:39:10-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3097
+Total Bytes: 150001
+Showing lines 2980 to 3010
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2980:                                 {prod.nombre}
+2981:                               </p>
+2982:                               <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
+2983:                                 {prod.categoria && (
+2984:                                   <span className="bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded text-[10px] font-medium">
+2985:                                     {prod.categoria}
+2986:                                   </span>
+2987:                                 )}
+2988:                                 {prod.descripcion && (
+2989:                                   <span className="truncate max-w-xs">{prod.descripcion}</span>
+2990:                                 )}
+2991:                               </div>
+2992:                             </td>
+2993:                             <td className="px-3.5 py-3 text-center">
+2994:                               <span className={`inline-flex items-center px-2 py-0.5 rounded-md font-bold text-[11px] ${
+2995:                                 isOutOfStock
+2996:                                   ? 'bg-rose-50 text-rose-700 border border-rose-200'
+2997:                                   : isLowStock
+2998:                                     ? 'bg-amber-50 text-amber-700 border border-amber-200'
+2999:                                     : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+3000:                               }`}>
+3001:                                 {prod.stock_actual} {prod.unidad_medida || 'un.'}
+3002:                               </span>
+3003:                             </td>
+3004:                             <td className="px-3.5 py-3 text-right font-mono font-bold text-slate-600">
+3005:                               ${Number(prod.precio_venta || 0).toFixed(2)}
+3006:                             </td>
+3007:                             <td className="px-3.5 py-3 text-right font-mono font-black text-slate-900">
+3008:                               {formatMoney(displayPriceInCurrency, currency)}
+3009:                             </td>
+3010:                             <td className="px-3.5 py-3 text-center">
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

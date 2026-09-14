@@ -1,0 +1,49 @@
+Created At: 2026-09-12T17:50:12-04:00
+Completed At: 2026-09-12T17:50:12-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3098
+Total Bytes: 150132
+Showing lines 1130 to 1170
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1130:           monto: montoCxCUSD,
+1131:           monto_total: montoCxCUSD,
+1132:           saldo: montoCxCUSD,
+1133:           saldo_pendiente: montoCxCUSD,
+1134:           monto_bs: montoCxCBs,
+1135:           saldo_bs: montoCxCBs,
+1136:           moneda: 'USD',
+1137:           tasa: exchangeRate,
+1138:           tasa_cambio: exchangeRate,
+1139:           estado: 'pendiente',
+1140:           metadata: {
+1141:             factura_id: newFactura.id,
+1142:             factura_numero: newFactura.numero,
+1143:             control_numero: newFactura.control_numero,
+1144:             moneda: 'USD',
+1145:             moneda_presentacion: currency,
+1146:             tasa_cambio: exchangeRate,
+1147:             cliente_rif: newFactura.cliente_rif,
+1148:             monto_original: montoCxCUSD,
+1149:             monto_bs: montoCxCBs,
+1150:             monto_usd: montoCxCUSD
+1151:           },
+1152:           created_at: new Date().toISOString()
+1153:         });
+1154:       }
+1155: 
+1156:       // 4. Registrar Cobranza y Movimiento Bancario si fue de Contado
+1157:       if (selectedCondition === 'contado') {
+1158:         cobranzaForm.pagos.forEach((pago, idx) => {
+1159:           const bank = bancos.find(b => b.id === pago.bancoId);
+1160:           if (bank) {
+1161:             const isBankVES = bank.moneda === 'VES' || bank.moneda === 'Bs';
+1162:             const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
+1163:             const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
+1164: 
+1165:             onSave?.('movimientosBancos', {
+1166:               id: `mov_bnk_${Date.now()}_${idx}`,
+1167:               banco_id: bank.id,
+1168:               fecha: issueDate,
+1169:               ref: pago.referencia || newFactura.numero,
+1170:               descripcion: `Ingreso Cobranza Factura ${newFactura.numero} (${customerName})`,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,69 @@
+Created At: 2026-09-12T16:40:16-04:00
+Completed At: 2026-09-12T16:40:16-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2612
+Total Bytes: 126667
+Showing lines 2280 to 2340
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2280: 
+2281:                     {/* Dirección */}
+2282:                     <div>
+2283:                       <label className="block text-xs font-bold text-slate-700 mb-1">Dirección Fiscal / Ubicación</label>
+2284:                       <textarea 
+2285:                         placeholder="Ciudad, dirección de oficina o residencia"
+2286:                         value={customerModalForm.address}
+2287:                         onChange={(e) => setCustomerModalForm(prev => ({ ...prev, address: e.target.value }))}
+2288:                         className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none resize-none h-16" 
+2289:                       />
+2290:                     </div>
+2291:                   </div>
+2292:                 )}
+2293: 
+2294:                 {/* PESTAÑA 2: ENLACE CONTABLE */}
+2295:                 {activeCustomerModalTab === 'contabilidad' && (
+2296:                   <div className="space-y-4 animate-in fade-in duration-200">
+2297:                     <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100">
+2298:                       <div className="flex items-start gap-2.5 text-indigo-900">
+2299:                         <BookOpen size={16} className="shrink-0 mt-0.5 text-indigo-600" />
+2300:                         <div>
+2301:                           <p className="text-xs font-bold">Mapeo Contable Automático</p>
+2302:                           <p className="text-[11px] text-indigo-700/80 font-medium mt-0.5">
+2303:                             Cuentas contables para la contabilización automática de cobranzas y cuentas por cobrar del cliente. Si se dejan vacías, se usarán las cuentas maestras del sistema.
+2304:                           </p>
+2305:                         </div>
+2306:                       </div>
+2307:                     </div>
+2308: 
+2309:                     <div className="space-y-3">
+2310:                       <CuentaSelectorTrigger
+2311:                         label="Cuenta de Débito (Cuentas por Cobrar Clientes)"
+2312:                         value={customerModalForm.debitAccount}
+2313:                         cuentasContables={cuentasContables}
+2314:                         onClick={() => {
+2315:                           setActiveCustomerAccountKey('debitAccount');
+2316:                           setShowCustomerCuentaModal(true);
+2317:                         }}
+2318:                       />
+2319: 
+2320:                       <CuentaSelectorTrigger
+2321:                         label="Cuenta de Crédito (Anticipos Recibidos de Clientes)"
+2322:                         value={customerModalForm.creditAccount}
+2323:                         cuentasContables={cuentasContables}
+2324:                         onClick={() => {
+2325:                           setActiveCustomerAccountKey('creditAccount');
+2326:                           setShowCustomerCuentaModal(true);
+2327:                         }}
+2328:                       />
+2329:                     </div>
+2330:                   </div>
+2331:                 )}
+2332:               </div>
+2333: 
+2334:               {/* Footer Modal Acciones */}
+2335:               <div className="p-4 px-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-2.5 shrink-0">
+2336:                 <button 
+2337:                   type="button" 
+2338:                   onClick={() => setIsNewCustomerModalOpen(false)}
+2339:                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors cursor-pointer"
+2340:                 >
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

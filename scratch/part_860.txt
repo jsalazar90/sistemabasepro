@@ -1,0 +1,69 @@
+Created At: 2026-09-12T17:50:08-04:00
+Completed At: 2026-09-12T17:50:08-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3098
+Total Bytes: 150132
+Showing lines 860 to 920
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+860:         const pagoMonto = parseFloat(pago.monto) || (netoAmount / cobranzaForm.pagos.length);
+861: 
+862:         linesVoucher.push({
+863:           id: `vl_bnk_${pIdx}`,
+864:           cuentaId: bankAccount,
+865:           nombreCuenta: bank ? `${bank.banco} (${bank.moneda})` : 'Efectivo en Bancos',
+866:           descripcion: `Cobro contado Fac ${invoiceNumber} - Ref: ${pago.referencia || 'S/R'}`,
+867:           debe: pagoMonto,
+868:           haber: 0
+869:         });
+870:       });
+871:     }
+872: 
+873:     // Debe: Anticipo Retención de IVA si aplica (Providencia SNAT/2015/0049) en USD
+874:     if (applyRetIva && totals.retIvaMontoUSD > 0) {
+875:       linesVoucher.push({
+876:         id: `vl_ret_iva`,
+877:         cuentaId: configContable?.cuentaRetencionIvaVentas || '1.1.02.003',
+878:         nombreCuenta: `Anticipo IVA Retenido por Clientes (${retIvaPercent}%)`,
+879:         descripcion: `Retención IVA Providencia 0049 Fac ${invoiceNumber}`,
+880:         debe: totals.retIvaMontoUSD,
+881:         haber: 0
+882:       });
+883:     }
+884: 
+885:     // Debe: Anticipo Retención de ISLR si aplica (Decreto 1808) en USD
+886:     if (applyRetIslr && totals.retIslrMontoUSD > 0) {
+887:       linesVoucher.push({
+888:         id: `vl_ret_islr`,
+889:         cuentaId: configContable?.cuentaRetencionIslrVentas || '1.1.02.004',
+890:         nombreCuenta: `Anticipo ISLR Retenido por Clientes (${retIslrPercent}%)`,
+891:         descripcion: `Retención ISLR Dto 1808 Fac ${invoiceNumber}`,
+892:         debe: totals.retIslrMontoUSD,
+893:         haber: 0
+894:       });
+895:     }
+896: 
+897:     // Haber: Ventas por el subtotal neto en USD
+898:     linesVoucher.push({
+899:       id: `vl_vta`,
+900:       cuentaId: mainSalesAccount,
+901:       nombreCuenta: 'Ventas de Mercancías',
+902:       descripcion: `Ingreso por venta Factura ${invoiceNumber}`,
+903:       debe: 0,
+904:       haber: totals.subtotalUSD
+905:     });
+906: 
+907:     // Haber: IVA Débito Fiscal si aplica en USD
+908:     if (totals.ivaMontoUSD > 0) {
+909:       linesVoucher.push({
+910:         id: `vl_iva`,
+911:         cuentaId: mainTaxAccount,
+912:         nombreCuenta: 'IVA Débito Fiscal (16%)',
+913:         descripcion: `IVA 16% Factura ${invoiceNumber}`,
+914:         debe: 0,
+915:         haber: totals.ivaMontoUSD
+916:       });
+917:     }
+918: 
+919:     // Haber: IGTF Percibido por Pagar si aplica (Ley IGTF 2022) en USD
+920:     if (applyIgtf && totals.igtfMontoUSD > 0) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

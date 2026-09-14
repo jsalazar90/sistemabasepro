@@ -1,0 +1,90 @@
+Created At: 2026-09-12T16:11:14-04:00
+Completed At: 2026-09-12T16:11:14-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1876
+Total Bytes: 88788
+Showing lines 259 to 340
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+259:   // Manejo de Items
+260:   const handleAddItem = () => {
+261:     setItems(prev => [
+262:       ...prev,
+263:       {
+264:         id: `item_${Date.now()}_${prev.length + 1}`,
+265:         producto_id: '',
+266:         codigo: '',
+267:         descripcion: '',
+268:         cantidad: 1,
+269:         precio_unitario: 0,
+270:         exento: false,
+271:         subtotal: 0,
+272:         iva_monto: 0,
+273:         total: 0,
+274:         cuenta_ingreso_id: '4.1.01.001',
+275:         cuenta_costo_id: '5.1.01.001',
+276:         cuenta_inventario_id: '1.1.04.001'
+277:       }
+278:     ]);
+279:   };
+280: 
+281:   const handleRemoveItem = (index: number) => {
+282:     if (items.length === 1) {
+283:       showToast?.('La factura debe tener al menos una línea', 'info');
+284:       return;
+285:     }
+286:     setItems(prev => prev.filter((_, idx) => idx !== index));
+287:   };
+288: 
+289:   const handleProductSelect = (index: number, productId: string) => {
+290:     const prod = products.find(p => p.id === productId);
+291:     setItems(prev => {
+292:       const updated = [...prev];
+293:       if (prod) {
+294:         const qty = updated[index].cantidad || 1;
+295:         // Si la moneda es VES, convertir el precio venta en USD a VES
+296:         let price = prod.precio_venta || 0;
+297:         if (currency === 'VES' && exchangeRate > 0) {
+298:           price = price * exchangeRate;
+299:         }
+300: 
+301:         const lineSubtotal = qty * price;
+302:         const isExempt = !prod.aplica_iva;
+303:         const iva = isExempt ? 0 : lineSubtotal * 0.16;
+304: 
+305:         updated[index] = {
+306:           ...updated[index],
+307:           producto_id: prod.id,
+308:           codigo: prod.codigo,
+309:           descripcion: prod.nombre,
+310:           precio_unitario: price,
+311:           exento: isExempt,
+312:           subtotal: lineSubtotal,
+313:           iva_monto: iva,
+314:           total: lineSubtotal + iva,
+315:           cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
+316:           cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
+317:           cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
+318:         };
+319:       } else {
+320:         updated[index] = {
+321:           ...updated[index],
+322:           producto_id: '',
+323:           codigo: '',
+324:           descripcion: '',
+325:           precio_unitario: 0,
+326:           subtotal: 0,
+327:           iva_monto: 0,
+328:           total: 0
+329:         };
+330:       }
+331:       return updated;
+332:     });
+333:   };
+334: 
+335:   const handleItemFieldChange = (index: number, field: string, value: any) => {
+336:     setItems(prev => {
+337:       const updated = [...prev];
+338:       const item = { ...updated[index], [field]: value };
+339: 
+340:       const qty = Number(item.cantidad) || 0;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

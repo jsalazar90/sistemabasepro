@@ -1,0 +1,24 @@
+Created At: 2026-09-12T16:31:28-04:00
+Completed At: 2026-09-12T16:31:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2577
+Total Bytes: 124577
+Showing lines 620 to 635
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+620:     const netoAmount = totals.netoCobrar;
+621: 
+622:     if (condition === 'credito') {
+623:       // Debe: CxC Clientes (por el monto neto a percibir de la factura)
+624:       linesVoucher.push({
+625:         id: `vl_cxc`,
+626:         cuentaId: mainCustomerAccount,
+627:         nombreCuenta: `Cuentas por Cobrar Clientes (${customerName})`,
+628:         descripcion: `Factura a crédito ${invoiceNumber} - Venc. ${calculatedDueDate}`,
+629:         debe: netoAmount,
+630:         haber: 0
+631:       });
+632:     } else {
+633:       // Debe: Banco(s) según pagos registrados en el modal de cobranza
+634:       cobranzaForm.pagos.forEach((pago, pIdx) => {
+635:         const bank = bancos.find(b => b.id === pago.bancoId);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

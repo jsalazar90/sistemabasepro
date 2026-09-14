@@ -19,39 +19,53 @@ import PayablesMenu from "./pages/PayablesMenu";
 import Settings from "./pages/Settings";
 import Accounting from "./pages/Accounting";
 
+import Purchases from "./pages/Purchases";
+import PurchasesMenu from "./pages/PurchasesMenu";
 import PurchaseForm from "./pages/PurchaseForm";
+import Inventory from "./pages/Inventory";
+import Invoicing from "./pages/Invoicing";
+import InvoiceForm from "./pages/InvoiceForm";
 
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import AccountingEntries from "./pages/AccountingEntries";
+import FiscalModule from "./pages/FiscalModule";
 import AccountingConfig from "./pages/AccountingConfig";
 import FixedAssetsModule from "./pages/FixedAssetsModule";
 import ComprobanteMovimientoBanco from "./pages/ComprobanteMovimientoBanco";
 import Login from "./pages/Login";
 import CompanySelector from "./components/CompanySelector";
 import Reports from "./pages/Reports";
+import PosLotes from "./pages/PosLotes";
 
 import {
+  isUUID,
   dbFetchContactos,
   dbSaveContacto,
   dbDeleteContacto,
+  dbClearContactos,
   dbSaveEmpresa,
   dbFetchCuentasContables,
   dbSaveCuentaContable,
   dbDeleteCuentaContable,
+  dbClearCuentasContables,
   dbFetchBancos,
   dbSaveBanco,
   dbDeleteBanco,
+  dbClearBancos,
   dbFetchMovimientosBancos,
   dbSaveMovimientoBanco,
   dbDeleteMovimientoBanco,
+  dbClearMovimientosBancos,
   dbFetchConfiguracionContable,
   dbSaveConfiguracionContable,
   dbFetchCxc,
   dbSaveCxc,
   dbDeleteCxc,
+  dbClearCxc,
   dbFetchCxp,
   dbSaveCxp,
   dbDeleteCxp,
+  dbClearCxp,
   dbFetchCobranzas,
   dbSaveCobranza,
   dbDeleteCobranza,
@@ -61,9 +75,11 @@ import {
   dbFetchComprobantes,
   dbSaveComprobante,
   dbDeleteComprobante,
+  dbClearComprobantes,
   dbFetchServicios,
   dbSaveServicio,
   dbDeleteServicio,
+  dbClearServicios,
   dbSaveSolicitudBanco,
   dbDeleteSolicitudBanco,
   dbFetchCategoriasActivos,
@@ -73,36 +89,58 @@ import {
   dbFetchActivosFijos,
   dbSaveActivoFijo,
   dbDeleteActivoFijo,
+  dbClearActivosFijos,
   dbFetchDepreciaciones,
   dbSaveDepreciacion,
+  dbDeleteDepreciacion,
   dbSaveDepreciaciones,
-  SAMPLE_FULL_BALANCE_CUENTAS
+  dbFetchProducts,
+  dbSaveProduct,
+  dbDeleteProduct,
+  dbClearProducts,
+  dbFetchCategoriasProducto,
+  dbSaveCategoriaProducto,
+  dbDeleteCategoriaProducto,
+  dbFetchMovimientosInventario,
+  dbSaveMovimientoInventario,
+  dbFetchFacturasVenta,
+  dbSaveFacturaVenta,
+  dbDeleteFacturaVenta,
+  dbFetchFacturasCompra,
+  dbSaveFacturaCompra,
+  dbDeleteFacturaCompra,
+  dbSaveLotePos,
+  dbDeleteLotePos,
+  dbSaveTerminalPos,
+  dbDeleteTerminalPos,
+  dbFetchAlmacenes,
+  dbSaveAlmacen,
+  dbDeleteAlmacen
 } from "./services/db";
 
-// Plan de Cuentas NIIF Estándar Completo (59+ cuentas balanceadas)
-const initialCuentasContables = SAMPLE_FULL_BALANCE_CUENTAS;
-
 const initialConfiguracionContable = {
-  cuentaCxc: "1.1.4",
-  cuentaCxp: "2.1.1",
-  cuentaCaja: "1.1.2",
-  cuentaBancos: "1.1.3",
-  cuentaAnticipoRecibido: "2.1.1",
-  cuentaAnticipoOtorgado: "1.1.4",
-  cuentaDebitoFiscal: "2.1.2",
-  cuentaCreditoFiscal: "2.1.2",
-  cuentaIvaRetenidoVentas: "1.1.4",
-  cuentaIslrRetenidoVentas: "1.1.4",
-  cuentaIvaRetenidoCompras: "2.1.1",
-  cuentaIslrRetenidoCompras: "2.1.1",
-  cuentaGananciaDiferencialCambiario: "4.1.1",
-  cuentaPerdidaDiferencialCambiario: "5.2.1",
-  prefijoFactura: "FAC-",
-  correlativoFactura: "00001",
-  prefijoCotizacion: "COT-",
-  correlativoCotizacion: "00001",
-  prefijoNotaEntrega: "NOT-",
-  correlativoNotaEntrega: "00001",
+  cuentaCxc: "",
+  cuentaCxp: "",
+  cuentaCaja: "",
+  cuentaBancos: "",
+  cuentaAnticipoRecibido: "",
+  cuentaAnticipoOtorgado: "",
+  cuentaDebitoFiscal: "",
+  cuentaCreditoFiscal: "",
+  cuentaIvaRetenidoVentas: "",
+  cuentaIslrRetenidoVentas: "",
+  cuentaIvaRetenidoCompras: "",
+  cuentaIslrRetenidoCompras: "",
+  cuentaGananciaDiferencialCambiario: "",
+  cuentaPerdidaDiferencialCambiario: "",
+  prefijoFactura: "",
+  correlativoFactura: "000001",
+  prefijoCotizacion: "",
+  correlativoCotizacion: "000001",
+  prefijoNotaEntrega: "",
+  correlativoNotaEntrega: "000001",
+  prefijoRecibo: "REC-",
+  correlativoRecibo: "000001",
   diasVencimientoDefault: 15,
   notasDefault: "Los pagos en bolívares se calcularán a la tasa del BCV del día del pago.",
   usaMaquinaFiscal: false,
@@ -152,6 +190,11 @@ function AppContent() {
   const [depreciaciones, setDepreciaciones] = useState<any[]>([]);
   const [contactos, setContactos] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
+  const [categoriasProducto, setCategoriasProducto] = useState<any[]>([]);
+  const [almacenes, setAlmacenes] = useState<any[]>([]);
+  const [movimientosInventario, setMovimientosInventario] = useState<any[]>([]);
+  const [facturasVenta, setFacturasVenta] = useState<any[]>([]);
+  const [facturasCompra, setFacturasCompra] = useState<any[]>([]);
   const [callLogs, setCallLogs] = useState<any[]>([]);
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
@@ -187,6 +230,11 @@ function AppContent() {
       setCategoriasActivos([]);
       setActivosFijos([]);
       setDepreciaciones([]);
+      setProducts([]);
+      setAlmacenes([]);
+      setMovimientosInventario([]);
+      setFacturasVenta([]);
+      setFacturasCompra([]);
       return;
     }
 
@@ -227,43 +275,75 @@ function AppContent() {
     setCategoriasActivos([]);
     setActivosFijos([]);
     setDepreciaciones([]);
+    setProducts([]);
+    setCategoriasProducto([]);
+    setMovimientosInventario([]);
+    setFacturasVenta([]);
 
     async function loadCompanyDataFromSupabase() {
       try {
+        // Lote 1: Entidades maestras contables y bancarias
         const [
           dbContacts,
           dbAccounts,
           dbBanksList,
           dbBankTx,
-          dbConfig,
-          dbCxcList,
-          dbCxpList,
-          dbCobranzasList,
-          dbPagosList,
-          dbComprobantesList,
-          dbServiciosList,
-          dbCategoriasActivos,
-          dbActivosFijosList,
-          dbDepreciacionesList
+          dbConfig
         ] = await Promise.all([
           dbFetchContactos(activeCompanyId!),
           dbFetchCuentasContables(activeCompanyId!),
           dbFetchBancos(activeCompanyId!),
           dbFetchMovimientosBancos(activeCompanyId!),
-          dbFetchConfiguracionContable(activeCompanyId!),
+          dbFetchConfiguracionContable(activeCompanyId!)
+        ]);
+
+        // Lote 2: Cuentas por cobrar y pagar, cobranzas y pagos
+        const [
+          dbCxcList,
+          dbCxpList,
+          dbCobranzasList,
+          dbPagosList,
+          dbComprobantesList
+        ] = await Promise.all([
           dbFetchCxc(activeCompanyId!),
           dbFetchCxp(activeCompanyId!),
           dbFetchCobranzas(activeCompanyId!),
           dbFetchPagosRealizados(activeCompanyId!),
-          dbFetchComprobantes(activeCompanyId!),
+          dbFetchComprobantes(activeCompanyId!)
+        ]);
+
+        // Lote 3: Inventario, almacenes y servicios
+        const [
+          dbCategoriasList,
+          dbProductsList,
+          dbMovimientosInvList,
+          dbServiciosList,
+          dbAlmacenesList
+        ] = await Promise.all([
+          dbFetchCategoriasProducto(activeCompanyId!),
+          dbFetchProducts(activeCompanyId!),
+          dbFetchMovimientosInventario(activeCompanyId!),
           dbFetchServicios(activeCompanyId!),
+          dbFetchAlmacenes(activeCompanyId!)
+        ]);
+
+        // Lote 4: Facturación y Activos Fijos
+        const [
+          dbFacturasVentaList,
+          dbFacturasCompraList,
+          dbCategoriasActivos,
+          dbActivosFijosList,
+          dbDepreciacionesList
+        ] = await Promise.all([
+          dbFetchFacturasVenta(activeCompanyId!),
+          dbFetchFacturasCompra(activeCompanyId!),
           dbFetchCategoriasActivos(activeCompanyId!),
           dbFetchActivosFijos(activeCompanyId!),
           dbFetchDepreciaciones(activeCompanyId!)
         ]);
 
         setContactos(dbContacts || []);
-        setCuentasContables((dbAccounts && dbAccounts.length >= 25) ? dbAccounts : SAMPLE_FULL_BALANCE_CUENTAS);
+        setCuentasContables(dbAccounts || []);
         setBancos(dbBanksList || []);
         setMovimientosBancos(dbBankTx || []);
         setConfigContable(dbConfig || { ...initialConfiguracionContable, empresaId: activeCompanyId });
@@ -276,13 +356,19 @@ function AppContent() {
         setCategoriasActivos(dbCategoriasActivos || []);
         setActivosFijos(dbActivosFijosList || []);
         setDepreciaciones(dbDepreciacionesList || []);
+        setProducts(dbProductsList || []);
+        setCategoriasProducto(dbCategoriasList || []);
+        setAlmacenes(dbAlmacenesList || []);
+        setMovimientosInventario(dbMovimientosInvList || []);
+        setFacturasVenta(dbFacturasVentaList || []);
+        setFacturasCompra(dbFacturasCompraList || []);
       } catch (err) {
         console.warn("Error cargando datos de Supabase:", err);
       }
     }
 
     loadCompanyDataFromSupabase();
-  }, [activeCompanyId, availableCompanies]);
+  }, [activeCompanyId]);
 
   const clientes = contactos.filter((c) => c.type === "customer" || c.type === "both");
   const proveedores = contactos.filter((c) => c.type === "supplier" || c.type === "both");
@@ -295,7 +381,7 @@ function AppContent() {
   // Filtros por año de trabajo
   const filteredCxc = useMemo(() => {
     return cxc.filter((item) => {
-      const d = item.fecha || item.date;
+      const d = item.fecha || item.fecha_emision || item.date;
       if (!d || typeof d !== "string") return true;
       return d.substring(0, 4) === workingYear;
     });
@@ -303,7 +389,7 @@ function AppContent() {
 
   const filteredCxp = useMemo(() => {
     return cxp.filter((item) => {
-      const d = item.fecha || item.date;
+      const d = item.fecha || item.fecha_emision || item.date;
       if (!d || typeof d !== "string") return true;
       return d.substring(0, 4) === workingYear;
     });
@@ -360,21 +446,54 @@ function AppContent() {
       });
     };
 
+    const mergeArrayCollection = (setter: React.Dispatch<React.SetStateAction<any[]>>, items: any[], keyField = 'id') => {
+      setter((prev) => {
+        const map = new Map<string, any>(prev.map((i: any) => [String(i[keyField] || i.id), i]));
+        for (const item of items) {
+          const key = String(item[keyField] || item.id);
+          map.set(key, { ...(map.get(key) || {}), ...item });
+        }
+        return Array.from(map.values());
+      });
+    };
+
     switch (collectionName) {
       case "contactos":
         if (Array.isArray(data)) {
-          setContactos(data);
-          for (const item of data) await dbSaveContacto(item, cid);
+          if (data.length === 0) {
+            setContactos([]);
+            await dbClearContactos(cid);
+          } else {
+            mergeArrayCollection(setContactos, data);
+            for (const item of data) await dbSaveContacto(item, cid);
+          }
         } else {
-          updateCollection(setContactos, data);
-          if (data._delete) await dbDeleteContacto(data.id);
-          else await dbSaveContacto(data, cid);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setContactos, itemWithId);
+          if (data._delete) await dbDeleteContacto(data.id, cid);
+          else await dbSaveContacto(itemWithId, cid);
         }
+        break;
+      case "consignatarios":
+        await dbClearContactos(cid, "customer");
+        setContactos((prev) => prev.filter((c: any) => c.type !== "customer" && c.type !== "both"));
+        break;
+      case "proveedores":
+        await dbClearContactos(cid, "supplier");
+        setContactos((prev) => prev.filter((c: any) => c.type !== "supplier" && c.type !== "both"));
         break;
       case "bancos":
         if (Array.isArray(data)) {
-          setBancos(data);
-          for (const b of data) await dbSaveBanco(b, cid);
+          if (data.length === 0) {
+            setBancos([]);
+            await dbClearBancos(cid);
+          } else {
+            mergeArrayCollection(setBancos, data);
+            for (const b of data) await dbSaveBanco(b, cid);
+          }
         } else {
           updateCollection(setBancos, data);
           if (data._delete) await dbDeleteBanco(data.id);
@@ -383,8 +502,13 @@ function AppContent() {
         break;
       case "movimientosBancos":
         if (Array.isArray(data)) {
-          setMovimientosBancos(data);
-          for (const m of data) await dbSaveMovimientoBanco(m, cid);
+          if (data.length === 0) {
+            setMovimientosBancos([]);
+            await dbClearMovimientosBancos(cid);
+          } else {
+            mergeArrayCollection(setMovimientosBancos, data);
+            for (const m of data) await dbSaveMovimientoBanco(m, cid);
+          }
         } else {
           updateCollection(setMovimientosBancos, data);
           if (data._delete) await dbDeleteMovimientoBanco(data.id);
@@ -393,8 +517,13 @@ function AppContent() {
         break;
       case "cxc":
         if (Array.isArray(data)) {
-          setCxc(data);
-          for (const item of data) await dbSaveCxc(item, cid);
+          if (data.length === 0) {
+            setCxc([]);
+            await dbClearCxc(cid);
+          } else {
+            mergeArrayCollection(setCxc, data);
+            for (const item of data) await dbSaveCxc(item, cid);
+          }
         } else {
           updateCollection(setCxc, data);
           if (data._delete) await dbDeleteCxc(data.id);
@@ -403,8 +532,13 @@ function AppContent() {
         break;
       case "cxp":
         if (Array.isArray(data)) {
-          setCxp(data);
-          for (const item of data) await dbSaveCxp(item, cid);
+          if (data.length === 0) {
+            setCxp([]);
+            await dbClearCxp(cid);
+          } else {
+            mergeArrayCollection(setCxp, data);
+            for (const item of data) await dbSaveCxp(item, cid);
+          }
         } else {
           updateCollection(setCxp, data);
           if (data._delete) await dbDeleteCxp(data.id);
@@ -413,7 +547,7 @@ function AppContent() {
         break;
       case "cobranzas":
         if (Array.isArray(data)) {
-          setCobranzas(data);
+          mergeArrayCollection(setCobranzas, data);
           for (const item of data) await dbSaveCobranza(item, cid);
         } else {
           updateCollection(setCobranzas, data);
@@ -423,7 +557,7 @@ function AppContent() {
         break;
       case "pagos-realizados":
         if (Array.isArray(data)) {
-          setPagosRealizados(data);
+          mergeArrayCollection(setPagosRealizados, data);
           for (const item of data) await dbSavePagoRealizado(item, cid);
         } else {
           updateCollection(setPagosRealizados, data);
@@ -433,8 +567,25 @@ function AppContent() {
         break;
       case "cuentasContables":
         if (Array.isArray(data)) {
-          setCuentasContables(data);
-          for (const c of data) await dbSaveCuentaContable(c, cid);
+          if (data.length === 0) {
+            setCuentasContables([]);
+            await dbClearCuentasContables(cid);
+          } else {
+            setCuentasContables((prev: any[]) => {
+              const map = new Map<string, any>(prev.map((c: any) => [c.codigo || c.id, c]));
+              for (const item of data) {
+                const key = item.codigo || item.id;
+                map.set(key, {
+                  ...(map.get(key) || {}),
+                  ...item,
+                });
+              }
+              return Array.from(map.values()).sort((a: any, b: any) =>
+                (a.codigo || "").localeCompare(b.codigo || ""),
+              );
+            });
+            for (const c of data) await dbSaveCuentaContable(c, cid);
+          }
         } else {
           updateCollection(setCuentasContables, data);
           if (data._delete) await dbDeleteCuentaContable(data.id);
@@ -443,8 +594,13 @@ function AppContent() {
         break;
       case "comprobantes":
         if (Array.isArray(data)) {
-          setComprobantes(data);
-          for (const item of data) await dbSaveComprobante(item, cid);
+          if (data.length === 0) {
+            setComprobantes([]);
+            await dbClearComprobantes(cid);
+          } else {
+            mergeArrayCollection(setComprobantes, data);
+            for (const item of data) await dbSaveComprobante(item, cid);
+          }
         } else {
           updateCollection(setComprobantes, data);
           if (data._delete) await dbDeleteComprobante(data.id);
@@ -453,8 +609,13 @@ function AppContent() {
         break;
       case "servicios":
         if (Array.isArray(data)) {
-          setServicios(data);
-          for (const s of data) await dbSaveServicio(s, cid);
+          if (data.length === 0) {
+            setServicios([]);
+            await dbClearServicios(cid);
+          } else {
+            mergeArrayCollection(setServicios, data);
+            for (const s of data) await dbSaveServicio(s, cid);
+          }
         } else {
           updateCollection(setServicios, data);
           if (data._delete) await dbDeleteServicio(data.id);
@@ -467,20 +628,100 @@ function AppContent() {
         else await dbSaveSolicitudBanco(data, cid);
         break;
       case "products":
-        if (Array.isArray(data)) setProducts(data);
-        else updateCollection(setProducts, data);
+        if (Array.isArray(data)) {
+          if (data.length === 0) {
+            setProducts([]);
+            await dbClearProducts(cid);
+          } else {
+            mergeArrayCollection(setProducts, data);
+            for (const p of data) await dbSaveProduct(p, cid);
+          }
+        } else {
+          updateCollection(setProducts, data);
+          if (data._delete) await dbDeleteProduct(data.id, cid);
+          else await dbSaveProduct(data, cid);
+        }
+        break;
+      case "categoriasProducto":
+      case "categorias_producto":
+        if (Array.isArray(data)) {
+          setCategoriasProducto(data);
+          for (const c of data) await dbSaveCategoriaProducto(c, cid);
+        } else {
+          updateCollection(setCategoriasProducto, data);
+          if (data._delete) await dbDeleteCategoriaProducto(data.id, cid);
+          else await dbSaveCategoriaProducto(data, cid);
+        }
+        break;
+      case "almacenes":
+        if (Array.isArray(data)) {
+          setAlmacenes(data);
+          for (const a of data) await dbSaveAlmacen(a, cid);
+        } else {
+          updateCollection(setAlmacenes, data);
+          if (data._delete) await dbDeleteAlmacen(data.id, cid);
+          else await dbSaveAlmacen(data, cid);
+        }
+        break;
+      case "movimientosInventario":
+      case "movimientos_inventario":
+        if (Array.isArray(data)) {
+          setMovimientosInventario(data);
+          for (const m of data) await dbSaveMovimientoInventario(m, cid);
+        } else {
+          updateCollection(setMovimientosInventario, data);
+          await dbSaveMovimientoInventario(data, cid);
+        }
+        break;
+      case "facturasVenta":
+      case "facturas_venta":
+        if (Array.isArray(data)) {
+          setFacturasVenta(data);
+          for (const f of data) await dbSaveFacturaVenta(f, cid);
+        } else {
+          updateCollection(setFacturasVenta, data);
+          if (data._delete) await dbDeleteFacturaVenta(data.id, cid);
+          else await dbSaveFacturaVenta(data, cid);
+        }
+        break;
+      case "facturasCompra":
+      case "facturas_compra":
+        if (Array.isArray(data)) {
+          setFacturasCompra(data);
+          for (const f of data) await dbSaveFacturaCompra(f, cid);
+        } else {
+          updateCollection(setFacturasCompra, data);
+          if (data._delete) await dbDeleteFacturaCompra(data.id, cid);
+          else await dbSaveFacturaCompra(data, cid);
+        }
+        break;
+      case "lotesPos":
+      case "lotes_pos":
+        if (data._delete) await dbDeleteLotePos(data.id, cid);
+        else await dbSaveLotePos(data, cid);
+        break;
+      case "terminalesPos":
+      case "terminales_pos":
+        if (data._delete) await dbDeleteTerminalPos(data.id, cid);
+        else await dbSaveTerminalPos(data, cid);
         break;
       case "pedidos":
         if (Array.isArray(data)) setPedidos(data);
         else updateCollection(setPedidos, data);
+        break;
       case "activosFijos":
         if (Array.isArray(data)) {
-          setActivosFijos(data);
-          for (const af of data) await dbSaveActivoFijo(af, cid);
+          if (data.length === 0) {
+            setActivosFijos([]);
+            await dbClearActivosFijos(cid);
+          } else {
+            mergeArrayCollection(setActivosFijos, data);
+            for (const af of data) await dbSaveActivoFijo(af, cid);
+          }
         } else {
           updateCollection(setActivosFijos, data);
           if (data._delete) {
-            await dbDeleteActivoFijo(data.id);
+            await dbDeleteActivoFijo(data.id, cid);
           } else {
             await dbSaveActivoFijo(data, cid);
           }
@@ -505,7 +746,11 @@ function AppContent() {
           await dbSaveDepreciaciones(data, cid);
         } else {
           updateCollection(setDepreciaciones, data);
-          await dbSaveDepreciacion(data, cid);
+          if (data._delete) {
+            await dbDeleteDepreciacion(data.id, cid);
+          } else {
+            await dbSaveDepreciacion(data, cid);
+          }
         }
         break;
       case "call-logs":
@@ -592,20 +837,100 @@ function AppContent() {
         <Routes>
           <Route path="/" element={<Home tipoEmpresa={empresa.tipoEmpresa} />} />
           <Route path="/clientes" element={<Navigate to="/contacts/customer" replace />} />
+          
+          {/* Módulo de Facturación */}
+          <Route
+            path="/invoicing"
+            element={
+              <Invoicing
+                facturas={facturasVenta}
+                cxc={filteredCxc}
+                comprobantes={filteredComprobantes}
+                movimientosBancos={filteredMovimientosBancos}
+                products={products}
+                contactos={contactos}
+                cuentasContables={cuentasContables}
+                bancos={bancos}
+                configContable={configContable}
+                workingYear={workingYear}
+                empresa={empresa}
+                onSave={handleSave}
+                showToast={showToast}
+              />
+            }
+          />
+          <Route
+            path="/invoicing/new"
+            element={
+              <InvoiceForm
+                contactos={contactos}
+                products={products}
+                cuentasContables={cuentasContables}
+                bancos={bancos}
+                configContable={configContable}
+                onSave={handleSave}
+                showToast={showToast}
+                workingYear={workingYear}
+                empresa={empresa}
+              />
+            }
+          />
+
+          {/* Módulo de Inventario de Mercancía */}
+          <Route
+            path="/inventory"
+            element={
+              <Inventory
+                products={products}
+                movimientosInventario={movimientosInventario}
+                cuentasContables={cuentasContables}
+                categoriasProducto={categoriasProducto}
+                almacenes={almacenes}
+                onSave={handleSave}
+                showToast={showToast}
+              />
+            }
+          />
+          {/* Módulo de Compras y Servicios */}
+          <Route path="/purchases" element={<PurchasesMenu />} />
           <Route
             path="/purchases/new"
             element={
               <PurchaseForm
                 contactos={contactos}
+                products={products}
+                almacenes={almacenes}
                 cuentasContables={cuentasContables}
+                bancos={bancos}
+                configContable={configContable}
                 onSave={handleSave}
                 showToast={showToast}
-                configContable={configContable}
                 workingYear={workingYear}
+                empresa={empresa}
               />
             }
           />
-          <Route path="/purchases" element={<PayablesMenu />} />
+          <Route
+            path="/purchases/:submodule"
+            element={
+              <Purchases
+                facturasCompra={facturasCompra}
+                cxp={filteredCxp}
+                comprobantes={filteredComprobantes}
+                movimientosInventario={movimientosInventario}
+                products={products}
+                contactos={contactos}
+                cuentasContables={cuentasContables}
+                categoriasProducto={categoriasProducto}
+                bancos={bancos}
+                configContable={configContable}
+                workingYear={workingYear}
+                empresa={empresa}
+                onSave={handleSave}
+                showToast={showToast}
+              />
+            }
+          />
           <Route path="/receivables" element={<ReceivablesMenu />} />
           <Route
             path="/receivables/:category"
@@ -623,6 +948,7 @@ function AppContent() {
                 onSave={handleSave}
                 showToast={showToast}
                 workingYear={workingYear}
+                facturas={facturasVenta}
               />
             }
           />
@@ -660,6 +986,20 @@ function AppContent() {
             }
           />
           <Route path="/banks" element={<BanksMenu />} />
+          <Route
+            path="/banks/pos-lotes"
+            element={
+              <PosLotes
+                bancos={bancos}
+                cuentasContables={cuentasContables}
+                configContable={configContable}
+                comprobantes={comprobantes}
+                onSave={handleSave}
+                showToast={showToast}
+                workingYear={workingYear}
+              />
+            }
+          />
           <Route
             path="/banks/:submodule"
             element={
@@ -705,6 +1045,22 @@ function AppContent() {
             }
           />
           <Route
+            path="/accounting/fiscal"
+            element={
+              <FiscalModule
+                facturasCompra={facturasCompra}
+                facturasVenta={facturasVenta}
+                comprobantes={filteredComprobantes}
+                cuentasContables={cuentasContables}
+                empresa={empresa}
+                configContable={configContable}
+                workingYear={workingYear}
+                onSave={handleSave}
+                showToast={showToast}
+              />
+            }
+          />
+          <Route
             path="/accounting/fixed-assets"
             element={
               <FixedAssetsModule
@@ -714,6 +1070,9 @@ function AppContent() {
                 cuentasContables={cuentasContables}
                 proveedores={proveedores}
                 configContable={configContable}
+                comprobantes={comprobantes}
+                cxp={filteredCxp}
+                cxc={filteredCxc}
                 onSave={handleSave}
                 showToast={showToast}
               />
@@ -790,9 +1149,20 @@ function AppContent() {
                 setEmpresa={setEmpresa}
                 contactos={contactos}
                 servicios={servicios}
+                comprobantes={filteredComprobantes}
+                bancos={bancos}
+                movimientosBancos={filteredMovimientosBancos}
+                cxc={filteredCxc}
+                cxp={filteredCxp}
+                products={products}
+                activosFijos={activosFijos}
               />
             }
           />
+          {/* Rutas de Diagnóstico eliminadas - Redirigir a Home */}
+          <Route path="/diagnostico" element={<Navigate to="/" replace />} />
+          <Route path="/system-health" element={<Navigate to="/" replace />} />
+          <Route path="/health" element={<Navigate to="/" replace />} />
           <Route
             path="*"
             element={<div className="text-slate-500 p-6">Módulo en construcción...</div>}

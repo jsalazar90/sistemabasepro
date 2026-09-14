@@ -1,0 +1,40 @@
+Created At: 2026-09-12T17:39:01-04:00
+Completed At: 2026-09-12T17:39:01-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3076
+Total Bytes: 148971
+Showing lines 3045 to 3076
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+3045:               </span>
+3046:               <button
+3047:                 type="button"
+3048:                 onClick={() => {
+3049:                   setIsProductModalOpen(false);
+3050:                   setActiveItemIndexForProduct(null);
+3051:                 }}
+3052:                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+3053:               >
+3054:                 Cerrar Catálogo
+3055:               </button>
+3056:             </div>
+3057:           </div>
+3058:         </div>
+3059:       )}
+3060: 
+3061:       {/* Modal de Tasa de Cambio BCV */}
+3062:       <TasaCambioModal
+3063:         isOpen={isTasaModalOpen}
+3064:         onClose={() => setIsTasaModalOpen(false)}
+3065:         onSaveSuccess={(f, t) => {
+3066:           if (f === issueDate) {
+3067:             setExchangeRateInput(t.toFixed(2));
+3068:           }
+3069:           showToast?.(`Tasa BCV guardada: Bs. ${t.toFixed(2)}`, 'success');
+3070:         }}
+3071:       />
+3072: 
+3073:     </div>
+3074:   );
+3075: }
+3076: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

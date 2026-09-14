@@ -1,0 +1,59 @@
+Created At: 2026-09-12T16:59:09-04:00
+Completed At: 2026-09-12T16:59:09-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2724
+Total Bytes: 132134
+Showing lines 970 to 1020
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+970:                     <button
+971:                       type="button"
+972:                       onClick={() => setCurrency('VES')}
+973:                       className={`px-3 py-1 rounded-lg text-xs font-black transition ${
+974:                         currency === 'VES'
+975:                           ? 'bg-emerald-600 text-white shadow-xs'
+976:                           : 'text-slate-600 hover:text-slate-900'
+977:                       }`}
+978:                     >
+979:                       Bolívares (Bs.)
+980:                     </button>
+981:                   </div>
+982:                 </div>
+983:                 <p className="text-xs text-slate-400 font-semibold mt-0.5">
+984:                   Moneda de emisión activa: <b className="text-slate-700">{currency === 'USD' ? 'Dólares Estadounidenses ($)' : 'Bolívares Digitales (Bs.)'}</b>
+985:                 </p>
+986:               </div>
+987:             </div>
+988: 
+989:             {/* Badge Correlativo */}
+990:             <div className="flex items-center gap-2 w-full lg:w-auto justify-end">
+991:               <div className="px-4 py-2 bg-indigo-50/80 border border-indigo-100 rounded-2xl text-right">
+992:                 <span className="block text-[10px] font-bold text-indigo-500 uppercase tracking-wider">
+993:                   N° Documento
+994:                 </span>
+995:                 <span className="font-mono font-black text-base text-indigo-900">
+996:                   {invoiceNumber}
+997:                 </span>
+998:               </div>
+999:             </div>
+1000:           </div>
+1001: 
+1002:           {/* Fila de Datos del Documento */}
+1003:           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 text-xs">
+1004:             <div>
+1005:               <label className="block text-slate-700 font-bold mb-1">N° de Factura / Correlativo *</label>
+1006:               <input
+1007:                 type="text"
+1008:                 required
+1009:                 value={invoiceNumber}
+1010:                 onChange={(e) => setInvoiceNumber(e.target.value)}
+1011:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-indigo-600 focus:bg-white focus:border-indigo-600 outline-none uppercase"
+1012:               />
+1013:             </div>
+1014: 
+1015:             <div>
+1016:               <label className="block text-slate-700 font-bold mb-1">N° de Control Fiscal</label>
+1017:               <input
+1018:                 type="text"
+1019:                 placeholder="00-000000"
+1020:                 value={controlNumber}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

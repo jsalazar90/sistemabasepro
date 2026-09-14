@@ -1,0 +1,158 @@
+Created At: 2026-09-12T17:20:21-04:00
+Completed At: 2026-09-12T17:20:21-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2893
+Total Bytes: 139045
+Showing lines 601 to 750
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+601:           exento: isExempt,
+602:           subtotal: lineSubtotal,
+603:           iva_monto: iva,
+604:           total: lineSubtotal + iva,
+605:           cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
+606:           cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
+607:           cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
+608:         };
+609:       } else {
+610:         updated[index] = {
+611:           ...updated[index],
+612:           producto_id: '',
+613:           codigo: '',
+614:           descripcion: '',
+615:           precio_unitario: 0,
+616:           subtotal: 0,
+617:           iva_monto: 0,
+618:           total: 0
+619:         };
+620:       }
+621:       return updated;
+622:     });
+623:   };
+624: 
+625:   const handleItemFieldChange = (index: number, field: string, value: any) => {
+626:     setItems(prev => {
+627:       const updated = [...prev];
+628:       const item = { ...updated[index], [field]: value };
+629: 
+630:       const qty = Number(item.cantidad) || 0;
+631:       const price = Number(item.precio_unitario) || 0;
+632:       const lineSubtotal = qty * price;
+633:       const iva = item.exento ? 0 : lineSubtotal * 0.16;
+634: 
+635:       item.subtotal = lineSubtotal;
+636:       item.iva_monto = iva;
+637:       item.total = lineSubtotal + iva;
+638: 
+639:       updated[index] = item;
+640:       return updated;
+641:     });
+642:   };
+643: 
+644:   // =========================================================================
+645:   // PASO 1: Validar Formulario y Abrir Modal de Condición (Contado o Crédito)
+646:   // =========================================================================
+647:   const handleStartEmission = (e: React.FormEvent) => {
+648:     e.preventDefault();
+649: 
+650:     if (!customerName || !customerRif) {
+651:       showToast?.('Seleccione o registre el cliente a quien se emitirá la factura', 'error');
+652:       return;
+653:     }
+654: 
+655:     if (!invoiceNumber.trim()) {
+656:       showToast?.('El número de documento es obligatorio', 'error');
+657:       return;
+658:     }
+659: 
+660:     if (items.some(i => !i.descripcion.trim() || i.cantidad <= 0)) {
+661:       showToast?.('Complete la descripción y cantidad válida en cada línea', 'error');
+662:       return;
+663:     }
+664: 
+665:     if (totals.total <= 0) {
+666:       showToast?.('El total de la factura debe ser mayor a 0', 'error');
+667:       return;
+668:     }
+669: 
+670:     // Validar año contable
+671:     if (workingYear && issueDate) {
+672:       const yr = issueDate.substring(0, 4);
+673:       if (yr !== workingYear) {
+674:         showToast?.(`La fecha (${yr}) no coincide con el período contable seleccionado (${workingYear})`, 'error');
+675:         return;
+676:       }
+677:     }
+678: 
+679:     // Abrir modal de selección Contado vs Crédito
+680:     setIsConditionModalOpen(true);
+681:   };
+682: 
+683:   // =========================================================================
+684:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+685:   // =========================================================================
+686:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+687:     setSelectedCondition(cond);
+688:     setIsConditionModalOpen(false);
+689: 
+690:     if (cond === 'credito') {
+691:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+692:       buildAndShowVoucher('credito');
+693:     } else {
+694:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+695:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+696:       const isBancoVES = defaultBanco && (defaultBanco.moneda === 'VES' || defaultBanco.moneda === 'Bs');
+697:       
+698:       const pagoInicial = {
+699:         id: `pg_${Date.now()}`,
+700:         bancoId: defaultBanco ? defaultBanco.id : '',
+701:         metodoPago: 'Transferencia',
+702:         referencia: '',
+703:         monto: currency === 'USD' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarUSD.toFixed(2),
+704:         montoBs: currency === 'VES' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarBs.toFixed(2)
+705:       };
+706: 
+707:       setCobranzaForm({
+708:         fecha: issueDate,
+709:         tasa: exchangeRate,
+710:         pagos: [pagoInicial]
+711:       });
+712:       setIsCobranzaModalOpen(true);
+713:     }
+714:   };
+715: 
+716:   // Manejo de pagos en el Modal de Cobranza
+717:   const handleAddPagoCobranza = () => {
+718:     const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+719:     setCobranzaForm(prev => ({
+720:       ...prev,
+721:       pagos: [
+722:         ...prev.pagos,
+723:         {
+724:           id: `pg_${Date.now()}_${prev.pagos.length + 1}`,
+725:           bancoId: defaultBanco ? defaultBanco.id : '',
+726:           metodoPago: 'Transferencia',
+727:           referencia: '',
+728:           monto: '0.00',
+729:           montoBs: '0.00'
+730:         }
+731:       ]
+732:     }));
+733:   };
+734: 
+735:   const handleRemovePagoCobranza = (index: number) => {
+736:     if (cobranzaForm.pagos.length === 1) return;
+737:     setCobranzaForm(prev => ({
+738:       ...prev,
+739:       pagos: prev.pagos.filter((_, i) => i !== index)
+740:     }));
+741:   };
+742: 
+743:   // Proceder desde Cobranza al Asiento Contable
+744:   const handleConfirmCobranzaToVoucher = () => {
+745:     const totalPagado = cobranzaForm.pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+746:     if (cobranzaForm.pagos.length === 0 || totalPagado <= 0) {
+747:       showToast?.('Ingrese al menos un pago con monto válido en la cobranza', 'error');
+748:       return;
+749:     }
+750: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

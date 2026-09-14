@@ -1,0 +1,49 @@
+Created At: 2026-09-12T16:03:21-04:00
+Completed At: 2026-09-12T16:03:21-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1618
+Total Bytes: 74755
+Showing lines 50 to 90
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+50: 
+51:   // Modales de Cliente
+52:   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+53:   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+54:   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+55:   const [newCustName, setNewCustName] = useState('');
+56:   const [newCustRif, setNewCustRif] = useState('');
+57:   const [newCustAddress, setNewCustAddress] = useState('');
+58:   const [newCustPhone, setNewCustPhone] = useState('');
+59: 
+60:   // Items / Líneas de la Factura
+61:   const [items, setItems] = useState<FacturaItemModel[]>([
+62:     {
+63:       id: `item_${Date.now()}_1`,
+64:       producto_id: '',
+65:       codigo: '',
+66:       descripcion: '',
+67:       cantidad: 1,
+68:       precio_unitario: 0,
+69:       exento: false,
+70:       subtotal: 0,
+71:       iva_monto: 0,
+72:       total: 0,
+73:       cuenta_ingreso_id: '4.1.01.001',
+74:       cuenta_costo_id: '5.1.01.001',
+75:       cuenta_inventario_id: '1.1.04.001'
+76:     }
+77:   ]);
+78: 
+79:   // Modales del flujo de emisión
+80:   const [isConditionModalOpen, setIsConditionModalOpen] = useState(false);
+81:   const [selectedCondition, setSelectedCondition] = useState<'contado' | 'credito'>('contado');
+82:   const [creditDays, setCreditDays] = useState(15);
+83:   const [calculatedDueDate, setCalculatedDueDate] = useState('');
+84: 
+85:   // Modal de Cobranza (para facturas de Contado)
+86:   const [isCobranzaModalOpen, setIsCobranzaModalOpen] = useState(false);
+87:   const [cobranzaForm, setCobranzaForm] = useState({
+88:     fecha: new Date().toISOString().split('T')[0],
+89:     tasa: 36.50,
+90:     pagos: [] as Array<{
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

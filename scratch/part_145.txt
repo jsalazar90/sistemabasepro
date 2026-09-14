@@ -1,0 +1,59 @@
+Created At: 2026-09-12T16:25:08-04:00
+Completed At: 2026-09-12T16:25:08-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2311
+Total Bytes: 111506
+Showing lines 145 to 195
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+145:         (c.name || '').toLowerCase().includes(term) ||
+146:         (c.taxId || '').toLowerCase().includes(term);
+147:       return isCust && match;
+148:     });
+149:   }, [contactos, customerSearchTerm]);
+150: 
+151:   // Totales calculados en tiempo real
+152:   const totals = useMemo(() => {
+153:     let subtotal = 0;
+154:     let montoExento = 0;
+155:     let baseImponible = 0;
+156:     let ivaMonto = 0;
+157: 
+158:     items.forEach(item => {
+159:       const lineSubtotal = (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0);
+160:       subtotal += lineSubtotal;
+161:       if (item.exento) {
+162:         montoExento += lineSubtotal;
+163:       } else {
+164:         baseImponible += lineSubtotal;
+165:         ivaMonto += lineSubtotal * 0.16;
+166:       }
+167:     });
+168: 
+169:     const total = subtotal + ivaMonto;
+170: 
+171:     // Calcular montos en USD y Bs. según la moneda seleccionada
+172:     let totalUSD = 0;
+173:     let totalBs = 0;
+174: 
+175:     if (currency === 'USD') {
+176:       totalUSD = total;
+177:       totalBs = total * (exchangeRate || 1);
+178:     } else {
+179:       totalBs = total;
+180:       totalUSD = (exchangeRate > 0) ? (total / exchangeRate) : total;
+181:     }
+182: 
+183:     return { subtotal, montoExento, baseImponible, ivaMonto, total, totalUSD, totalBs };
+184:   }, [items, currency, exchangeRate]);
+185: 
+186:   // Formateador de moneda
+187:   const formatMoney = (amount: number, curr = currency) => {
+188:     return new Intl.NumberFormat('es-VE', { 
+189:       style: 'currency', 
+190:       currency: curr === 'VES' ? 'VES' : 'USD',
+191:       minimumFractionDigits: 2 
+192:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+193:   };
+194: 
+195:   // Manejo de Cliente
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

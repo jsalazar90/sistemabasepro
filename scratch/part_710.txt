@@ -1,0 +1,49 @@
+Created At: 2026-09-12T17:36:25-04:00
+Completed At: 2026-09-12T17:36:25-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 710 to 750
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+710: 
+711:     if (!invoiceNumber.trim()) {
+712:       showToast?.('El número de documento es obligatorio', 'error');
+713:       return;
+714:     }
+715: 
+716:     if (items.some(i => !i.descripcion.trim() || i.cantidad <= 0)) {
+717:       showToast?.('Complete la descripción y cantidad válida en cada línea', 'error');
+718:       return;
+719:     }
+720: 
+721:     if (totals.total <= 0) {
+722:       showToast?.('El total de la factura debe ser mayor a 0', 'error');
+723:       return;
+724:     }
+725: 
+726:     // Validar año contable
+727:     if (workingYear && issueDate) {
+728:       const yr = issueDate.substring(0, 4);
+729:       if (yr !== workingYear) {
+730:         showToast?.(`La fecha (${yr}) no coincide con el período contable seleccionado (${workingYear})`, 'error');
+731:         return;
+732:       }
+733:     }
+734: 
+735:     // Abrir modal de selección Contado vs Crédito
+736:     setIsConditionModalOpen(true);
+737:   };
+738: 
+739:   // =========================================================================
+740:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+741:   // =========================================================================
+742:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+743:     setSelectedCondition(cond);
+744:     setIsConditionModalOpen(false);
+745: 
+746:     if (cond === 'credito') {
+747:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+748:       buildAndShowVoucher('credito');
+749:     } else {
+750:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

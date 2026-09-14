@@ -1,0 +1,54 @@
+Created At: 2026-09-12T18:55:51-04:00
+Completed At: 2026-09-12T18:55:51-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3542
+Total Bytes: 170575
+Showing lines 75 to 120
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+75:         const rateStr = res.tasa.toFixed(2);
+76:         setExchangeRateInput(rateStr);
+77:         showToast?.(`Tasa BCV actualizada en vivo: Bs. ${res.tasa.toFixed(2)} / $ (${res.fuente})`, 'success');
+78:         if (currency === 'VES') {
+79:           recalculateItemsInVES(res.tasa);
+80:         }
+81:       } else {
+82:         showToast?.(res.error || 'No se pudo obtener la tasa en vivo del BCV', 'error');
+83:       }
+84:     } catch (e: any) {
+85:       showToast?.('Error al conectar con el servidor oficial del BCV', 'error');
+86:     } finally {
+87:       setIsSyncingBcvLive(false);
+88:     }
+89:   };
+90: 
+91:   // Auto-sincronizar tasa BCV al ingresar si está en valor por defecto
+92:   useEffect(() => {
+93:     const today = new Date().toISOString().split('T')[0];
+94:     const stored = getTasaForDate(today);
+95:     if (stored === 36.5) {
+96:       fetchLiveBcvRate(false).then(res => {
+97:         if (res.success && res.tasa) {
+98:           setExchangeRateInput(res.tasa.toFixed(2));
+99:         }
+100:       });
+101:     }
+102:   }, []);
+103: 
+104:   // Sincronizar tasa si cambia la fecha de emisión
+105:   useEffect(() => {
+106:     const rate = getTasaForDate(issueDate);
+107:     setExchangeRateInput(rate.toFixed(2));
+108:   }, [issueDate]);
+109: 
+110:   // Escuchar eventos globales de actualización de tasa
+111:   useEffect(() => {
+112:     const handleTasaUpdated = (e: any) => {
+113:       const detail = e.detail;
+114:       if (detail && detail.tasa) {
+115:         if (!detail.fecha || detail.fecha === issueDate) {
+116:           setExchangeRateInput(Number(detail.tasa).toFixed(2));
+117:         }
+118:       }
+119:     };
+120:     window.addEventListener('tasa-cambio-updated', handleTasaUpdated);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

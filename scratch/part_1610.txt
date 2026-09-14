@@ -1,0 +1,44 @@
+Created At: 2026-09-12T17:38:49-04:00
+Completed At: 2026-09-12T17:38:49-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3028
+Total Bytes: 145795
+Showing lines 1610 to 1645
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1610:                             ) : (
+1611:                               <button
+1612:                                 type="button"
+1613:                                 onClick={() => handleOpenProductModal(idx)}
+1614:                                 className="w-full px-2.5 py-1.5 bg-slate-50 hover:bg-slate-100/90 border border-slate-200 hover:border-indigo-400 rounded-xl cursor-pointer text-left transition flex items-center justify-between gap-1.5 group min-w-0"
+1615:                                 title="Haga clic para cambiar de artículo"
+1616:                               >
+1617:                                 <div className="flex items-center gap-1.5 min-w-0 truncate">
+1618:                                   <span className="font-mono font-black text-indigo-700 text-[11px] bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100 shrink-0">
+1619:                                     {item.codigo || selectedProd?.codigo}
+1620:                                   </span>
+1621:                                   <span className="font-bold text-slate-800 text-xs truncate">
+1622:                                     {item.descripcion || selectedProd?.nombre}
+1623:                                   </span>
+1624:                                   {item.exento && !(item.descripcion || '').includes('(E)') && (
+1625:                                     <span 
+1626:                                       className="font-black text-slate-900 font-mono text-[10px] bg-slate-200/80 px-1 py-0.2 rounded border border-slate-300 shrink-0" 
+1627:                                       title="Artículo exento de IVA"
+1628:                                     >
+1629:                                       (E)
+1630:                                     </span>
+1631:                                   )}
+1632:                                 </div>
+1633: 
+1634:                                 <div className="flex items-center gap-1.5 shrink-0">
+1635:                                   {selectedProd && (
+1636:                                     <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+1637:                                       selectedProd.stock_actual <= 0
+1638:                                         ? 'bg-rose-50 text-rose-700 border border-rose-200'
+1639:                                         : isStockWarning
+1640:                                           ? 'bg-amber-50 text-amber-700 border border-amber-200'
+1641:                                           : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+1642:                                     }`}>
+1643:                                       Stock: {selectedProd.stock_actual}
+1644:                                     </span>
+1645:                                   )}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

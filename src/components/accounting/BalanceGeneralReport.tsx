@@ -121,12 +121,18 @@ export default function BalanceGeneralReport({
   // Cálculo de saldos contables y rollup en cascada
   // Cálculo de saldos contables y rollup en cascada
   const balanceData = useMemo(() => {
-    const activeCuentas = (cuentasContables && cuentasContables.length >= 25)
+    const activeCuentas = (cuentasContables && cuentasContables.length > 0)
       ? cuentasContables
       : SAMPLE_FULL_BALANCE_CUENTAS;
 
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
     const pastComprobantes = comprobantes.filter(
-      c => c.estado === 'Contabilizado' && (!c.fecha || c.fecha.split('T')[0] <= endDate)
+      c => isContabilizado(c) && (!c.fecha || c.fecha.split('T')[0] <= endDate)
     );
 
     const saldosCuentas: Record<string, number> = {};
@@ -140,8 +146,13 @@ export default function BalanceGeneralReport({
 
     pastComprobantes.forEach(comp => {
       (comp.lineas || []).forEach((linea: any) => {
-        const cId = String(linea.cuentaId);
-        const cuenta = activeCuentas.find(item => String(item.id) === cId);
+        const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+        if (!cId) return;
+        const cuenta = activeCuentas.find(item => 
+          String(item.id) === cId || 
+          String(item.codigo) === cId ||
+          (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
         if (!cuenta) return;
 
         const debe = Number(linea.debe) || 0;
@@ -251,7 +262,33 @@ export default function BalanceGeneralReport({
 
     const isUsingSample = activeCuentas === SAMPLE_FULL_BALANCE_CUENTAS;
     if (!isUsingSample) {
-      const utilidadNetaPAndL = estadoResultados?.utilidadNeta || 0;
+      let utilidadNetaPAndL = estadoResultados?.utilidadNeta || 0;
+      if (Math.abs(utilidadNetaPAndL) < 0.009 && activeCuentas.length > 0 && pastComprobantes.length > 0) {
+        let ing = 0;
+        let egr = 0;
+        pastComprobantes.forEach(comp => {
+          (comp.lineas || []).forEach((linea: any) => {
+            const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+            if (!cId) return;
+            const cuenta = activeCuentas.find(item => 
+              String(item.id) === cId || 
+              String(item.codigo) === cId ||
+              (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+            );
+            if (!cuenta) return;
+            const first = cuenta.codigo?.charAt(0);
+            const debe = Number(linea.debe) || 0;
+            const haber = Number(linea.haber) || 0;
+            if (first === '4' || first === '7') {
+              ing += (haber - debe);
+            } else if (first >= '5' && first <= '9') {
+              egr += (debe - haber);
+            }
+          });
+        });
+        utilidadNetaPAndL = ing - egr;
+      }
+
       if (Math.abs(utilidadNetaPAndL) > 0.009) {
         const resultadoEjercicioItem: CuentaContableItem & { level: number; isLeaf?: boolean } = {
           id: 'UTILIDAD_TEMP',

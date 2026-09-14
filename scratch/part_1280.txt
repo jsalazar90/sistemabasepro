@@ -1,0 +1,69 @@
+Created At: 2026-09-12T18:39:25-04:00
+Completed At: 2026-09-12T18:39:25-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3221
+Total Bytes: 156901
+Showing lines 1280 to 1340
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1280:       showToast?.('Error al emitir la factura', 'error');
+1281:     }
+1282:   };
+1283: 
+1284:   return (
+1285:     <div className="px-3 sm:px-6 pt-1 pb-16 max-w-7xl mx-auto animate-in fade-in duration-300">
+1286:       {/* Botón Volver */}
+1287:       <div className="mb-3">
+1288:         <BackButton to="/invoicing" label="Volver al Listado de Facturación" />
+1289:       </div>
+1290: 
+1291:       <form onSubmit={handleStartEmission} className="space-y-6">
+1292:         
+1293:         {/* ========================================================================= */}
+1294:         {/* CABECERA: TIPO DE DOCUMENTO, MONEDA (USD/BS), CORRELATIVO Y FECHAS */}
+1295:         {/* ========================================================================= */}
+1296:         <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs">
+1297:           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 pb-5 border-b border-slate-100">
+1298:             {/* Título y Selector de Tipo Documento */}
+1299:             <div className="flex items-center gap-3">
+1300:               <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-blue-600 text-white flex items-center justify-center font-bold shadow-lg shadow-indigo-500/20 shrink-0">
+1301:                 <FileText size={24} />
+1302:               </div>
+1303:               <div>
+1304:                 <div className="flex items-center gap-2 flex-wrap">
+1305:                   <select
+1306:                     value={docType}
+1307:                     onChange={(e) => setDocType(e.target.value as any)}
+1308:                     className="text-base sm:text-lg font-black text-slate-900 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 transition"
+1309:                   >
+1310:                     <option value="factura">Factura de Venta</option>
+1311:                     <option value="nota_entrega">Nota de Entrega</option>
+1312:                     <option value="nota_credito">Nota de Crédito</option>
+1313:                     <option value="nota_debito">Nota de Débito</option>
+1314:                   </select>
+1315: 
+1316:                   {/* CONMUTADOR DE MONEDA SOLICITADO: USD vs BS */}
+1317:                   <div className="inline-flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 ml-1">
+1318:                     <button
+1319:                       type="button"
+1320:                       onClick={() => handleCurrencyChange('USD')}
+1321:                       className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+1322:                         currency === 'USD'
+1323:                           ? 'bg-indigo-600 text-white shadow-xs'
+1324:                           : 'text-slate-600 hover:text-slate-900'
+1325:                       }`}
+1326:                     >
+1327:                       USD ($)
+1328:                     </button>
+1329:                     <button
+1330:                       type="button"
+1331:                       onClick={() => handleCurrencyChange('VES')}
+1332:                       className={`px-3 py-1 rounded-lg text-xs font-black transition cursor-pointer ${
+1333:                         currency === 'VES'
+1334:                           ? 'bg-emerald-600 text-white shadow-xs'
+1335:                           : 'text-slate-600 hover:text-slate-900'
+1336:                       }`}
+1337:                     >
+1338:                       Bolívares (Bs.)
+1339:                     </button>
+1340:                   </div>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

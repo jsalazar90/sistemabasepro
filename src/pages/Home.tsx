@@ -15,18 +15,51 @@ import {
   ShieldCheck,
   Zap,
   Receipt,
+  FileText,
+  Package,
+  Truck,
 } from "lucide-react";
 
 const apps = [
   {
     id: "contactos",
-    name: "Contactos",
+    name: "Contacto",
     description: "Clientes, proveedores, empleados y cuentas corporativas",
     icon: Contact,
     gradient: "from-teal-500 to-emerald-600",
     shadow: "shadow-teal-500/20",
     border: "border-teal-200/50",
     path: "/contacts",
+  },
+  {
+    id: "facturacion",
+    name: "Facturación de Ventas",
+    description: "Emisión de facturas fiscales, notas de entrega y cobranza",
+    icon: FileText,
+    gradient: "from-blue-600 to-indigo-700",
+    shadow: "shadow-blue-500/20",
+    border: "border-blue-200/50",
+    path: "/invoicing",
+  },
+  {
+    id: "inventario",
+    name: "Inventario de Mercancía",
+    description: "Catálogo de productos, existencias, alertas de stock y kardex",
+    icon: Package,
+    gradient: "from-amber-500 to-orange-600",
+    shadow: "shadow-amber-500/20",
+    border: "border-amber-200/50",
+    path: "/inventory",
+  },
+  {
+    id: "compras",
+    name: "Compra",
+    description: "Ingreso de facturas de compra, recepción de mercancía y CxP",
+    icon: Truck,
+    gradient: "from-blue-600 to-cyan-700",
+    shadow: "shadow-blue-500/20",
+    border: "border-blue-200/50",
+    path: "/purchases",
   },
   {
     id: "cuentasCobrar",
@@ -50,7 +83,7 @@ const apps = [
   },
   {
     id: "bancos",
-    name: "Bancos & Tesorería",
+    name: "Banco",
     description: "Cuentas bancarias, caja, traspasos y conciliación",
     icon: Landmark,
     gradient: "from-sky-500 to-blue-600",
@@ -180,7 +213,7 @@ export default function Home() {
         variants={containerVariants}
         initial="hidden"
         animate="show"
-        className="z-10 max-w-6xl w-full px-2 sm:px-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 justify-items-center mt-3 sm:mt-4 mb-3"
+        className="z-10 max-w-6xl w-full px-2 sm:px-6 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 gap-3 sm:gap-4 justify-items-center mt-3 sm:mt-4 mb-3"
       >
         {filteredApps.map((app: any) => {
           const Icon = app.icon;

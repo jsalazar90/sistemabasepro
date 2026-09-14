@@ -1,0 +1,49 @@
+Created At: 2026-09-12T19:16:36-04:00
+Completed At: 2026-09-12T19:16:36-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3508
+Total Bytes: 169658
+Showing lines 2040 to 2080
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2040:               <span>Total Unidades: <b className="text-slate-800">{items.reduce((s, i) => s + (Number(i.cantidad) || 0), 0)}</b></span>
+2041:             </div>
+2042:             <button
+2043:               type="button"
+2044:               onClick={handleAddItem}
+2045:               className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+2046:             >
+2047:               <Plus size={13} />
+2048:               <span>Añadir otro renglón</span>
+2049:             </button>
+2050:           </div>
+2051:         </div>
+2052: 
+2053:         {/* ========================================================================= */}
+2054:         {/* 4. SECCIÓN INFERIOR DUAL: RETENCIONES / NOTAS (IZQ) vs TOTALES ERP (DER) */}
+2055:         {/* ========================================================================= */}
+2056:         <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 items-start">
+2057:           
+2058:           {/* COLUMNA IZQUIERDA (7 COLS): TRIBUTOS FISCALES SENIAT, RETENCIONES Y NOTAS */}
+2059:           <div className="lg:col-span-7 space-y-3">
+2060:             
+2061:             {/* RETENCIONES FISCALES Y TRIBUTOS */}
+2062:             <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs space-y-2.5 text-xs">
+2063:               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+2064:                 <div className="flex items-center gap-2">
+2065:                   <ShieldCheck size={16} className="text-amber-600" />
+2066:                   <span className="font-black text-slate-800 text-xs uppercase tracking-wider">
+2067:                     Retenciones Fiscales & IGTF (SENIAT)
+2068:                   </span>
+2069:                 </div>
+2070:                 <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold">
+2071:                   Normativa Fiscal
+2072:                 </span>
+2073:               </div>
+2074: 
+2075:               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
+2076:                 
+2077:                 {/* Retención IVA */}
+2078:                 <div className={`p-2.5 rounded-xl border transition ${
+2079:                   applyRetIva ? 'bg-amber-50/70 border-amber-200' : 'bg-slate-50/60 border-slate-200'
+2080:                 }`}>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

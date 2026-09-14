@@ -3,6 +3,7 @@ import { Search, Plus, Filter, MoreVertical, FileText, ArrowLeft, Edit2, Trash2,
 import { Link } from 'react-router-dom';
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import BackButton from '../components/common/BackButton';
+import { getTodayLocalDate, toInputDateFormat } from '../utils/dateUtils';
 
 export default function AccountingEntries({ comprobantes = [], cuentasContables = [], onSave, showToast, workingYear }: { comprobantes?: any[], cuentasContables?: any[], onSave?: any, showToast?: any, workingYear?: string }) {
   const [searchQuery, setSearchQuery] = useState('');
@@ -21,7 +22,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
   const itemsPerPage = 15;
   
   const [form, setForm] = useState({
-    fecha: new Date().toISOString().split('T')[0],
+    fecha: getTodayLocalDate(),
     numero: '',
     tipo: 'Diario',
     descripcion: '',
@@ -70,7 +71,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
       try {
         const d = new Date(cleanStr);
         if (!isNaN(d.getTime())) {
-          return d.toISOString().split('T')[0];
+          return toInputDateFormat(d);
         }
       } catch (e) {}
       return cleanStr;
@@ -187,14 +188,23 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
         fecha: comp.fecha,
         numero: comp.numero,
         tipo: comp.tipo,
-        descripcion: comp.descripcion,
+        descripcion: comp.descripcion || comp.concepto || '',
         referencia: comp.referencia || ''
       });
-      setLines(comp.lineas || []);
+      const rawLines = (comp.lineas && comp.lineas.length > 0) 
+        ? comp.lineas 
+        : ((comp.asientos && comp.asientos.length > 0) ? comp.asientos.map((a: any) => ({
+            id: a.id || crypto.randomUUID(),
+            cuentaId: a.cuentaId || a.cuenta_id || a.cuenta_codigo || a.cuentaCodigo,
+            descripcion: a.descripcion || comp.descripcion || comp.concepto || '',
+            debe: Number(a.debe) || 0,
+            haber: Number(a.haber) || 0
+          })) : []);
+      setLines(rawLines);
     } else {
       setEditingId(null);
       setForm({
-        fecha: new Date().toISOString().split('T')[0],
+        fecha: getTodayLocalDate(),
         numero: `CMP-${Date.now().toString().slice(-6)}`,
         tipo: 'Diario',
         descripcion: '',
@@ -213,8 +223,19 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
     setEditingId(null);
   };
 
+  const handleConceptoChange = (newDesc: string) => {
+    const oldDesc = form.descripcion;
+    setForm(prev => ({ ...prev, descripcion: newDesc }));
+    setLines(prevLines => prevLines.map(l => {
+      if (!l.descripcion || l.descripcion === oldDesc) {
+        return { ...l, descripcion: newDesc };
+      }
+      return l;
+    }));
+  };
+
   const handleAddLine = () => {
-    setLines([...lines, { id: Date.now().toString(), cuentaId: '', descripcion: '', debe: 0, haber: 0 }]);
+    setLines([...lines, { id: Date.now().toString(), cuentaId: '', descripcion: form.descripcion || '', debe: 0, haber: 0 }]);
   };
 
   const handleRemoveLine = (id: string) => {
@@ -268,12 +289,17 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
       return;
     }
 
+    const finalLines = lines.map(l => ({
+      ...l,
+      descripcion: (l.descripcion && l.descripcion.trim()) ? l.descripcion.trim() : form.descripcion.trim()
+    }));
+
     const newEntry = {
       id: editingId || `comp-${Date.now()}`,
       ...form,
       total: totalDebe,
       estado: isDescuadrado ? 'Descuadrado' : 'Contabilizado',
-      lineas: lines
+      lineas: finalLines
     };
 
     onSave?.('comprobantes', newEntry);
@@ -677,7 +703,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                       className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                       placeholder="Concepto general del comprobante..."
                       value={form.descripcion}
-                      onChange={e => setForm({...form, descripcion: e.target.value})}
+                      onChange={e => handleConceptoChange(e.target.value)}
                     />
                   </div>
                 </div>
@@ -691,7 +717,21 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                       <thead className="bg-slate-100/50 border-b border-slate-200 text-slate-500">
                         <tr>
                           <th className="px-4 py-3 font-medium w-1/3">Cuenta Contable</th>
-                          <th className="px-4 py-3 font-medium w-1/3">Descripción (Opcional)</th>
+                          <th className="px-4 py-3 font-medium w-1/3">
+                            <div className="flex items-center justify-between">
+                              <span>Descripción (Opcional)</span>
+                              {form.descripcion?.trim() && (
+                                <button
+                                  type="button"
+                                  onClick={() => setLines(prev => prev.map(l => ({ ...l, descripcion: form.descripcion.trim() })))}
+                                  className="text-[11px] font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded transition-colors"
+                                  title="Copiar el concepto / descripción general a todas las líneas"
+                                >
+                                  Igual al concepto
+                                </button>
+                              )}
+                            </div>
+                          </th>
                           <th className="px-4 py-3 font-medium text-right w-32">Debe</th>
                           <th className="px-4 py-3 font-medium text-right w-32">Haber</th>
                           <th className="px-4 py-3 w-12"></th>
@@ -705,8 +745,13 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                                 onClick={() => setActiveLineId(line.id)}
                                 className="w-full px-2 py-1.5 border border-transparent hover:border-slate-200 rounded cursor-pointer flex justify-between items-center group transition-all"
                               >
-                                {line.cuentaId ? (() => {
-                                  const c = cuentasContables.find(x => x.id === line.cuentaId);
+                                {(line.cuentaId || line.cuenta_id || line.cuentaCodigo) ? (() => {
+                                  const c = cuentasContables.find(x => 
+                                    x.id === line.cuentaId || 
+                                    x.codigo === line.cuentaId || 
+                                    (line.cuenta_id && (x.id === line.cuenta_id || x.codigo === line.cuenta_id)) ||
+                                    (line.cuentaCodigo && (x.codigo === line.cuentaCodigo || x.id === line.cuentaCodigo))
+                                  );
                                   return c ? (
                                     <div className="flex flex-col">
                                       <span className="text-[10px] font-mono font-bold text-indigo-600 leading-none mb-0.5">{c.codigo}</span>
@@ -722,7 +767,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                               <input 
                                 type="text" 
                                 className="w-full px-2 py-1.5 bg-transparent border border-transparent hover:border-slate-200 focus:border-indigo-500 rounded text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                placeholder="Descripción de la línea..."
+                                placeholder={form.descripcion || "Descripción de la línea..."}
                                 value={line.descripcion}
                                 onChange={e => handleLineChange(line.id, 'descripcion', e.target.value)}
                               />

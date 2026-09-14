@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Plus, Search, Filter, Edit2, Trash2, X } from 'lucide-react';
+import { Plus, Search, Filter, Edit2, Trash2, X, FileText, AlertTriangle } from 'lucide-react';
+import VoucherPreviewModal from '../common/VoucherPreviewModal';
 
 interface FixedAssetsListProps {
   activosFijos: any[];
@@ -7,14 +8,37 @@ interface FixedAssetsListProps {
   proveedores: any[];
   cuentasContables: any[];
   configContable: any;
+  comprobantes?: any[];
+  cxp?: any[];
+  cxc?: any[];
+  depreciaciones?: any[];
   onSave: (collection: string, data: any) => void;
   showToast: (msg: string, type: string) => void;
 }
 
-export default function FixedAssetsList({ activosFijos, categoriasActivos, proveedores, cuentasContables, configContable, onSave, showToast }: FixedAssetsListProps) {
+export default function FixedAssetsList({ 
+  activosFijos, 
+  categoriasActivos, 
+  proveedores, 
+  cuentasContables = [], 
+  configContable, 
+  comprobantes = [],
+  cxp = [],
+  cxc = [],
+  depreciaciones = [],
+  onSave, 
+  showToast 
+}: FixedAssetsListProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+
+  // States for Voucher Preview Modal
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [pendingVoucher, setPendingVoucher] = useState<any>(null);
+  const [pendingAssetData, setPendingAssetData] = useState<any>(null);
+  const [isViewingExistingVoucher, setIsViewingExistingVoucher] = useState(false);
+
   const [formData, setFormData] = useState({
     id: '',
     codigo: '',
@@ -25,6 +49,19 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
     proveedorId: '',
     numeroFactura: ''
   });
+
+  const resetForm = () => {
+    setFormData({
+      id: '',
+      codigo: '',
+      categoriaId: '',
+      descripcion: '',
+      fechaAdquisicion: '',
+      valorInicial: '',
+      proveedorId: '',
+      numeroFactura: ''
+    });
+  };
 
   const handleEdit = (activo: any) => {
     setFormData({
@@ -41,9 +78,63 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
   };
 
   const handleDelete = (id: string) => {
-    onSave('activosFijos', { id, _delete: true });
+    const asset = activosFijos.find(a => String(a.id) === String(id));
+    if (asset) {
+      // 1. Cascade delete associated comprobantes contables
+      const relatedComprobantes = (comprobantes || []).filter(c => {
+        if (asset.comprobante_id && String(c.id) === String(asset.comprobante_id)) return true;
+        if (c.numero === `ACT-${asset.codigo}` || c.comprobante === `ACT-${asset.codigo}`) return true;
+        if (c.referencia === `ACT-${asset.codigo}`) return true;
+        if (asset.numeroFactura && (c.referencia === `FAC-${asset.numeroFactura}` || c.numero === `FAC-${asset.numeroFactura}`)) return true;
+        if (c.descripcion && c.descripcion.includes(asset.codigo)) return true;
+        if (c.numero === `DEP-${asset.codigo}` || (c.descripcion && c.descripcion.includes('Depreciación') && c.descripcion.includes(asset.codigo))) return true;
+        return false;
+      });
+      for (const comp of relatedComprobantes) {
+        onSave('comprobantes', { id: comp.id, _delete: true });
+      }
+
+      // 2. Cascade delete associated CxP (cuentas por pagar)
+      const relatedCxp = (cxp || []).filter(item => {
+        if (item.activo_fijo_id && String(item.activo_fijo_id) === String(asset.id)) return true;
+        if (asset.comprobante_id && item.comprobante_id === asset.comprobante_id) return true;
+        if (asset.numeroFactura && (item.factura_id === `FAC-${asset.numeroFactura}` || item.factura_id === asset.numeroFactura)) return true;
+        if (item.factura_id === `ACT-${asset.codigo}`) return true;
+        if (item.descripcion && item.descripcion.includes(asset.codigo)) return true;
+        return false;
+      });
+      for (const p of relatedCxp) {
+        onSave('cxp', { id: p.id, _delete: true });
+      }
+
+      // 3. Cascade delete associated CxC (cuentas por cobrar)
+      const relatedCxc = (cxc || []).filter(item => {
+        if (item.activo_fijo_id && String(item.activo_fijo_id) === String(asset.id)) return true;
+        if (item.factura_id === `ACT-${asset.codigo}`) return true;
+        if (asset.numeroFactura && (item.factura_id === `FAC-${asset.numeroFactura}` || item.factura_id === asset.numeroFactura)) return true;
+        if (item.descripcion && item.descripcion.includes(asset.codigo)) return true;
+        return false;
+      });
+      for (const c of relatedCxc) {
+        onSave('cxc', { id: c.id, _delete: true });
+      }
+
+      // 4. Cascade delete associated depreciaciones
+      const relatedDeps = (depreciaciones || []).filter(d => {
+        return String(d.activoFijoId) === String(asset.id) || String(d.activo_id) === String(asset.id) || String(d.activoId) === String(asset.id);
+      });
+      for (const dep of relatedDeps) {
+        onSave('depreciaciones', { id: dep.id, _delete: true });
+      }
+
+      // 5. Delete the Activo Fijo itself
+      onSave('activosFijos', { id: asset.id, _delete: true });
+    } else {
+      onSave('activosFijos', { id, _delete: true });
+    }
+
     setDeleteConfirm(null);
-    showToast('Activo eliminado exitosamente', 'success');
+    showToast('Activo fijo y todos sus registros asociados (asiento contable, CxP/CxC y depreciaciones) fueron eliminados exitosamente', 'success');
   };
 
   const handleSave = () => {
@@ -52,40 +143,148 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
       return;
     }
 
-    if (!formData.id) {
-      if ((formData.proveedorId && !formData.numeroFactura) || (!formData.proveedorId && formData.numeroFactura)) {
-        showToast('Para generar la cuenta por pagar, debe indicar tanto el proveedor como el número de factura', 'error');
-        return;
-      }
-    }
-    
     const categoria = categoriasActivos.find(c => c.id === formData.categoriaId);
-    
-    const dataToSave = {
-      ...formData,
-      id: formData.id || Date.now().toString(),
-      categoriaNombre: categoria?.nombre || '',
-      estado: 'Activo' 
-    };
-    
-    onSave('activosFijos', dataToSave);
 
-    // If it's a new asset and has supplier and invoice, create CxP and Asiento
-    if (!formData.id && formData.proveedorId && formData.numeroFactura) {
-      const proveedor = proveedores.find(p => p.id === formData.proveedorId);
-      const valorNum = Number(formData.valorInicial);
-      const timestamp = Date.now();
-      
-      // Create CxP
+    // If editing existing asset
+    if (formData.id) {
+      const dataToSave = {
+        ...formData,
+        categoriaNombre: categoria?.nombre || '',
+        estado: 'Activo'
+      };
+      onSave('activosFijos', dataToSave);
+      setShowModal(false);
+      resetForm();
+      showToast('Activo actualizado exitosamente', 'success');
+      return;
+    }
+
+    // Creating NEW asset -> Generate UUID and construct proposed Asiento Contable
+    if ((formData.proveedorId && !formData.numeroFactura) || (!formData.proveedorId && formData.numeroFactura)) {
+      showToast('Para generar la cuenta por pagar, debe indicar tanto el proveedor como el número de factura', 'error');
+      return;
+    }
+
+    const assetId = crypto.randomUUID();
+    const proveedor = proveedores.find(p => p.id === formData.proveedorId);
+    const valorNum = Number(formData.valorInicial) || 0;
+    const timestamp = Date.now();
+    const voucherId = crypto.randomUUID();
+    const voucherNum = `ACT-${formData.codigo}`;
+
+    // Resolve Account for Asset (DEBE)
+    let cuentaActivoObj = cuentasContables.find(
+      c => c.id === categoria?.cuentaActivo || c.codigo === categoria?.cuentaActivo
+    );
+    if (!cuentaActivoObj) {
+      // Find leaf account under 1.2 (Propiedad, Planta y Equipo)
+      cuentaActivoObj = cuentasContables.find(c => 
+        (c.codigo?.startsWith('1.2') || c.nombre?.toLowerCase().includes('activo fijo') || c.nombre?.toLowerCase().includes('equipo')) &&
+        !cuentasContables.some(sub => sub.padre_id === c.id || sub.codigo?.startsWith(c.codigo + '.'))
+      ) || cuentasContables.find(c => c.codigo?.startsWith('1.2')) || cuentasContables[0];
+    }
+
+    // Resolve Account for Credit (HABER)
+    const provCreditCode = proveedor?.creditAccount || configContable?.cuentaCxp || '2.1.01.01.001';
+    let cuentaCreditoObj = cuentasContables.find(
+      c => c.id === provCreditCode || c.codigo === provCreditCode
+    );
+    if (!cuentaCreditoObj) {
+      // Find leaf account under 2.1 (Pasivo corriente / CxP)
+      cuentaCreditoObj = cuentasContables.find(c => 
+        (c.codigo?.startsWith('2.1.01') || c.nombre?.toLowerCase().includes('proveedor') || c.nombre?.toLowerCase().includes('cuentas por pagar')) &&
+        !cuentasContables.some(sub => sub.padre_id === c.id || sub.codigo?.startsWith(c.codigo + '.'))
+      ) || cuentasContables.find(c => c.codigo?.startsWith('2.1')) || cuentasContables[1] || cuentasContables[0];
+    }
+
+    const proposedVoucher = {
+      id: voucherId,
+      numero: voucherNum,
+      comprobante: voucherNum,
+      fecha: formData.fechaAdquisicion || new Date().toISOString().split('T')[0],
+      tipo: 'Diario',
+      modulo: 'Activos Fijos',
+      referencia: formData.numeroFactura ? `FAC-${formData.numeroFactura}` : voucherNum,
+      descripcion: `Compra de Activo Fijo: ${formData.descripcion}${formData.numeroFactura ? ` (Fac: ${formData.numeroFactura})` : ''}`,
+      total: valorNum,
+      estado: 'Contabilizado',
+      lineas: [
+        {
+          id: `l1-${timestamp}`,
+          cuentaId: cuentaActivoObj ? cuentaActivoObj.id : (categoria?.cuentaActivo || ''),
+          nombreCuenta: cuentaActivoObj ? `${cuentaActivoObj.codigo} - ${cuentaActivoObj.nombre}` : 'Activo Fijo',
+          descripcion: `Activo Fijo: ${formData.descripcion}`,
+          debe: valorNum,
+          haber: 0
+        },
+        {
+          id: `l2-${timestamp}`,
+          cuentaId: cuentaCreditoObj ? cuentaCreditoObj.id : provCreditCode,
+          nombreCuenta: cuentaCreditoObj ? `${cuentaCreditoObj.codigo} - ${cuentaCreditoObj.nombre}` : 'Cuentas por Pagar Proveedores',
+          descripcion: `Cuentas por Pagar: ${proveedor?.name || 'Proveedor'}`,
+          debe: 0,
+          haber: valorNum
+        }
+      ]
+    };
+
+    const newAssetData = {
+      ...formData,
+      id: assetId,
+      categoriaNombre: categoria?.nombre || '',
+      cuentaActivo: cuentaActivoObj?.id || categoria?.cuentaActivo || '',
+      cuentaGastoDeprec: categoria?.cuentaGastoDeprec || '',
+      comprobante_id: voucherId,
+      estado: 'Activo'
+    };
+
+    setPendingAssetData(newAssetData);
+    setPendingVoucher(proposedVoucher);
+    setIsViewingExistingVoucher(false);
+    setShowVoucherModal(true);
+  };
+
+  const handleConfirmVoucher = async (finalComprobante: any) => {
+    if (isViewingExistingVoucher) {
+      onSave('comprobantes', finalComprobante);
+      setShowVoucherModal(false);
+      setPendingVoucher(null);
+      setPendingAssetData(null);
+      showToast('Asiento contable actualizado exitosamente', 'success');
+      return;
+    }
+
+    if (!pendingAssetData) return;
+
+    // 1. Guardar Asiento Contable confirmado por el usuario
+    const voucherToSave = {
+      ...finalComprobante,
+      id: finalComprobante.id || crypto.randomUUID()
+    };
+    onSave('comprobantes', voucherToSave);
+
+    // 2. Guardar Activo Fijo con el ID del comprobante
+    const assetToSave = {
+      ...pendingAssetData,
+      comprobante_id: voucherToSave.id
+    };
+    onSave('activosFijos', assetToSave);
+
+    // 3. Crear CxP si se indicó proveedor y factura
+    if (pendingAssetData.proveedorId && pendingAssetData.numeroFactura) {
+      const proveedor = proveedores.find(p => p.id === pendingAssetData.proveedorId);
+      const valorNum = Number(pendingAssetData.valorInicial) || 0;
       const newCxp = {
-        id: timestamp.toString(),
+        id: crypto.randomUUID(),
         categoria: 'proveedores',
         proveedor: proveedor?.name || '',
         proveedor_id: proveedor?.taxId || '',
-        factura_id: `FAC-${formData.numeroFactura}`,
-        fecha: formData.fechaAdquisicion,
-        vencimiento: formData.fechaAdquisicion,
-        descripcion: `Compra de Activo Fijo: ${formData.descripcion}`,
+        factura_id: `FAC-${pendingAssetData.numeroFactura}`,
+        activo_fijo_id: assetToSave.id,
+        comprobante_id: voucherToSave.id,
+        fecha: pendingAssetData.fechaAdquisicion,
+        vencimiento: pendingAssetData.fechaAdquisicion,
+        descripcion: `Compra de Activo Fijo: ${pendingAssetData.descripcion} (${pendingAssetData.codigo})`,
         tipo: 'factura',
         total: valorNum,
         saldo: valorNum,
@@ -95,55 +294,97 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
         iva: 0
       };
       onSave('cxp', newCxp);
-
-      // Create Asiento Contable
-      const cuentaActivo = categoria?.cuentaActivo;
-      const cuentaCxp = proveedor?.creditAccount || configContable?.cuentaCxp || '2.1.01.01.001'; // Default to generic CxP if not set
-
-      if (cuentaActivo) {
-        const asiento = {
-          id: `asiento-${timestamp}`,
-          numero: `ACT-${formData.codigo}`,
-          comprobante: `ACT-${formData.codigo}`,
-          fecha: formData.fechaAdquisicion,
-          tipo: 'Diario',
-          referencia: formData.numeroFactura ? `FAC-${formData.numeroFactura}` : `ACT-${formData.codigo}`,
-          descripcion: `Compra de Activo Fijo: ${formData.descripcion} (Fac: ${formData.numeroFactura})`,
-          total: valorNum,
-          estado: 'Contabilizado',
-          lineas: [
-            {
-              id: `l1-${timestamp}`,
-              cuentaId: cuentaActivo,
-              descripcion: `Activo Fijo: ${formData.descripcion}`,
-              debe: valorNum,
-              haber: 0
-            },
-            {
-              id: `l2-${timestamp}`,
-              cuentaId: cuentaCxp,
-              descripcion: `Cuentas por Pagar: ${proveedor?.name || ''}`,
-              debe: 0,
-              haber: valorNum
-            }
-          ]
-        };
-        onSave('comprobantes', asiento);
-      }
     }
-    
+
+    setShowVoucherModal(false);
     setShowModal(false);
-    showToast(formData.id ? 'Activo actualizado exitosamente' : 'Activo guardado exitosamente', 'success');
-    setFormData({
-      id: '',
-      codigo: '',
-      categoriaId: '',
-      descripcion: '',
-      fechaAdquisicion: '',
-      valorInicial: '',
-      proveedorId: '',
-      numeroFactura: ''
-    });
+    setPendingAssetData(null);
+    setPendingVoucher(null);
+    resetForm();
+    showToast('Activo fijo y asiento contable registrados exitosamente', 'success');
+  };
+
+  const handleOpenVoucher = (activo: any) => {
+    // Buscar si ya existe un comprobante registrado para este activo
+    const existing = (comprobantes || []).find(c => 
+      (activo.comprobante_id && String(c.id) === String(activo.comprobante_id)) ||
+      c.numero === `ACT-${activo.codigo}` ||
+      c.comprobante === `ACT-${activo.codigo}` ||
+      c.referencia === `ACT-${activo.codigo}` ||
+      (activo.numeroFactura && (c.referencia === `FAC-${activo.numeroFactura}` || c.numero === `FAC-${activo.numeroFactura}`)) ||
+      (c.descripcion && c.descripcion.includes(activo.codigo))
+    );
+
+    if (existing) {
+      setPendingVoucher(existing);
+      setIsViewingExistingVoucher(true);
+      setPendingAssetData(activo);
+      setShowVoucherModal(true);
+    } else {
+      // Generar borrador para que el usuario pueda crearlo y registrarlo
+      const categoria = categoriasActivos.find(c => c.id === activo.categoriaId || c.nombre === activo.categoriaNombre);
+      const proveedor = proveedores.find(p => p.id === activo.proveedorId);
+      const valorNum = Number(activo.valorInicial) || 0;
+      const voucherId = crypto.randomUUID();
+      const voucherNum = `ACT-${activo.codigo}`;
+
+      let cuentaActivoObj = cuentasContables.find(
+        c => c.id === categoria?.cuentaActivo || c.codigo === categoria?.cuentaActivo
+      );
+      if (!cuentaActivoObj) {
+        cuentaActivoObj = cuentasContables.find(c => 
+          (c.codigo?.startsWith('1.2') || c.nombre?.toLowerCase().includes('activo fijo') || c.nombre?.toLowerCase().includes('equipo')) &&
+          !cuentasContables.some(sub => sub.padre_id === c.id || sub.codigo?.startsWith(c.codigo + '.'))
+        ) || cuentasContables[0];
+      }
+
+      const provCreditCode = proveedor?.creditAccount || configContable?.cuentaCxp || '2.1.01.01.001';
+      let cuentaCreditoObj = cuentasContables.find(
+        c => c.id === provCreditCode || c.codigo === provCreditCode
+      );
+      if (!cuentaCreditoObj) {
+        cuentaCreditoObj = cuentasContables.find(c => 
+          (c.codigo?.startsWith('2.1.01') || c.nombre?.toLowerCase().includes('proveedor') || c.nombre?.toLowerCase().includes('cuentas por pagar')) &&
+          !cuentasContables.some(sub => sub.padre_id === c.id || sub.codigo?.startsWith(c.codigo + '.'))
+        ) || cuentasContables[1] || cuentasContables[0];
+      }
+
+      const draftVoucher = {
+        id: voucherId,
+        numero: voucherNum,
+        comprobante: voucherNum,
+        fecha: activo.fechaAdquisicion || new Date().toISOString().split('T')[0],
+        tipo: 'Diario',
+        modulo: 'Activos Fijos',
+        referencia: activo.numeroFactura ? `FAC-${activo.numeroFactura}` : voucherNum,
+        descripcion: `Compra de Activo Fijo: ${activo.descripcion}${activo.numeroFactura ? ` (Fac: ${activo.numeroFactura})` : ''}`,
+        total: valorNum,
+        estado: 'Contabilizado',
+        lineas: [
+          {
+            id: `l1-${Date.now()}`,
+            cuentaId: cuentaActivoObj ? cuentaActivoObj.id : (categoria?.cuentaActivo || ''),
+            nombreCuenta: cuentaActivoObj ? `${cuentaActivoObj.codigo} - ${cuentaActivoObj.nombre}` : 'Activo Fijo',
+            descripcion: `Activo Fijo: ${activo.descripcion}`,
+            debe: valorNum,
+            haber: 0
+          },
+          {
+            id: `l2-${Date.now()}`,
+            cuentaId: cuentaCreditoObj ? cuentaCreditoObj.id : provCreditCode,
+            nombreCuenta: cuentaCreditoObj ? `${cuentaCreditoObj.codigo} - ${cuentaCreditoObj.nombre}` : 'Cuentas por Pagar Proveedores',
+            descripcion: `Cuentas por Pagar: ${proveedor?.name || 'Proveedor'}`,
+            debe: 0,
+            haber: valorNum
+          }
+        ]
+      };
+
+      setPendingVoucher(draftVoucher);
+      setIsViewingExistingVoucher(false);
+      setPendingAssetData(activo);
+      setShowVoucherModal(true);
+    }
   };
 
   const filteredAssets = activosFijos.filter(activo => 
@@ -224,18 +465,25 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-center">
-                    <div className="flex justify-center gap-2">
+                    <div className="flex justify-center gap-1.5">
+                      <button 
+                        onClick={() => handleOpenVoucher(activo)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors tooltip" 
+                        title="Ver / Generar Asiento Contable"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
                       <button 
                         onClick={() => handleEdit(activo)}
-                        className="p-1 text-slate-400 hover:text-blue-600 transition-colors tooltip" 
-                        title="Editar"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors tooltip" 
+                        title="Editar Activo"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => setDeleteConfirm(activo.id)}
-                        className="p-1 text-slate-400 hover:text-rose-600 transition-colors tooltip" 
-                        title="Eliminar"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors tooltip" 
+                        title="Eliminar Activo y Registros Vinculados"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -354,14 +602,33 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
               <button onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg font-medium transition-colors">
                 Cancelar
               </button>
-              <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors">
-                Guardar Activo
+              <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors shadow-sm">
+                {formData.id ? 'Actualizar Activo' : 'Continuar al Asiento Contable'}
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* Modal Confirmar Eliminación */}
+
+      {/* Modal Previsualización de Asiento Contable */}
+      {showVoucherModal && pendingVoucher && (
+        <VoucherPreviewModal
+          isOpen={showVoucherModal}
+          onClose={() => {
+            setShowVoucherModal(false);
+            setPendingVoucher(null);
+            setPendingAssetData(null);
+          }}
+          initialComprobante={pendingVoucher}
+          cuentasContables={cuentasContables}
+          onConfirm={handleConfirmVoucher}
+          showToast={showToast}
+          title="Asiento Contable - Adquisición de Activo Fijo"
+          subtitle="Verifique o edite las cuentas contables, glosas y cuadre de partida doble antes de registrar el activo."
+        />
+      )}
+
+      {/* Modal Confirmar Eliminación Cascada */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
@@ -370,9 +637,22 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
                 <Trash2 className="w-8 h-8 text-rose-600" />
               </div>
               <h3 className="text-xl font-bold text-slate-800 mb-2">¿Eliminar Activo Fijo?</h3>
-              <p className="text-slate-600 mb-6">
-                Esta acción no se puede deshacer. ¿Está seguro que desea eliminar este activo fijo?
+              <p className="text-slate-600 mb-4 text-sm">
+                Esta acción es irreversible y eliminará permanentemente el activo fijo y <strong>todos los registros relacionados</strong>:
               </p>
+              
+              <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 mb-6 text-left text-xs text-rose-800 space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                  <span>Se eliminarán en cascada:</span>
+                </div>
+                <ul className="list-disc list-inside pl-1 space-y-0.5 text-slate-700">
+                  <li>El comprobante y asiento contable registrado</li>
+                  <li>Las cuentas por pagar (CxP) o por cobrar (CxC) vinculadas</li>
+                  <li>Los registros de depreciación acumulada generados</li>
+                </ul>
+              </div>
+
               <div className="flex justify-center gap-3">
                 <button
                   onClick={() => setDeleteConfirm(null)}
@@ -382,9 +662,9 @@ export default function FixedAssetsList({ activosFijos, categoriasActivos, prove
                 </button>
                 <button
                   onClick={() => handleDelete(deleteConfirm)}
-                  className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium transition-colors"
+                  className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 font-medium transition-colors shadow-sm"
                 >
-                  Eliminar
+                  Sí, eliminar todo
                 </button>
               </div>
             </div>

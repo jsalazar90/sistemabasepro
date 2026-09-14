@@ -1,0 +1,129 @@
+Created At: 2026-09-12T18:38:25-04:00
+Completed At: 2026-09-12T18:38:25-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3221
+Total Bytes: 156901
+Showing lines 1940 to 2060
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1940:                     <input
+1941:                       type="checkbox"
+1942:                       checked={applyIgtf}
+1943:                       onChange={(e) => setApplyIgtf(e.target.checked)}
+1944:                       className="rounded text-emerald-600 w-4 h-4 cursor-pointer"
+1945:                     />
+1946:                     <span>Percepción IGTF (3%)</span>
+1947:                   </label>
+1948:                   {applyIgtf && (
+1949:                     <span className="font-mono font-bold text-emerald-800 text-[11px]">
+1950:                       +{formatMoney(totals.igtfMonto, currency)}
+1951:                     </span>
+1952:                   )}
+1953:                 </div>
+1954:                 <p className="text-[10px] text-slate-500 mt-1 pl-6">
+1955:                   Aplica para pagos en divisas / efectivo en USD sin intermediación bancaria en Bs.
+1956:                 </p>
+1957:               </div>
+1958:             </div>
+1959: 
+1960:             {/* RESUMEN FINANCIERO */}
+1961:             <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-3 text-xs">
+1962:               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+1963:                 <h3 className="font-black text-slate-900 text-sm">Resumen Financiero</h3>
+1964:                 <span className="px-2 py-0.5 rounded-md font-mono font-bold text-[10px] bg-slate-100 text-slate-600">
+1965:                   {currency}
+1966:                 </span>
+1967:               </div>
+1968: 
+1969:               <div className="flex justify-between text-slate-600">
+1970:                 <span>Subtotal Neto:</span>
+1971:                 <span className="font-bold">{formatMoney(totals.subtotal, currency)}</span>
+1972:               </div>
+1973: 
+1974:               {totals.montoExento > 0 && (
+1975:                 <div className="flex justify-between text-slate-600">
+1976:                   <span>Monto Exento:</span>
+1977:                   <span className="font-semibold">{formatMoney(totals.montoExento, currency)}</span>
+1978:                 </div>
+1979:               )}
+1980: 
+1981:               <div className="flex justify-between text-slate-600">
+1982:                 <span>Base Imponible (16%):</span>
+1983:                 <span className="font-semibold">{formatMoney(totals.baseImponible, currency)}</span>
+1984:               </div>
+1985: 
+1986:               <div className="flex justify-between text-slate-600">
+1987:                 <span>IVA General (16%):</span>
+1988:                 <span className="font-semibold">{formatMoney(totals.ivaMonto, currency)}</span>
+1989:               </div>
+1990: 
+1991:               {/* IGTF 3% si aplica */}
+1992:               {applyIgtf && totals.igtfMonto > 0 && (
+1993:                 <div className="flex justify-between text-emerald-700 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-100">
+1994:                   <span>(+) IGTF Percibido (3%):</span>
+1995:                   <span className="font-mono">+{formatMoney(totals.igtfMonto, currency)}</span>
+1996:                 </div>
+1997:               )}
+1998: 
+1999:               {/* Total Facturado */}
+2000:               <div className="border-t border-slate-200 pt-2 flex justify-between items-center text-slate-800 font-bold">
+2001:                 <span>Total Facturado:</span>
+2002:                 <span className="font-mono text-sm">{formatMoney(totals.total, currency)}</span>
+2003:               </div>
+2004: 
+2005:               {/* Retención IVA si aplica */}
+2006:               {applyRetIva && totals.retIvaMonto > 0 && (
+2007:                 <div className="flex justify-between text-amber-700 font-semibold bg-amber-50/60 px-2 py-1 rounded-lg border border-amber-100">
+2008:                   <span>(-) Retención IVA ({retIvaPercent}%):</span>
+2009:                   <span className="font-mono font-bold">-{formatMoney(totals.retIvaMonto, currency)}</span>
+2010:                 </div>
+2011:               )}
+2012: 
+2013:               {/* Retención ISLR si aplica */}
+2014:               {applyRetIslr && totals.retIslrMonto > 0 && (
+2015:                 <div className="flex justify-between text-indigo-700 font-semibold bg-indigo-50/60 px-2 py-1 rounded-lg border border-indigo-100">
+2016:                   <span>(-) Retención ISLR ({retIslrPercent}%):</span>
+2017:                   <span className="font-mono font-bold">-{formatMoney(totals.retIslrMonto, currency)}</span>
+2018:                 </div>
+2019:               )}
+2020: 
+2021:               {/* NETO A COBRAR / TOTAL PRINCIPAL */}
+2022:               <div className="border-t-2 border-slate-900 pt-3 flex justify-between items-center">
+2023:                 <div>
+2024:                   <span className="text-sm font-black uppercase text-slate-900 block">
+2025:                     {applyRetIva || applyRetIslr ? 'Neto a Cobrar:' : 'Total a Pagar:'}
+2026:                   </span>
+2027:                   {(applyRetIva || applyRetIslr) && (
+2028:                     <span className="text-[10px] text-slate-400 font-semibold">Deducidas las retenciones fiscales</span>
+2029:                   )}
+2030:                 </div>
+2031:                 <span className="text-xl font-black text-indigo-600">
+2032:                   {formatMoney(totals.netoCobrar, currency)}
+2033:                 </span>
+2034:               </div>
+2035: 
+2036:               {/* CONVERSIÓN A LA OTRA MONEDA */}
+2037:               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-slate-800 flex justify-between items-center text-xs font-bold">
+2038:                 <span className="text-slate-500">
+2039:                   {currency === 'USD' ? 'Equiv. en Bolívares:' : 'Equiv. en Dólares:'}
+2040:                 </span>
+2041:                 <span className="font-black text-slate-900">
+2042:                   {currency === 'USD' ? formatMoney(totals.netoCobrarBs, 'VES') : formatMoney(totals.netoCobrarUSD, 'USD')}
+2043:                 </span>
+2044:               </div>
+2045: 
+2046:               {/* ALERTA DE STOCK 0 / AUTORIZACIÓN MASTER */}
+2047:               {zeroStockItems.length > 0 && (
+2048:                 !isZeroStockAuthorized ? (
+2049:                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-xs flex items-start gap-2.5 text-rose-800 animate-in fade-in">
+2050:                     <ShieldAlert className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+2051:                     <div className="flex-1">
+2052:                       <p className="font-bold text-rose-900">
+2053:                         {zeroStockItems.length === 1 ? '1 Producto sin Stock Disponible' : `${zeroStockItems.length} Productos sin Stock Disponible`}
+2054:                       </p>
+2055:                       <p className="text-[11px] text-rose-700 mt-0.5 leading-relaxed">
+2056:                         Se requerirá la <span className="font-bold">Clave Especial de Operaciones</span> para emitir y registrar la salida de inventario en negativo.
+2057:                       </p>
+2058:                       <button
+2059:                         type="button"
+2060:                         onClick={() => setIsMasterAuthModalOpen(true)}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

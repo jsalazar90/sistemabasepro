@@ -1,0 +1,159 @@
+Created At: 2026-09-12T17:20:20-04:00
+Completed At: 2026-09-12T17:20:20-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2893
+Total Bytes: 139045
+Showing lines 450 to 600
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+450:         if (!item.producto_id && !item.descripcion && !item.precio_unitario) {
+451:           return item;
+452:         }
+453: 
+454:         const qty = Number(item.cantidad) || 1;
+455:         const prod = products.find(p => p.id === item.producto_id);
+456: 
+457:         let newUnitPrice = Number(item.precio_unitario) || 0;
+458:         if (prod && Number(prod.precio_venta) > 0) {
+459:           newUnitPrice = Number(prod.precio_venta) * rate;
+460:         } else if (currency === 'VES' && newUnitPrice > 0 && exchangeRate > 0) {
+461:           newUnitPrice = (newUnitPrice / exchangeRate) * rate;
+462:         }
+463: 
+464:         newUnitPrice = Number(newUnitPrice.toFixed(2));
+465:         const isExempt = item.exento;
+466:         const lineSubtotal = Number((qty * newUnitPrice).toFixed(2));
+467:         const lineIva = isExempt ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+468: 
+469:         return {
+470:           ...item,
+471:           precio_unitario: newUnitPrice,
+472:           subtotal: lineSubtotal,
+473:           iva_monto: lineIva,
+474:           total: Number((lineSubtotal + lineIva).toFixed(2))
+475:         };
+476:       });
+477:     });
+478: 
+479:     showToast?.(`Precios recalculados a la tasa de Bs. ${rate.toFixed(2)}`, 'success');
+480:   };
+481: 
+482:   const handleOpenNewCustomerModal = () => {
+483:     setCustomerModalForm({
+484:       name: '',
+485:       isCompany: true,
+486:       taxIdPrefix: 'J',
+487:       taxIdNumber: '',
+488:       email: '',
+489:       phone: '',
+490:       personaContacto: '',
+491:       cargo: '',
+492:       address: '',
+493:       debitAccount: '',
+494:       creditAccount: ''
+495:     });
+496:     setCustomerAccountError(null);
+497:     setActiveCustomerModalTab('info');
+498:     setIsNewCustomerModalOpen(true);
+499:   };
+500: 
+501:   const handleSaveCustomerFromModal = (e: React.FormEvent) => {
+502:     e.preventDefault();
+503:     if (!customerModalForm.name.trim()) {
+504:       showToast?.('El nombre o razón social es obligatorio', 'error');
+505:       return;
+506:     }
+507: 
+508:     // Validación obligatoria de cuentas contables vinculadas manualmente
+509:     if (!customerModalForm.debitAccount?.trim() || !customerModalForm.creditAccount?.trim()) {
+510:       setActiveCustomerModalTab('contabilidad');
+511:       const msg = !customerModalForm.debitAccount?.trim() && !customerModalForm.creditAccount?.trim()
+512:         ? 'Debe vincular las cuentas contables (Cuenta por Cobrar y Anticipo) de forma manual antes de registrar el cliente'
+513:         : !customerModalForm.debitAccount?.trim()
+514:           ? 'Debe vincular la Cuenta por Cobrar del cliente de forma manual'
+515:           : 'Debe vincular la Cuenta de Anticipo del cliente de forma manual';
+516:       setCustomerAccountError(msg);
+517:       showToast?.(msg, 'error');
+518:       return;
+519:     }
+520: 
+521:     const fullTaxId = customerModalForm.taxIdNumber.trim()
+522:       ? `${customerModalForm.taxIdPrefix}-${customerModalForm.taxIdNumber.trim().toUpperCase()}`
+523:       : `${customerModalForm.taxIdPrefix}-00000000-0`;
+524: 
+525:     const newContact = {
+526:       id: `ct_${Date.now()}`,
+527:       name: customerModalForm.name.trim(),
+528:       type: 'customer',
+529:       taxId: fullTaxId,
+530:       email: customerModalForm.email.trim(),
+531:       phone: customerModalForm.phone.trim(),
+532:       address: customerModalForm.address.trim(),
+533:       isCompany: customerModalForm.isCompany,
+534:       personaContacto: customerModalForm.personaContacto.trim(),
+535:       cargo: customerModalForm.cargo.trim(),
+536:       debitAccount: customerModalForm.debitAccount,
+537:       creditAccount: customerModalForm.creditAccount,
+538:       saldo: 0,
+539:       activo: true,
+540:       created_at: new Date().toISOString()
+541:     };
+542: 
+543:     onSave?.('contactos', newContact);
+544:     handleSelectCustomer(newContact);
+545:     setIsNewCustomerModalOpen(false);
+546:     showToast?.('Cliente registrado y seleccionado en la factura', 'success');
+547:   };
+548: 
+549:   // Manejo de Items
+550:   const handleAddItem = () => {
+551:     setItems(prev => [
+552:       ...prev,
+553:       {
+554:         id: `item_${Date.now()}_${prev.length + 1}`,
+555:         producto_id: '',
+556:         codigo: '',
+557:         descripcion: '',
+558:         cantidad: 1,
+559:         precio_unitario: 0,
+560:         exento: false,
+561:         subtotal: 0,
+562:         iva_monto: 0,
+563:         total: 0,
+564:         cuenta_ingreso_id: '4.1.01.001',
+565:         cuenta_costo_id: '5.1.01.001',
+566:         cuenta_inventario_id: '1.1.04.001'
+567:       }
+568:     ]);
+569:   };
+570: 
+571:   const handleRemoveItem = (index: number) => {
+572:     if (items.length === 1) {
+573:       showToast?.('La factura debe tener al menos una línea', 'info');
+574:       return;
+575:     }
+576:     setItems(prev => prev.filter((_, idx) => idx !== index));
+577:   };
+578: 
+579:   const handleProductSelect = (index: number, productId: string) => {
+580:     const prod = products.find(p => p.id === productId);
+581:     setItems(prev => {
+582:       const updated = [...prev];
+583:       if (prod) {
+584:         const qty = updated[index].cantidad || 1;
+585:         // Si la moneda es VES, convertir el precio venta en USD a VES
+586:         let price = prod.precio_venta || 0;
+587:         if (currency === 'VES' && exchangeRate > 0) {
+588:           price = price * exchangeRate;
+589:         }
+590: 
+591:         const lineSubtotal = qty * price;
+592:         const isExempt = !prod.aplica_iva;
+593:         const iva = isExempt ? 0 : lineSubtotal * 0.16;
+594: 
+595:         updated[index] = {
+596:           ...updated[index],
+597:           producto_id: prod.id,
+598:           codigo: prod.codigo,
+599:           descripcion: prod.nombre,
+600:           precio_unitario: price,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

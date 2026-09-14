@@ -1,3 +1,5 @@
+import { formatNumber } from '../utils/numberFormat';
+import { getTasaForDate } from '../services/exchangeRateService';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
@@ -6,293 +8,44 @@ import {
   Eye, EyeOff, Trash2, Calendar, Printer, ChevronDown, Globe, UserCheck, Contact2, 
   Percent, MessageSquare, Clock, AlertTriangle, ShieldCheck, Mail, Phone, 
   ExternalLink, DollarSign, ArrowDownLeft, FileSpreadsheet, Send, BarChart2, Coins, RotateCcw,
-  Lock
-} from 'lucide-react';
+  Lock, TrendingUp, ChevronRight, MoreVertical, CreditCard } from 'lucide-react';
 import { PrintPreview } from '../components/PrintPreview';
-import { dbResetAllTestData } from '../services/db';
+import { dbResetAllTestData, dbFetchTerminalesPos, isUUID } from '../services/db';
+import { TerminalPosModel } from '../types/database';
 import { useCompany } from '../context/CompanyContext';
 import MasterAuthModal from '../components/common/MasterAuthModal';
+import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import BackButton from '../components/common/BackButton';
 
-const VoucherPreviewModal = ({ 
-  isOpen, 
-  onClose, 
-  initialComprobante, 
-  cuentasContables = [], 
-  onConfirm 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  initialComprobante: any; 
-  cuentasContables: any[]; 
-  onConfirm: (finalComprobante: any) => void; 
-}) => {
-  const [comprobante, setComprobante] = useState<any>(null);
-
-  useEffect(() => {
-    if (initialComprobante) {
-      setComprobante(JSON.parse(JSON.stringify(initialComprobante))); // Deep clone
+const getCleanDocNumber = (itemOrDoc: any, fallback?: string): string => {
+  if (!itemOrDoc) {
+    if (fallback && isUUID(fallback)) {
+      return `DOC-${fallback.slice(0, 8).toUpperCase()}`;
     }
-  }, [initialComprobante]);
+    return fallback || '-';
+  }
+  const cleanFac = (itemOrDoc.factura && !isUUID(itemOrDoc.factura)) ? itemOrDoc.factura
+    : (itemOrDoc.numero && !isUUID(itemOrDoc.numero)) ? itemOrDoc.numero
+    : (itemOrDoc.factura_numero && !isUUID(itemOrDoc.factura_numero)) ? itemOrDoc.factura_numero
+    : null;
+  if (cleanFac) return cleanFac;
 
-  if (!isOpen || !comprobante) return null;
+  const desc = itemOrDoc.descripcion || itemOrDoc.concepto || '';
+  const matchFac = desc.match(/(?:Factura(?:\s+de\s+Venta)?|Fact(?:ura)?(?:\s+de\s+Compra)?|Fact\.?|Doc\.?|Documento)\s*[:#.]?\s*([A-Za-z0-9\-_]+)/i);
+  if (matchFac && matchFac[1]) return matchFac[1];
 
-  const handleLineChange = (index: number, field: string, value: any) => {
-    const updatedLineas = [...comprobante.lineas];
-    updatedLineas[index] = { ...updatedLineas[index], [field]: value };
-    
-    // Recalculate totals
-    const totalDebe = updatedLineas.reduce((acc, curr) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc, curr) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
+  if (itemOrDoc.factura_id && !isUUID(itemOrDoc.factura_id)) return itemOrDoc.factura_id;
+  if (itemOrDoc.referencia && !isUUID(itemOrDoc.referencia)) return itemOrDoc.referencia;
 
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const handleAddLine = () => {
-    const newLine = {
-      id: `l-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-      cuentaId: '',
-      descripcion: comprobante.descripcion || 'Línea de Comprobante',
-      debe: 0,
-      haber: 0
-    };
-    setComprobante({
-      ...comprobante,
-      lineas: [...comprobante.lineas, newLine]
-    });
-  };
-
-  const handleRemoveLine = (index: number) => {
-    const updatedLineas = comprobante.lineas.filter((_: any, i: number) => i !== index);
-    const totalDebe = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
-
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const totalDebe = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-  const totalHaber = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-  const diff = totalDebe - totalHaber;
-  const isBalanced = Math.abs(diff) < 0.01;
-
-  const activeCuentas = cuentasContables
-    .filter(c => c.tipo === 'Movimiento')
-    .sort((a,b)=>(a.codigo||'').localeCompare(b.codigo||''));
-
-  const formatES = (num: number | string) => {
-    if (num === undefined || num === null || num === "") return "0,00";
-    const parsed = typeof num === 'string' ? parseFloat(num) : num;
-    if (isNaN(parsed)) return "0,00";
-    return parsed.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-        <div className="bg-gradient-to-r from-violet-700 to-indigo-700 p-6 text-white flex justify-between items-center shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">
-                Previsualización de Asiento
-              </span>
-              {!isBalanced && (
-                <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                  Descuadrado
-                </span>
-              )}
-            </div>
-            <h3 className="text-xl font-black mt-1">Revisión de Comprobante Contable</h3>
-            <p className="text-xs text-indigo-200 font-medium mt-0.5">Asigne las cuentas contables correctas para evitar errores de comprobantes.</p>
-          </div>
-          <button 
-            type="button"
-            onClick={onClose} 
-            className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 bg-slate-50/50">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/65 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Número de Comprobante</label>
-              <p className="text-sm font-bold text-slate-800 mt-1">{comprobante.numero}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Fecha de Registro</label>
-              <input
-                type="date"
-                className="w-full px-2 py-1 mt-1 bg-slate-50 border border-slate-200 rounded text-sm font-bold text-slate-700 outline-none"
-                value={comprobante.fecha}
-                onChange={e => setComprobante({ ...comprobante, fecha: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Referencia Física / ID</label>
-              <p className="text-sm font-mono font-bold text-slate-700 mt-1">{comprobante.referencia}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado Comprobante</label>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold mt-1 shadow-sm ${isBalanced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                <span className={`w-2 h-2 rounded-full ${isBalanced ? 'bg-emerald-500' : 'bg-red-500 animate-ping'}`} />
-                {isBalanced ? 'Listo' : 'Por cuadrar'}
-              </span>
-            </div>
-            <div className="col-span-1 md:col-span-4 border-t border-slate-100 pt-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Descripción Principal</label>
-              <input
-                type="text"
-                className="w-full px-3 py-1.5 mt-1 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
-                value={comprobante.descripcion}
-                onChange={e => setComprobante({ ...comprobante, descripcion: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalle del Asiento (Partida Doble)</span>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5"
-              >
-                <Plus size={14} />
-                Agregar Línea
-              </button>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-md overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                    <th className="py-3 px-4 w-1/3">Cuenta Contable</th>
-                    <th className="py-3 px-4 w-2/5">Descripción de Línea</th>
-                    <th className="py-3 px-4 text-right w-24">Debe ($)</th>
-                    <th className="py-3 px-4 text-right w-24">Haber ($)</th>
-                    <th className="py-3 px-4 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {comprobante.lineas.map((line: any, index: number) => (
-                    <tr key={line.id} className="hover:bg-slate-50/50 transition-colors font-medium">
-                      <td className="p-2">
-                        <select
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold focus:border-indigo-500 outline-none max-w-md"
-                          value={line.cuentaId}
-                          onChange={e => handleLineChange(index, 'cuentaId', e.target.value)}
-                        >
-                          <option value="">Seleccione cuenta...</option>
-                          {activeCuentas.map(c => (
-                            <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs focus:border-indigo-500 outline-none"
-                          value={line.descripcion}
-                          onChange={e => handleLineChange(index, 'descripcion', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none"
-                          value={line.debe || ''}
-                          onChange={e => handleLineChange(index, 'debe', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none"
-                          value={line.haber || ''}
-                          onChange={e => handleLineChange(index, 'haber', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2 text-center text-slate-400">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(index)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100/60 transition-colors"
-                          title="Eliminar línea"
-                          disabled={comprobante.lineas.length <= 1}
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="bg-slate-50 p-4 border-t border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="text-slate-500 flex flex-wrap gap-4 text-xs font-semibold">
-                  <span>Diferencia: 
-                    <span className={`ml-1.5 font-bold ${isBalanced ? 'text-emerald-600' : 'text-red-600'}`}>
-                      $ {formatES(diff)}
-                    </span>
-                  </span>
-                  <span>Líneas: <span className="text-slate-800 font-bold">{comprobante.lineas.length}</span></span>
-                </div>
-                <div className="flex gap-6 text-sm font-bold text-slate-700">
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Debe</p>
-                    <p className="text-base text-indigo-700">$ {formatES(totalDebe)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Haber</p>
-                    <p className="text-base text-violet-700">$ {formatES(totalHaber)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-200/80 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(comprobante)}
-            disabled={!isBalanced}
-            className={`px-6 py-2.5 rounded-xl text-sm font-black text-white shadow-sm flex items-center gap-2 transition-colors ${isBalanced ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed text-slate-500'}`}
-          >
-            <CheckCircle size={16} />
-            Confirmar y Registrar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const raw = itemOrDoc.factura_id || itemOrDoc.id || fallback || '';
+  if (isUUID(raw)) {
+    return `DOC-${raw.slice(0, 8).toUpperCase()}`;
+  }
+  return raw || '-';
 };
 
-export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [], bancos = [], movimientosBancos = [], clientes = [], contactos = [], cuentasContables = [], configContable, onSave, showToast, workingYear }: { cxc?: any[], cobranzas?: any[], comprobantes?: any[], bancos?: any[], movimientosBancos?: any[], clientes?: any[], contactos?: any[], cuentasContables?: any[], configContable?: any, onSave?: any, showToast?: any, workingYear?: string }) {
+
+export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [], bancos = [], movimientosBancos = [], clientes = [], contactos = [], cuentasContables = [], configContable, onSave, showToast, workingYear, facturas = [] }: { cxc?: any[], cobranzas?: any[], comprobantes?: any[], bancos?: any[], movimientosBancos?: any[], clientes?: any[], contactos?: any[], cuentasContables?: any[], configContable?: any, onSave?: any, showToast?: any, workingYear?: string, facturas?: any[] }) {
   const { activeCompanyId } = useCompany();
   const { category } = useParams();
   const navigate = useNavigate();
@@ -300,12 +53,19 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClientKey, setSelectedClientKey] = useState<string | null>(null);
   const [hideZeroBalances, setHideZeroBalances] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<'CON_DEUDA' | 'EN_MORA' | 'AL_DIA' | 'A_FAVOR' | 'SOLVENTES' | 'TODOS'>('CON_DEUDA');
+  const [showExtraActionsMenu, setShowExtraActionsMenu] = useState<boolean>(false);
+  const [currentTasa, setCurrentTasa] = useState<number>(() => getTasaForDate());
   const [mainTablePage, setMainTablePage] = useState(1);
   const MAIN_TABLE_ITEMS_PER_PAGE = 10;
 
   useEffect(() => {
+    setCurrentTasa(getTasaForDate());
+  }, []);
+
+  useEffect(() => {
     setMainTablePage(1);
-  }, [activeTab, searchTerm, hideZeroBalances]);
+  }, [activeTab, searchTerm, hideZeroBalances, statusFilter]);
 
   // Preview contabilidad state
   const [pendingVoucher, setPendingVoucher] = useState<{
@@ -355,6 +115,12 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
     onSuccess: () => {}
   });
 
+  const [terminalesPos, setTerminalesPos] = useState<TerminalPosModel[]>([]);
+
+  useEffect(() => {
+    dbFetchTerminalesPos().then(setTerminalesPos).catch(console.error);
+  }, []);
+
   // Estado para el módulo de cobranza
   const [cobranzaForm, setCobranzaForm] = useState({
     fecha: new Date().toISOString().split('T')[0],
@@ -364,6 +130,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
     pagos: [] as Array<{
       id: string;
       bancoId: string;
+      metodo?: string;
+      terminalId?: string;
       referencia: string;
       monto: string;
       montoBs: string;
@@ -573,36 +341,44 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
   // Filter data based on tab
   const tabData = useMemo(() => {
     return cxc.filter(item => {
-      const cat = item.categoria || 'clientes';
+      const cat = (item.categoria || 'clientes').toLowerCase();
       if (activeTab === 'cobranza') return true;
       if (activeTab === 'clientes' || activeTab === 'aliados') {
         return cat === 'clientes' || cat === 'aliados' || !item.categoria;
       }
-      return cat === activeTab;
+      return cat === activeTab.toLowerCase();
     });
   }, [cxc, activeTab]);
 
   // Group data by client for the main table
-  const groupedData = useMemo(() => {
+  const allGroupedData = useMemo(() => {
     if (activeTab === 'cobranza') return [];
     
     const groups: Record<string, any> = {};
+    const todayTs = new Date().setHours(0, 0, 0, 0);
     
     tabData.forEach(item => {
       const contactObj = contactos.find(c => 
         (item.cliente_id && (c.id === item.cliente_id || c.taxId === item.cliente_id)) ||
-        (item.cliente && c.name?.toLowerCase() === item.cliente.toLowerCase())
+        (item.cliente_rif && c.taxId?.toLowerCase() === item.cliente_rif.toLowerCase()) ||
+        (item.cliente && c.name?.toLowerCase() === item.cliente.toLowerCase()) ||
+        (item.cliente_nombre && c.name?.toLowerCase() === item.cliente_nombre.toLowerCase())
       );
       
-      const key = contactObj?.taxId || contactObj?.id || item.cliente_id || item.cliente;
+      const key = contactObj?.taxId || contactObj?.id || item.cliente_rif || item.taxId || item.cliente_id || item.cliente || item.cliente_nombre || 'cliente_general';
       
       if (!groups[key]) {
         groups[key] = {
           id: key,
-          cliente: item.cliente || contactObj?.name,
+          cliente: item.cliente || item.cliente_nombre || contactObj?.name || 'Cliente sin nombre',
+          rif: contactObj?.taxId || item.cliente_rif || item.taxId || (String(key).startsWith('J-') || String(key).startsWith('V-') || String(key).startsWith('G-') || String(key).startsWith('E-') ? key : ''),
+          telefono: contactObj?.phone || '',
           montoAdeudo: 0,
           abonosAplicados: 0,
           saldoPendiente: 0,
+          hasOverdue: false,
+          moraDays: 0,
+          status: 'AL_DIA',
           documentos: []
         };
       }
@@ -624,7 +400,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
       const clientIdStr = String(g.id).trim();
       const clientNameLower = (g.cliente || '').toLowerCase();
       
-      // 1. Calculate active cobros (payments) from the cobranzas collection
+      // 1. Cobranzas activas
       const activeCobros = (cobranzas || []).filter((cob: any) => {
         if (cob.estado === 'anulado') return false;
         if (cob.clienteId && String(cob.clienteId) === clientIdStr) return true;
@@ -634,7 +410,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
       
       const totalAbonadoEnCobranzas = activeCobros.reduce((sum: number, cob: any) => sum + (Number(cob.monto) || 0), 0);
       
-      // 2. Calculate payments applied directly within the cxc documents (total - saldo)
+      // 2. Abonos en documentos
       const abonosEnDocs = g.documentos.reduce((sum: number, d: any) => {
         const totalDoc = Number(d.total) || Number(d.monto) || 0;
         const saldoDoc = d.saldo !== undefined ? Number(d.saldo) : totalDoc;
@@ -645,7 +421,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         return sum;
       }, 0);
       
-      // 3. Also account for unused/available anticipos y notas de crédito
+      // 3. Anticipos y notas de credito no usados
       const totalAnticiposUnused = g.documentos.reduce((sum: number, d: any) => {
         const idStr = String(d.id || '').toLowerCase();
         const facStr = String(d.factura || d.factura_id || '').toLowerCase();
@@ -658,30 +434,114 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         return sum;
       }, 0);
       
-      // Use the maximum of cobranzas and document-applied abonos to be 100% robust
-      const baseAbonado = Math.max(abonosEnDocs, totalAbonadoEnCobranzas);
+      const remainingDebt = Math.max(0, g.montoAdeudo - abonosEnDocs);
+      g.saldoPendiente = remainingDebt - totalAnticiposUnused;
+      g.abonosAplicados = (g.montoAdeudo - remainingDebt) + totalAnticiposUnused;
       
-      g.abonosAplicados = baseAbonado + totalAnticiposUnused;
-      g.saldoPendiente = g.montoAdeudo - g.abonosAplicados;
+      // Detectar si tiene facturas vencidas en mora
+      let hasOverdue = false;
+      let maxMora = 0;
+      g.documentos.forEach((d: any) => {
+        const saldoVal = Number(d.saldo !== undefined ? d.saldo : (Number(d.total) || Number(d.monto) || 0)) || 0;
+        if (saldoVal > 0.01 && d.estado !== 'anulada' && d.tipo !== 'anticipo' && d.tipo !== 'nota_credito') {
+          const vDate = d.vencimiento ? new Date(d.vencimiento).getTime() : (d.fecha ? new Date(d.fecha).getTime() : todayTs);
+          const diffDays = Math.floor((todayTs - vDate) / (1000 * 60 * 60 * 24));
+          if (diffDays > 0) {
+            hasOverdue = true;
+            if (diffDays > maxMora) maxMora = diffDays;
+          }
+        }
+      });
+      g.hasOverdue = hasOverdue;
+      g.moraDays = maxMora;
+      
+      if (g.saldoPendiente < -0.01) {
+        g.status = 'A_FAVOR';
+      } else if (g.saldoPendiente <= 0.01) {
+        g.status = 'SOLVENTE';
+      } else if (g.hasOverdue) {
+        g.status = 'EN_MORA';
+      } else {
+        g.status = 'AL_DIA';
+      }
       
       g.documentos.sort((a: any, b: any) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
     });
 
-    let result = Object.values(groups);
+    return Object.values(groups);
+  }, [tabData, activeTab, contactos, cobranzas]);
+
+  // Executive KPI summary calculations across active tab
+  const kpiStats = useMemo(() => {
+    let totalExigible = 0;
+    let totalCobrado = 0;
+    let totalFacturado = 0;
+    let totalEnMora = 0;
+    let countConDeuda = 0;
+    let countEnMora = 0;
+    let countAFavor = 0;
+    let countAlDia = 0;
+
+    allGroupedData.forEach((g: any) => {
+      totalFacturado += g.montoAdeudo;
+      totalCobrado += g.abonosAplicados;
+      if (g.saldoPendiente > 0.01) {
+        totalExigible += g.saldoPendiente;
+        countConDeuda++;
+        if (g.hasOverdue) {
+          totalEnMora += g.saldoPendiente;
+          countEnMora++;
+        } else {
+          countAlDia++;
+        }
+      } else if (g.saldoPendiente < -0.01) {
+        countAFavor++;
+      }
+    });
+
+    const countSolventes = allGroupedData.length - countConDeuda - countAFavor;
+    return {
+      totalExigible,
+      totalCobrado,
+      totalFacturado,
+      totalEnMora,
+      countConDeuda,
+      countEnMora,
+      countAFavor,
+      countAlDia,
+      countSolventes: Math.max(0, countSolventes),
+      totalEntidades: allGroupedData.length
+    };
+  }, [allGroupedData]);
+
+  // Filtered dataset according to search and status pills
+  const groupedData = useMemo(() => {
+    let result = [...allGroupedData];
 
     if (searchTerm.trim() !== '') {
       const st = searchTerm.trim().toLowerCase();
       result = result.filter((g: any) => {
         const nameMatch = (g.cliente?.toLowerCase() || '').includes(st);
         const idMatch = (String(g.id)?.toLowerCase() || '').includes(st);
-        return nameMatch || idMatch;
+        const rifMatch = (String(g.rif)?.toLowerCase() || '').includes(st);
+        return nameMatch || idMatch || rifMatch;
       });
-    } else if (hideZeroBalances) {
-      result = result.filter((g: any) => Math.abs(g.saldoPendiente) > 0.009);
+    }
+
+    if (statusFilter === 'CON_DEUDA') {
+      result = result.filter((g: any) => g.saldoPendiente > 0.01);
+    } else if (statusFilter === 'EN_MORA') {
+      result = result.filter((g: any) => g.status === 'EN_MORA');
+    } else if (statusFilter === 'AL_DIA') {
+      result = result.filter((g: any) => g.status === 'AL_DIA');
+    } else if (statusFilter === 'A_FAVOR') {
+      result = result.filter((g: any) => g.status === 'A_FAVOR');
+    } else if (statusFilter === 'SOLVENTES') {
+      result = result.filter((g: any) => g.status === 'SOLVENTE');
     }
 
     return result.sort((a: any, b: any) => b.saldoPendiente - a.saldoPendiente);
-  }, [tabData, activeTab, searchTerm, hideZeroBalances, contactos, cobranzas]);
+  }, [allGroupedData, searchTerm, statusFilter]);
 
   const totalMainPages = Math.ceil(groupedData.length / MAIN_TABLE_ITEMS_PER_PAGE) || 1;
   const paginatedGroupedData = useMemo(() => {
@@ -701,8 +561,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
   const selectedClient = useMemo(() => {
     if (!selectedClientKey) return null;
-    return groupedData.find((g: any) => g.id === selectedClientKey) || null;
-  }, [groupedData, selectedClientKey]);
+    return allGroupedData.find((g: any) => g.id === selectedClientKey) || null;
+  }, [allGroupedData, selectedClientKey]);
 
   // --- LÓGICA MÓDULO COBRANZA ---
   const clientsWithDebt = useMemo(() => {
@@ -968,7 +828,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
       const isBalanced = Math.abs(lineas.reduce((s,l)=>s+(Number(l.debe)||0),0) - lineas.reduce((s,l)=>s+(Number(l.haber)||0),0)) < 0.01;
 
       const draftComprobante = {
-        id: `comp-${Date.now()}`,
+        id: crypto.randomUUID(),
         fecha: cobranzaForm.fecha,
         numero: `CMP-${Date.now().toString().slice(-6)}`,
         tipo: 'Diario',
@@ -1021,6 +881,37 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                       estado: newEstado,
                       fechaPago: newFechaPago
                     });
+
+                    // Sincronizar factura de venta si existe
+                    if (facturas && Array.isArray(facturas)) {
+                      const matchedFac = facturas.find((f: any) => {
+                        const facIdStr = String(f.id || '').toLowerCase();
+                        const facNumStr = String(f.numero || '').trim().toLowerCase();
+                        const docFacId = String(doc.factura_id || doc.factura_db_id || '').toLowerCase();
+                        const docFacNum = String(doc.factura || doc.numero || '').trim().toLowerCase();
+                        const docMetaFacId = String(doc.metadata?.factura_id || '').toLowerCase();
+                        const docMetaFacNum = String(doc.metadata?.factura_numero || '').trim().toLowerCase();
+                        return (docFacId && (docFacId === facIdStr || docFacId === facNumStr)) ||
+                               (docFacNum && (docFacNum === facNumStr || docFacNum === facIdStr)) ||
+                               (docMetaFacId && (docMetaFacId === facIdStr || docMetaFacId === facNumStr)) ||
+                               (docMetaFacNum && (docMetaFacNum === facNumStr || docMetaFacNum === facIdStr)) ||
+                               (doc.descripcion && facNumStr && doc.descripcion.toLowerCase().includes(facNumStr));
+                      });
+
+                      if (matchedFac) {
+                        const targetFacEstado = newSaldo <= 0.009 ? 'cobrada' : 'parcial';
+                        const targetSaldoUSD = Math.max(0, newSaldo);
+                        const targetSaldoBs = targetSaldoUSD * (matchedFac.tasa_cambio || 1);
+                        onSave('facturasVenta', {
+                          ...matchedFac,
+                          estado: targetFacEstado,
+                          saldo_pendiente: targetSaldoUSD,
+                          saldo_pendiente_bs: targetSaldoBs,
+                          cxc_id: doc.id,
+                          updated_at: new Date().toISOString()
+                        });
+                      }
+                    }
                   }
                 }
               });
@@ -1220,7 +1111,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
     const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
     const newComprobante = {
-      id: `comp-${nowTs}`,
+      id: crypto.randomUUID(),
       fecha: newMovForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1347,7 +1238,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
     const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
     const newComprobante = {
-      id: `comp-${nowTs}`,
+      id: crypto.randomUUID(),
       fecha: anticipoForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1455,7 +1346,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
       const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
       const newComprobante = {
-        id: `comp-${Date.now()}`,
+        id: crypto.randomUUID(),
         fecha: saldoInicialForm.fecha,
         numero: `CMP-${Date.now().toString().slice(-6)}`,
         tipo: 'Diario',
@@ -1569,6 +1460,33 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
               fechaPago: null
             };
             onSave('cxc', updatedDoc);
+
+            if (facturas && Array.isArray(facturas)) {
+              const matchedFac = facturas.find((f: any) => {
+                const facIdStr = String(f.id || '').toLowerCase();
+                const facNumStr = String(f.numero || '').trim().toLowerCase();
+                const docFacId = String(docAsociado.factura_id || docAsociado.factura_db_id || '').toLowerCase();
+                const docFacNum = String(docAsociado.factura || docAsociado.numero || '').trim().toLowerCase();
+                const docMetaFacId = String(docAsociado.metadata?.factura_id || '').toLowerCase();
+                const docMetaFacNum = String(docAsociado.metadata?.factura_numero || '').trim().toLowerCase();
+                return (docFacId && (docFacId === facIdStr || docFacId === facNumStr)) ||
+                       (docFacNum && (docFacNum === facNumStr || docFacNum === facIdStr)) ||
+                       (docMetaFacId && (docMetaFacId === facIdStr || docMetaFacId === facNumStr)) ||
+                       (docMetaFacNum && (docMetaFacNum === facNumStr || docMetaFacNum === facIdStr)) ||
+                       (docAsociado.descripcion && facNumStr && docAsociado.descripcion.toLowerCase().includes(facNumStr));
+              });
+
+              if (matchedFac) {
+                const restTotal = Number(matchedFac.total) || 0;
+                onSave('facturasVenta', {
+                  ...matchedFac,
+                  estado: 'emitida',
+                  saldo_pendiente: restTotal,
+                  saldo_pendiente_bs: restTotal * (matchedFac.tasa_cambio || 1),
+                  updated_at: new Date().toISOString()
+                });
+              }
+            }
             
             setSelectedClientKey(null);
             showToast?.('Saldo restaurado exitosamente y cobranza eliminada.', 'success');
@@ -1630,6 +1548,33 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
               : 'parcial'
         };
         onSave('cxc', updatedDoc);
+
+        if (facturas && Array.isArray(facturas)) {
+          const matchedFac = facturas.find((f: any) => {
+            const facIdStr = String(f.id || '').toLowerCase();
+            const facNumStr = String(f.numero || '').trim().toLowerCase();
+            const docFacId = String(editingDoc.factura_id || editingDoc.factura_db_id || '').toLowerCase();
+            const docFacNum = String(editingDoc.factura || editingDoc.numero || '').trim().toLowerCase();
+            const docMetaFacId = String(editingDoc.metadata?.factura_id || '').toLowerCase();
+            const docMetaFacNum = String(editingDoc.metadata?.factura_numero || '').trim().toLowerCase();
+            return (docFacId && (docFacId === facIdStr || docFacId === facNumStr)) ||
+                   (docFacNum && (docFacNum === facNumStr || docFacNum === facIdStr)) ||
+                   (docMetaFacId && (docMetaFacId === facIdStr || docMetaFacId === facNumStr)) ||
+                   (docMetaFacNum && (docMetaFacNum === facNumStr || docMetaFacNum === facIdStr)) ||
+                   (editingDoc.descripcion && facNumStr && editingDoc.descripcion.toLowerCase().includes(facNumStr));
+          });
+
+          if (matchedFac) {
+            const targetFacEstado = saldoNum <= 0.009 ? 'cobrada' : saldoNum >= (totalNum - 0.01) ? 'emitida' : 'parcial';
+            onSave('facturasVenta', {
+              ...matchedFac,
+              estado: targetFacEstado,
+              saldo_pendiente: Math.max(0, saldoNum),
+              saldo_pendiente_bs: Math.max(0, saldoNum) * (matchedFac.tasa_cambio || 1),
+              updated_at: new Date().toISOString()
+            });
+          }
+        }
         
         setShowEditDocModal(false);
         setEditingDoc(null);
@@ -1752,7 +1697,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         ];
 
         const compReintegro = {
-          id: `comp-${nowTs}`,
+          id: crypto.randomUUID(),
           fecha: reintegroForm.fecha,
           numero: `CMP-${nowTs.slice(-6)}`,
           tipo: 'Diario',
@@ -1788,11 +1733,34 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     // 2. Abonos (Pagos recibidos a través del módulo de Cobranzas)
     const clientIdStr = String(selectedClient?.id || selectedClient?.cliente_id || '').trim();
+    const contactObj = contactos.find(c => 
+      c.id === clientIdStr || 
+      c.taxId === clientIdStr || 
+      (selectedClient?.rif && c.taxId?.toLowerCase() === selectedClient.rif.toLowerCase()) ||
+      (selectedClient?.cliente && c.name?.toLowerCase() === selectedClient.cliente.toLowerCase())
+    );
+    const clientDocIds = new Set((selectedClient.documentos || []).map((d: any) => String(d.id || d.factura_id || d.factura || '')));
+    
     const cobros = (cobranzas || []).filter((cob: any) => {
       if (cob.estado === 'anulado') return false;
       // Filtrar cobranzas por ID de cliente, o nombre como fallback
       if (cob.clienteId && String(cob.clienteId) === clientIdStr) return true;
+      if (contactObj && cob.clienteId && (String(cob.clienteId) === contactObj.id || String(cob.clienteId) === contactObj.taxId)) return true;
       if (cob.clienteNombre && selectedClient?.cliente && cob.clienteNombre.toLowerCase() === selectedClient.cliente.toLowerCase()) return true;
+      
+      // Filter by document ID references in abonos/detalles
+      if (cob.abonos) {
+        if (Array.isArray(cob.abonos) && cob.abonos.some((a: any) => clientDocIds.has(String(a.docId || a.id || '')))) return true;
+        if (typeof cob.abonos === 'object' && Object.keys(cob.abonos).some(k => clientDocIds.has(String(k)))) return true;
+      }
+      if (cob.detalles) {
+        if (Array.isArray(cob.detalles) && cob.detalles.some((d: any) => clientDocIds.has(String(d.docId || d.id || '')))) return true;
+        if (typeof cob.detalles === 'object') {
+          if (Array.isArray(cob.detalles.items) && cob.detalles.items.some((d: any) => clientDocIds.has(String(d.docId || d.id || '')))) return true;
+          if (Object.keys(cob.detalles).some(k => clientDocIds.has(String(k)))) return true;
+        }
+      }
+      
       return false;
     }).flatMap((cob: any) => {
       const baseCobro = {
@@ -1803,7 +1771,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
       };
 
       if (cob.pagos && Array.isArray(cob.pagos) && cob.pagos.length > 0) {
-        let remainingToApply = Number(cob.monto) || 0;
+        let remainingToApply = Number(cob.monto) || Number(cob.montoTotal) || Number(cob.monto_total) || 0;
         return cob.pagos.map((p: any, idx: number) => {
           const b = bancos.find(x => x.id === p.bancoId);
           let assignedMonto = 0;
@@ -1822,10 +1790,62 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         }).filter((item: any) => item.monto > 0);
       }
 
-      return [baseCobro];
+      return [{ ...baseCobro, monto: Number(cob.monto) || Number(cob.montoTotal) || Number(cob.monto_total) || 0 }];
     });
 
-    const allMovs = [...docs, ...cobros].sort((a, b) => a._fecha - b._fecha);
+    // 2.5 Generate virtual abonos for fully/partially paid docs that have no corresponding cobro
+    const cobroDocIds = new Set<string>();
+    cobros.forEach((cob: any) => {
+      if (Array.isArray(cob.abonos)) {
+        cob.abonos.forEach((a: any) => {
+          const id = a.docId || a.id || a.facturaId;
+          if (id) cobroDocIds.add(String(id));
+        });
+      } else if (cob.abonos && typeof cob.abonos === 'object') {
+        Object.keys(cob.abonos).forEach(k => cobroDocIds.add(String(k)));
+      }
+
+      if (Array.isArray(cob.detalles)) {
+        cob.detalles.forEach((d: any) => {
+          const id = d.docId || d.id || d.facturaId;
+          if (id) cobroDocIds.add(String(id));
+        });
+      } else if (cob.detalles && typeof cob.detalles === 'object') {
+        if (Array.isArray(cob.detalles.items)) {
+          cob.detalles.items.forEach((d: any) => {
+            const id = d.docId || d.id || d.facturaId;
+            if (id) cobroDocIds.add(String(id));
+          });
+        }
+        Object.keys(cob.detalles).forEach(k => {
+          if (k !== 'cliente_nombre' && k !== 'items') cobroDocIds.add(String(k));
+        });
+      }
+    });
+
+    const virtualAbonos: any[] = [];
+    docs.forEach(d => {
+       const dId = String(d.id || d.factura_id || d.factura || '');
+       if (dId && !cobroDocIds.has(dId) && (d.tipo !== 'anticipo' && d.tipo !== 'nota_credito')) {
+         const totalDoc = Math.abs(Number(d.total) || Number(d.monto) || 0);
+         const saldoDoc = d.saldo !== undefined ? Number(d.saldo) : totalDoc;
+         const paid = totalDoc - saldoDoc;
+         if (paid > 0.01 && d.estado !== 'anulada') {
+            virtualAbonos.push({
+               id: `cob-virtual-${dId}`,
+               _tipo: 'cobro',
+               _fecha: d._fecha + 1000, // right after doc
+               fechaStr: d.fechaStr,
+               monto: paid,
+               descripcion: `Pago / Amortización de Factura ${d.factura || d.factura_id || ''}`,
+               referencia: d.factura || d.factura_id || '',
+               estado: 'procesado'
+            });
+         }
+       }
+    });
+
+    const allMovs = [...docs, ...cobros, ...virtualAbonos].sort((a, b) => a._fecha - b._fecha);
 
     let fIni: string | null = null; 
     let fFin: string | null = null;
@@ -1849,10 +1869,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
       if (item._tipo === 'cobro') {
         // En cuentas por cobrar, un cobro SIEMPRE es un abono (reduce la deuda)
-        // Pero para evitar la duplicidad con los anticipos que ya fueron registrados
-        // como abonos independientes al momento de su creación, restamos el monto de anticipos aplicados.
-        const appliedAnt = Number(item.totalAnticiposAplicados) || 0;
-        abono = Math.max(0, (Number(item.monto) || 0) - appliedAnt);
+        abono = Math.max(0, (Number(item.monto) || 0));
       } else {
         // Un documento
         const idStr = String(item.id || '').toLowerCase();
@@ -2214,7 +2231,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
           if (amount <= 0) return;
 
           const originalInvoice = cxc.find(d => d.id === docId);
-          const invoiceNum = originalInvoice?.factura_id || docId;
+          const invoiceNum = getCleanDocNumber(originalInvoice, docId);
 
           const montoBs = amount * tasaCobro;
           const usdRef = tasaReferencia > 0 ? (montoBs / tasaReferencia) : amount;
@@ -2543,197 +2560,475 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     const getEntityLabel = () => {
       const tab = tabs.find(t => t.id === activeTab);
-      return tab ? tab.label.slice(0, -1) : 'Entidad'; // e.g. "Cliente", "Empleado"
+      return tab ? tab.label.slice(0, -1) : 'Entidad';
     };
 
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-1">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+      <div className="space-y-5 animate-in fade-in duration-300">
+        {/* 1. CUADROS DE RESUMEN EJECUTIVO COMPACTOS (ALTA DENSIDAD) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* KPI 1: Cartera Exigible */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-indigo-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cartera Exigible</span>
+              <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalExigible)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalExigible * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg shrink-0">
+              <DollarSign size={16} />
+            </div>
+          </div>
+
+          {/* KPI 2: Abonos & Recaudación */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-emerald-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Abonos y Cobranzas</span>
+              <div className="text-lg font-black text-emerald-600 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalCobrado)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalCobrado * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">
+              <CheckCircle size={16} />
+            </div>
+          </div>
+
+          {/* KPI 3: Vencido en Mora */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-rose-300 transition-all flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Vencido en Mora</span>
+                {kpiStats.countEnMora > 0 && (
+                  <span className="text-[9px] bg-rose-100 text-rose-800 font-bold px-1 rounded">
+                    {kpiStats.countEnMora}
+                  </span>
+                )}
+              </div>
+              <div className="text-lg font-black text-rose-600 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalEnMora)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalEnMora * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-lg shrink-0">
+              <AlertTriangle size={16} />
+            </div>
+          </div>
+
+          {/* KPI 4: Total Facturado */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Facturado</span>
+              <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalFacturado)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalFacturado * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-slate-100 text-slate-700 rounded-lg shrink-0">
+              <Users size={16} />
+            </div>
+          </div>
+        </div>
+
+        {/* 2. BARRA DE HERRAMIENTAS Y PÍLDORAS INTELIGENTES (DEUDORES POR DEFECTO) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
+          {/* Búsqueda y Filtros de Estado */}
+          <div className="flex flex-wrap items-center gap-2.5 flex-1">
+            <div className="relative min-w-[220px] max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
               <input 
                 type="text" 
                 placeholder={`Buscar ${getEntityLabel().toLowerCase()} por nombre o RIF...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full pl-8 pr-4 py-1.5 text-xs bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
               />
               {searchTerm && (
                 <button 
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
-            
-            <button
-              type="button"
-              onClick={() => setHideZeroBalances(!hideZeroBalances)}
-              className={`px-3 py-2 border rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-sm ${
-                hideZeroBalances 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' 
-                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-              }`}
-              title={hideZeroBalances ? 'Mostrando solo clientes con saldo pendiente o a favor. Haz clic para ver saldos $0' : 'Mostrando todos los clientes incluyendo los que tienen saldo $0'}
-            >
-              <EyeOff size={16} className={hideZeroBalances ? 'text-indigo-600' : 'text-slate-400'} />
-              <span className="hidden md:inline">{hideZeroBalances ? 'Ocultando Saldos $0' : 'Mostrando Todos ($0)'}</span>
-            </button>
+
+            {/* Smart Status Filter Pills con Deudores prioritarios */}
+            <div className="flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl overflow-x-auto text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('CON_DEUDA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'CON_DEUDA'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-indigo-600'
+                }`}
+                title="Mostrar solo clientes con saldo pendiente de cobro"
+              >
+                <span>Con Deuda</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'CON_DEUDA' ? 'bg-indigo-700 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  {kpiStats.countConDeuda}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('EN_MORA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'EN_MORA'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-rose-600 hover:text-rose-700'
+                }`}
+                title="Clientes con facturas vencidas en mora"
+              >
+                <span>En Mora</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'EN_MORA' ? 'bg-rose-700 text-white' : 'bg-rose-100 text-rose-700'}`}>
+                  {kpiStats.countEnMora}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('AL_DIA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'AL_DIA'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-emerald-700'
+                }`}
+                title="Clientes con saldo corriente no vencido"
+              >
+                <span>Al Día</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'AL_DIA' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700'}`}>
+                  {kpiStats.countAlDia}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('A_FAVOR')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'A_FAVOR'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-teal-700'
+                }`}
+                title="Clientes con saldo a su favor"
+              >
+                <span>A Favor</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'A_FAVOR' ? 'bg-teal-700 text-white' : 'bg-teal-50 text-teal-700'}`}>
+                  {kpiStats.countAFavor}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('SOLVENTES')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'SOLVENTES'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Clientes solventes con saldo $0"
+              >
+                <span>Solventes ($0)</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'SOLVENTES' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                  {kpiStats.countSolventes}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('TODOS')}
+                className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap text-slate-500 hover:text-slate-800 ${
+                  statusFilter === 'TODOS' ? 'bg-white text-slate-900 shadow-xs' : ''
+                }`}
+                title="Ver lista completa de clientes"
+              >
+                Todos ({allGroupedData.length})
+              </button>
+            </div>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+          {/* Botones de Acción */}
+          <div className="flex items-center gap-2 relative">
             <button 
               onClick={() => {
-                if (window.confirm('¿Desea restablecer todos los ejemplos de prueba del sistema? Esto cargará un nuevo conjunto limpio de facturas, anticipos y cobranzas para pruebas.')) {
-                  dbResetAllTestData(activeCompanyId);
-                  window.location.reload();
-                }
+                setCobranzaForm({
+                  ...cobranzaForm,
+                  clienteId: '',
+                  fecha: new Date().toISOString().split('T')[0]
+                });
+                setActiveTab('cobranza');
               }}
-              title="Restablecer datos de prueba limpios"
-              className="flex-1 sm:flex-none px-3 py-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-200 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
-              <RotateCcw size={15} className="text-slate-500" />
-              <span>Resetear Pruebas</span>
+              <DollarSign size={14} />
+              <span>+ Registrar Cobro</span>
             </button>
 
-            <button className="flex-1 sm:flex-none px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium flex items-center justify-center gap-2">
-              <Download size={16} /> Exportar
-            </button>
             <button 
               onClick={() => setShowAnticipoModal(true)}
-              className="flex-1 sm:flex-none px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm"
+              className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
-              <Plus size={16} /> Generar Anticipo
+              <Plus size={14} />
+              <span>Anticipo</span>
             </button>
-            <button 
-              onClick={() => setShowNewModal(true)}
-              className="flex-1 sm:flex-none px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Plus size={16} /> Nuevo Préstamo / CxC
-            </button>
-            {activeTab !== 'cobranza' && (
-              <button 
-                onClick={() => {
-                  setSaldoInicialForm({
-                    contacto: '',
-                    contacto_id: '',
-                    factura_id: `SI-${Date.now().toString().slice(-4)}`,
-                    fecha: new Date().toISOString().split('T')[0],
-                    vencimiento: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    descripcion: 'Saldo Inicial de CxC',
-                    monto: '',
-                    moneda: 'Dólares (USD)',
-                    tasa: '1.00',
-                    cuentaContrapartida: ''
-                  });
-                  setShowSaldoInicialModal(true);
-                }}
-                className="flex-1 sm:flex-none px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm"
+
+            {/* Menu Dropdown de Más Opciones */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExtraActionsMenu(!showExtraActionsMenu)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors border border-slate-200 cursor-pointer"
+                title="Más opciones"
               >
-                <Plus size={16} /> Saldo Inicial
+                <MoreVertical size={15} />
               </button>
-            )}
+
+              {showExtraActionsMenu && (
+                <div 
+                  className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-50 text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-150"
+                  onMouseLeave={() => setShowExtraActionsMenu(false)}
+                >
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      setShowNewModal(true);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Plus size={14} className="text-indigo-600" /> Nuevo Préstamo / CxC
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      setSaldoInicialForm({
+                        contacto: '',
+                        contacto_id: '',
+                        factura_id: `SI-${Date.now().toString().slice(-4)}`,
+                        fecha: new Date().toISOString().split('T')[0],
+                        vencimiento: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        descripcion: 'Saldo Inicial de CxC',
+                        monto: '',
+                        moneda: 'Dólares (USD)',
+                        tasa: '1.00',
+                        cuentaContrapartida: ''
+                      });
+                      setShowSaldoInicialModal(true);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Plus size={14} className="text-violet-600" /> Saldo Inicial Histórico
+                  </button>
+
+                  <div className="border-t border-slate-100 my-1"></div>
+
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      window.print();
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Download size={14} className="text-slate-500" /> Exportar / Imprimir
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-white border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3 font-bold w-12 text-center">N°</th>
-                <th className="px-4 py-3 font-bold">{getEntityLabel()}</th>
-                <th className="px-4 py-3 font-bold text-right">Monto Adeudo</th>
-                <th className="px-4 py-3 font-bold text-right">Abonos Aplicados</th>
-                <th className="px-4 py-3 font-bold text-right">Saldo Pendiente</th>
-                <th className="px-4 py-3 font-bold text-center w-28 whitespace-nowrap">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {paginatedGroupedData.map((item, i) => {
-                const globalIndex = (mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + i + 1;
-                return (
-                  <tr 
-                    key={item.id} 
-                    onClick={() => setSelectedClientKey(item.id)}
-                    className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                  >
-                    <td className="px-4 py-2.5 text-slate-400 font-medium text-center text-xs">{globalIndex}</td>
-                    <td className="px-4 py-2.5 font-bold text-indigo-600 group-hover:text-indigo-700">
-                      <span>{item.cliente}</span>
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-slate-600 font-medium">${formatoES(item.montoAdeudo)}</td>
-                    <td className="px-4 py-2.5 text-right text-emerald-600 font-medium">${formatoES(item.abonosAplicados)}</td>
-                    <td className={`px-4 py-2.5 text-right font-black ${item.saldoPendiente < 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                      {item.saldoPendiente < 0 ? `A Favor: $${formatoES(Math.abs(item.saldoPendiente))}` : `$${formatoES(item.saldoPendiente)}`}
-                    </td>
-                    <td className="px-4 py-2.5 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedClientKey(item.id);
-                        }}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50/80 hover:bg-indigo-600 text-indigo-700 hover:text-white rounded-md text-xs font-semibold transition-all border border-indigo-200/70 hover:border-indigo-600 shadow-xs whitespace-nowrap"
-                        title="Ver detalle del cliente, facturas y cobros"
-                      >
-                        <Eye size={12} className="shrink-0" />
-                        <span>Ver Detalle</span>
-                      </button>
+        {/* 3. TABLA EJECUTIVA PRINCIPAL DE CUENTAS POR COBRAR */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center w-12">#</th>
+                  <th className="px-4 py-3">{getEntityLabel()} / RAZÓN SOCIAL & RIF</th>
+                  <th className="px-4 py-3 text-center">ESTADO</th>
+                  <th className="px-4 py-3 text-right">TOTAL FACTURADO</th>
+                  <th className="px-4 py-3 text-right">ABONOS APLICADOS</th>
+                  <th className="px-4 py-3 text-right">SALDO EXIGIBLE</th>
+                  <th className="px-4 py-3 text-center w-44">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {paginatedGroupedData.map((item, index) => {
+                  const globalIndex = (mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + index + 1;
+                  const isNegative = item.saldoPendiente < -0.01;
+                  const isZero = Math.abs(item.saldoPendiente) <= 0.01;
+
+                  return (
+                    <tr 
+                      key={item.id || index}
+                      onClick={() => setSelectedClientKey(item.id)}
+                      className="hover:bg-indigo-50/40 transition-colors cursor-pointer group"
+                    >
+                      <td className="px-4 py-3 text-slate-400 font-semibold text-center">{globalIndex}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center font-black text-xs shrink-0 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            {item.cliente?.charAt(0)?.toUpperCase() || 'C'}
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 group-hover:text-indigo-600 transition-colors block text-sm leading-tight">
+                              {item.cliente}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
+                              <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold">
+                                {item.rif || item.id}
+                              </span>
+                              {item.telefono && (
+                                <span className="hidden sm:inline text-slate-400">• {item.telefono}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {item.status === 'A_FAVOR' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                            <Coins size={11} /> Saldo a Favor
+                          </span>
+                        ) : item.status === 'EN_MORA' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <AlertTriangle size={11} /> En Mora ({item.moraDays}d)
+                          </span>
+                        ) : item.status === 'AL_DIA' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle size={11} /> Al Día
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+                            Solvente
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-semibold text-slate-700">$ {formatNumber(item.montoAdeudo)}</div>
+                        <div className="text-[10px] text-slate-400">Bs. {formatNumber(item.montoAdeudo * currentTasa)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-semibold text-emerald-600">$ {formatNumber(item.abonosAplicados)}</div>
+                        <div className="text-[10px] text-slate-400">Bs. {formatNumber(item.abonosAplicados * currentTasa)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className={`font-black text-sm ${
+                          isNegative ? 'text-teal-600' : isZero ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
+                          {isNegative ? `A Favor: $ ${formatNumber(Math.abs(item.saldoPendiente))}` : `$ ${formatNumber(item.saldoPendiente)}`}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Bs. {formatNumber(Math.abs(item.saldoPendiente) * currentTasa)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              setCobranzaForm({
+                                ...cobranzaForm,
+                                clienteId: item.id,
+                                fecha: new Date().toISOString().split('T')[0]
+                              });
+                              setActiveTab('cobranza');
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 text-emerald-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-emerald-200 hover:border-emerald-600 shadow-2xs whitespace-nowrap cursor-pointer"
+                            title="Registrar cobro para este cliente"
+                          >
+                            <DollarSign size={12} />
+                            <span>Cobrar</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => setSelectedClientKey(item.id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-indigo-600 text-slate-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-200 hover:border-indigo-600 shadow-2xs whitespace-nowrap cursor-pointer"
+                            title="Ver Estado de Cuenta y Facturas"
+                          >
+                            <Eye size={12} />
+                            <span>Ver Detalle</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paginatedGroupedData.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-14 text-center text-slate-400">
+                      <div className="max-w-xs mx-auto space-y-2">
+                        <Users size={32} className="mx-auto text-slate-300" />
+                        <p className="font-semibold text-slate-600 text-sm">No se encontraron clientes</p>
+                        <p className="text-xs text-slate-400">
+                          {searchTerm ? `Ningún cliente coincide con "${searchTerm}".` : 'No hay registros en la categoría seleccionada.'}
+                        </p>
+                      </div>
                     </td>
                   </tr>
-                );
-              })}
-              {paginatedGroupedData.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
-                    {searchTerm ? `No se encontraron resultados para "${searchTerm}".` : 'No hay clientes registrados en esta categoría.'}
-                  </td>
-                </tr>
+                )}
+              </tbody>
+              {groupedData.length > 0 && (
+                <tfoot className="bg-slate-50/90 border-t border-slate-200 font-bold text-slate-800 text-xs">
+                  <tr>
+                    <td colSpan={3} className="px-4 py-3 text-right uppercase tracking-wider text-[11px] text-slate-600">
+                      TOTALES GENERALES ({groupedData.length} registros):
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="font-bold text-slate-900">$ {formatNumber(totals.montoAdeudo)}</div>
+                      <div className="text-[10px] text-slate-400">Bs. {formatNumber(totals.montoAdeudo * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-emerald-600">
+                      <div className="font-bold text-emerald-700">$ {formatNumber(totals.abonosAplicados)}</div>
+                      <div className="text-[10px] text-emerald-500">Bs. {formatNumber(totals.abonosAplicados * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-indigo-700">
+                      <div className="font-black text-sm text-indigo-900">$ {formatNumber(totals.saldoPendiente)}</div>
+                      <div className="text-[10px] text-indigo-500">Bs. {formatNumber(totals.saldoPendiente * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3"></td>
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-            {groupedData.length > 0 && (
-              <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-slate-800">
-                <tr>
-                  <td colSpan={2} className="px-4 py-3 text-right">TOTALES GENERALES:</td>
-                  <td className="px-4 py-3 text-right">${formatoES(totals.montoAdeudo)}</td>
-                  <td className="px-4 py-3 text-right text-emerald-600">${formatoES(totals.abonosAplicados)}</td>
-                  <td className="px-4 py-3 text-right text-indigo-700">${formatoES(totals.saldoPendiente)}</td>
-                  <td className="px-4 py-3"></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-
-        {/* Paginación */}
-        {groupedData.length > 0 && (
-          <div className="px-6 py-4 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-slate-600">
-            <div>
-              Mostrando <span className="font-bold text-slate-800">{(mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + 1}</span> a <span className="font-bold text-slate-800">{Math.min(mainTablePage * MAIN_TABLE_ITEMS_PER_PAGE, groupedData.length)}</span> de <span className="font-bold text-slate-800">{groupedData.length}</span> clientes
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setMainTablePage(p => Math.max(1, p - 1))}
-                disabled={mainTablePage === 1}
-                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-              >
-                Anterior
-              </button>
-              <span className="text-xs font-bold px-2 text-slate-700">
-                Página {mainTablePage} de {totalMainPages}
-              </span>
-              <button
-                onClick={() => setMainTablePage(p => Math.min(totalMainPages, p + 1))}
-                disabled={mainTablePage >= totalMainPages}
-                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
-              >
-                Siguiente
-              </button>
-            </div>
+            </table>
           </div>
-        )}
+
+          {/* Paginación */}
+          {groupedData.length > 0 && (
+            <div className="px-6 py-3.5 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
+              <div>
+                Mostrando <span className="font-bold text-slate-800">{(mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + 1}</span> a <span className="font-bold text-slate-800">{Math.min(mainTablePage * MAIN_TABLE_ITEMS_PER_PAGE, groupedData.length)}</span> de <span className="font-bold text-slate-800">{groupedData.length}</span> {getEntityLabel().toLowerCase()}s
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setMainTablePage(p => Math.max(1, p - 1))}
+                  disabled={mainTablePage === 1}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs font-bold px-2 text-slate-700">
+                  Página {mainTablePage} de {totalMainPages}
+                </span>
+                <button
+                  onClick={() => setMainTablePage(p => Math.min(totalMainPages, p + 1))}
+                  disabled={mainTablePage >= totalMainPages}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
@@ -2802,286 +3097,213 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-        {/* 1. CABECERA DE PERFIL (HEADER) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-6 flex flex-col gap-6">
-          {/* Top Bar: Botón volver + Badges de estado + Acciones rápidas */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-3">
-              <BackButton onClick={() => setSelectedClientKey(null)} label="Volver al Listado" />
+        {/* CABECERA COMPACTA EJECUTIVA DE ESTADO DE CUENTA */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col gap-3">
+          {/* Fila 1: Entidad, RIF, Estado y Acciones Directas */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b border-slate-100 pb-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <BackButton onClick={() => setSelectedClientKey(null)} label="Volver" />
+              
+              <div className="h-5 w-px bg-slate-200 hidden sm:block" />
+
+              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                {selectedClient.cliente}
+              </h2>
+
+              <span className="font-mono bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-xs">
+                {contactObj?.taxId || selectedClient.id}
+              </span>
 
               {/* Status Badge */}
-              {selectedClient.saldoPendiente < 0 ? (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-black uppercase tracking-wider">
-                  <Coins size={13} /> Saldo a Favor
+              {selectedClient.saldoPendiente < -0.01 ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[11px] font-bold">
+                  <Coins size={11} /> Saldo a Favor
                 </span>
               ) : hasOverdueInvoices ? (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-black uppercase tracking-wider animate-pulse">
-                  <AlertTriangle size={13} /> En Mora
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-[11px] font-bold">
+                  <AlertTriangle size={11} /> En Mora
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-black uppercase tracking-wider">
-                  <CheckCircle size={13} /> Al Día
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-bold">
+                  <CheckCircle size={11} /> Al Día
                 </span>
               )}
 
-              <span className="text-[11px] font-bold px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-lg capitalize">
-                {getEntityLabel()}
-              </span>
+              {contactObj?.phone && (
+                <span className="hidden xl:flex items-center gap-1 text-[11px] text-slate-500">
+                  <Phone size={12} className="text-slate-400" /> {contactObj.phone}
+                </span>
+              )}
+              {contactObj?.email && (
+                <span className="hidden 2xl:flex items-center gap-1 text-[11px] text-slate-500">
+                  <Mail size={12} className="text-slate-400" /> {contactObj.email}
+                </span>
+              )}
             </div>
 
-            {/* Quick Actions Header: Imprimir PDF & WhatsApp */}
-            <div className="flex items-center gap-2">
+            {/* Acciones Rápidas */}
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
+              <button 
+                onClick={() => {
+                  setCobranzaForm({
+                    ...cobranzaForm,
+                    clienteId: selectedClient.id,
+                    fecha: new Date().toISOString().split('T')[0]
+                  });
+                  setActiveTab('cobranza');
+                  setSelectedClientKey(null);
+                }}
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <DollarSign size={14} />
+                <span>Registrar Cobro</span>
+              </button>
+
+              <button 
+                onClick={() => {
+                  setAnticipoForm({
+                    ...anticipoForm,
+                    cliente: selectedClient.cliente,
+                    cliente_id: selectedClient.id,
+                    fecha: new Date().toISOString().split('T')[0]
+                  });
+                  setShowAnticipoModal(true);
+                }}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} />
+                <span>Anticipo</span>
+              </button>
+
+              {(() => {
+                const maxReintegro = selectedClient.saldoPendiente < -0.009 ? Math.abs(selectedClient.saldoPendiente) : 0;
+                if (maxReintegro > 0.009) {
+                  return (
+                    <button 
+                      onClick={() => {
+                        setReintegroForm({
+                          monto: maxReintegro.toFixed(2),
+                          bancoId: '',
+                          referencia: '',
+                          fecha: new Date().toISOString().split('T')[0]
+                        });
+                        setReintegroTarget({
+                          cliente: selectedClient.cliente,
+                          cliente_id: selectedClient.id,
+                          saldo: -maxReintegro,
+                          total: -maxReintegro,
+                          tasa: 1,
+                          moneda: 'USD',
+                          categoria: activeTab
+                        });
+                      }}
+                      className="px-2.5 py-1.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs flex items-center gap-1"
+                    >
+                      <ArrowDownLeft size={13} />
+                      <span>Reintegrar ($ {formatNumber(maxReintegro)})</span>
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+
               <a 
                 href={waUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-xs"
-                title="Enviar resumen del estado de cuenta por WhatsApp"
+                className="p-1.5 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
+                title="WhatsApp"
               >
-                <MessageSquare size={14} className="text-emerald-600" />
-                <span>Enviar por WhatsApp</span>
+                <MessageSquare size={13} className="text-emerald-600" />
+                <span className="hidden sm:inline">WhatsApp</span>
               </a>
 
               <button 
-                onClick={() => {
-                  window.print();
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-                title="Imprimir Estado de Cuenta"
+                onClick={() => window.print()}
+                className="p-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-200 flex items-center gap-1 cursor-pointer"
+                title="Imprimir"
               >
-                <Printer size={14} />
-                <span>Imprimir PDF</span>
+                <Printer size={13} />
+                <span className="hidden sm:inline">PDF</span>
               </button>
             </div>
           </div>
 
-          {/* Client Profile Info Grid */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-            <div className="space-y-1.5">
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {selectedClient.cliente}
-              </h2>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 font-medium">
-                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold">
-                  {contactObj?.taxId || selectedClient.id}
+          {/* Fila 2: Tira Compacta de Indicadores Financieros y Antigüedad */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 p-2.5 px-3.5 rounded-xl border border-slate-100 text-xs">
+            {/* Indicadores Financieros Clave */}
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Facturado Total</span>
+                <span className="font-bold text-slate-800 font-mono text-sm">$ {formatNumber(selectedClient.montoAdeudo)}</span>
+              </div>
+
+              <div className="h-6 w-px bg-slate-200" />
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Abonos Aplicados</span>
+                <span className="font-bold text-emerald-600 font-mono text-sm">$ {formatNumber(selectedClient.abonosAplicados)}</span>
+              </div>
+
+              <div className="h-6 w-px bg-slate-200" />
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                  {selectedClient.saldoPendiente < -0.01 ? "Saldo a Favor" : "Saldo Exigible"}
                 </span>
-                {contactObj?.phone && (
-                  <span className="flex items-center gap-1 text-slate-600">
-                    <Phone size={13} className="text-slate-400" /> {contactObj.phone}
-                  </span>
-                )}
-                {contactObj?.email && (
-                  <span className="flex items-center gap-1 text-slate-600">
-                    <Mail size={13} className="text-slate-400" /> {contactObj.email}
-                  </span>
-                )}
+                <span className={`font-black font-mono text-sm ${
+                  selectedClient.saldoPendiente < -0.01 ? "text-teal-600" : selectedClient.saldoPendiente <= 0.01 ? "text-slate-400" : "text-indigo-700"
+                }`}>
+                  $ {formatNumber(Math.abs(selectedClient.saldoPendiente))}
+                </span>
+                <span className="text-[10px] text-slate-400 ml-1.5">
+                  (Bs. {formatNumber(Math.abs(selectedClient.saldoPendiente) * currentTasa)})
+                </span>
               </div>
+
+              {totalAnticiposDisponibles > 0 && (
+                <>
+                  <div className="h-6 w-px bg-slate-200" />
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Anticipos Disp.</span>
+                    <span className="font-bold text-teal-600 font-mono text-sm">$ {formatNumber(totalAnticiposDisponibles)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Saldo Global Exigible Highlight */}
-            <div className="bg-slate-50/80 p-4 px-6 rounded-2xl border border-slate-200 text-left lg:text-right shrink-0">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                {selectedClient.saldoPendiente < 0 ? "Saldo Global a Favor" : "Saldo Global Exigible"}
+            {/* Antigüedad de Saldos Compacta */}
+            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              <span className="text-[10px] uppercase font-bold text-slate-400 mr-1 hidden md:inline">Vencimiento:</span>
+              <span className="px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200/60 text-emerald-800 font-medium">
+                Por Vencer: <b className="font-mono">${formatNumber(porVencer)}</b>
               </span>
-              <p className={`text-2xl sm:text-3xl font-black font-mono mt-0.5 ${
-                selectedClient.saldoPendiente < 0 ? 'text-emerald-700' : 'text-indigo-700'
-              }`}>
-                ${formatoES(Math.abs(selectedClient.saldoPendiente))}
-              </p>
+              {dias0a30 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200/60 text-amber-800 font-medium">
+                  1-30d: <b className="font-mono">${formatNumber(dias0a30)}</b>
+                </span>
+              )}
+              {dias31a60 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-orange-50 border border-orange-200/60 text-orange-800 font-medium">
+                  31-60d: <b className="font-mono">${formatNumber(dias31a60)}</b>
+                </span>
+              )}
+              {dias61a90 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200/60 text-rose-800 font-medium">
+                  61-90d: <b className="font-mono">${formatNumber(dias61a90)}</b>
+                </span>
+              )}
+              {diasMas90 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-red-100 border border-red-200 text-red-900 font-bold">
+                  +90d: <b className="font-mono">${formatNumber(diasMas90)}</b>
+                </span>
+              )}
+              {!hasOverdueInvoices && porVencer === 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-medium text-[10px]">
+                  Sin facturas vencidas
+                </span>
+              )}
             </div>
-          </div>
-        </div>
-
-        {/* 2. TARJETAS DE INDICADORES FINANCIEROS (KPI CARDS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* KPI 1: Total Adeudo Histórico */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Monto Adeudo Total</span>
-              <p className="text-xl sm:text-2xl font-black text-slate-900 font-mono mt-0.5">
-                ${formatoES(selectedClient.montoAdeudo)}
-              </p>
-              <span className="text-[11px] text-slate-400 font-medium">Facturado / Cargos</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center shrink-0">
-              <FileText size={20} />
-            </div>
-          </div>
-
-          {/* KPI 2: Abonos Aplicados */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Abonos Aplicados</span>
-              <p className="text-xl sm:text-2xl font-black text-emerald-700 font-mono mt-0.5">
-                ${formatoES(selectedClient.abonosAplicados)}
-              </p>
-              <span className="text-[11px] text-emerald-600 font-semibold">Cobros & Amortizaciones</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <CheckCircle size={20} />
-            </div>
-          </div>
-
-          {/* KPI 3: Saldo Pendiente Actual */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Saldo Pendiente</span>
-              <p className="text-xl sm:text-2xl font-black text-indigo-700 font-mono mt-0.5">
-                ${formatoES(Math.max(0, selectedClient.saldoPendiente))}
-              </p>
-              <span className="text-[11px] text-indigo-600 font-semibold">Deuda actual exigible</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <DollarSign size={20} />
-            </div>
-          </div>
-
-          {/* KPI 4: Saldo a Favor / Anticipos Disponibles */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Saldo a Favor / Anticipos</span>
-              <p className="text-xl sm:text-2xl font-black text-teal-700 font-mono mt-0.5">
-                ${formatoES(totalAnticiposDisponibles)}
-              </p>
-              <span className="text-[11px] text-teal-600 font-semibold">Crédito a favor disponible</span>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center shrink-0">
-              <Coins size={20} />
-            </div>
-          </div>
-        </div>
-
-        {/* 3. ANÁLISIS DE ANTIGÜEDAD DE SALDOS (AGING ANALYSIS STRIP) */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/90 shadow-xs space-y-4">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center">
-                <BarChart2 size={16} />
-              </div>
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
-                Análisis de Antigüedad de Saldos
-              </h4>
-            </div>
-            <span className="text-[11px] font-bold text-slate-400">
-              Total Cartera Vencida: ${formatoES(dias0a30 + dias31a60 + dias61a90 + diasMas90)}
-            </span>
-          </div>
-
-          {/* Aging Buckets Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {/* Por Vencer */}
-            <div className="p-3 bg-emerald-50/50 rounded-2xl border border-emerald-100">
-              <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700 block">Por Vencer</span>
-              <p className="text-base font-black text-emerald-800 font-mono mt-1">${formatoES(porVencer)}</p>
-              <span className="text-[10px] text-emerald-600 font-medium">En término</span>
-            </div>
-
-            {/* 1 - 30 Días */}
-            <div className="p-3 bg-amber-50/50 rounded-2xl border border-amber-100">
-              <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 block">1 - 30 Días</span>
-              <p className="text-base font-black text-amber-800 font-mono mt-1">${formatoES(dias0a30)}</p>
-              <span className="text-[10px] text-amber-600 font-medium">Mora reciente</span>
-            </div>
-
-            {/* 31 - 60 Días */}
-            <div className="p-3 bg-orange-50/50 rounded-2xl border border-orange-100">
-              <span className="text-[10px] font-black uppercase tracking-wider text-orange-700 block">31 - 60 Días</span>
-              <p className="text-base font-black text-orange-800 font-mono mt-1">${formatoES(dias31a60)}</p>
-              <span className="text-[10px] text-orange-600 font-medium">Mora media</span>
-            </div>
-
-            {/* 61 - 90 Días */}
-            <div className="p-3 bg-rose-50/50 rounded-2xl border border-rose-100">
-              <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 block">61 - 90 Días</span>
-              <p className="text-base font-black text-rose-800 font-mono mt-1">${formatoES(dias61a90)}</p>
-              <span className="text-[10px] text-rose-600 font-medium">Mora crítica</span>
-            </div>
-
-            {/* +90 Días */}
-            <div className="p-3 bg-purple-50/50 rounded-2xl border border-purple-100 col-span-2 sm:col-span-1">
-              <span className="text-[10px] font-black uppercase tracking-wider text-purple-700 block">+90 Días</span>
-              <p className="text-base font-black text-purple-800 font-mono mt-1">${formatoES(diasMas90)}</p>
-              <span className="text-[10px] text-purple-600 font-medium">Cobro legal / Mora alta</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. PANEL DE ACCIONES RÁPIDAS (TOOLBAR) */}
-        <div className="bg-gradient-to-r from-slate-900 to-indigo-950 p-3 sm:p-3.5 rounded-2xl text-white shadow-sm flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
-          <div className="space-y-0.5">
-            <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
-              <ShieldCheck size={13} /> Acciones Operativas de Cartera
-            </span>
-            <p className="text-[11px] text-slate-300">
-              Registra pagos recibidos o anticipos a favor para esta entidad
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button 
-              onClick={() => {
-                setCobranzaForm({
-                  ...cobranzaForm,
-                  clienteId: selectedClient.id,
-                  fecha: new Date().toISOString().split('T')[0]
-                });
-                setActiveTab('cobranza');
-                setSelectedClientKey(null);
-              }}
-              className="py-1.5 px-3 bg-emerald-500 hover:bg-emerald-600 text-slate-950 rounded-lg text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-1.5"
-            >
-              <DollarSign size={13} />
-              <span>Registrar Cobro</span>
-            </button>
-
-            <button 
-              onClick={() => {
-                setAnticipoForm({
-                  ...anticipoForm,
-                  cliente: selectedClient.cliente,
-                  cliente_id: selectedClient.id,
-                  fecha: new Date().toISOString().split('T')[0]
-                });
-                setShowAnticipoModal(true);
-              }}
-              className="py-1.5 px-3 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-semibold transition-all border border-white/15 cursor-pointer flex items-center gap-1.5"
-            >
-              <Coins size={13} />
-              <span>Generar Anticipo</span>
-            </button>
-
-            {/* Botón Reintegrar Saldo a Favor (activo solo si el cliente tiene saldo a favor neto real) */}
-            {(() => {
-              const maxReintegro = selectedClient.saldoPendiente < -0.009 ? Math.abs(selectedClient.saldoPendiente) : 0;
-              if (maxReintegro > 0.009) {
-                return (
-                  <button 
-                    onClick={() => {
-                      setReintegroForm({
-                        monto: maxReintegro.toFixed(2),
-                        bancoId: '',
-                        referencia: '',
-                        fecha: new Date().toISOString().split('T')[0]
-                      });
-                      setReintegroTarget({
-                        cliente: selectedClient.cliente,
-                        cliente_id: selectedClient.id,
-                        saldo: -maxReintegro,
-                        total: -maxReintegro,
-                        tasa: 1,
-                        moneda: 'USD',
-                        categoria: activeTab
-                      });
-                    }}
-                    className="py-1.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm cursor-pointer flex items-center gap-1.5 animate-in fade-in"
-                  >
-                    <ArrowDownLeft size={13} />
-                    <span>Reintegrar Saldo (${formatoES(maxReintegro)})</span>
-                  </button>
-                );
-              }
-              return null;
-            })()}
           </div>
         </div>
 
@@ -3111,6 +3333,37 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                   <option value="rango">Rango de Fechas</option>
                 </select>
               </div>
+
+              {filtrosHistorial.tipo === 'mes' && (
+                <div className="flex items-center gap-1.5 animate-in fade-in">
+                  <select 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.mes} 
+                    onChange={e => setFiltrosHistorial({...filtrosHistorial, mes: e.target.value})}
+                  >
+                    {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"].map((m,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+                  </select>
+                  <select 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.ano} 
+                    onChange={e => setFiltrosHistorial({...filtrosHistorial, ano: e.target.value})}
+                  >
+                    {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {filtrosHistorial.tipo === 'ano' && (
+                <div className="flex items-center gap-1.5 animate-in fade-in">
+                  <select 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.ano} 
+                    onChange={e => setFiltrosHistorial({...filtrosHistorial, ano: e.target.value})}
+                  >
+                    {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
 
               {filtrosHistorial.tipo === 'rango' && (
                 <div className="flex items-center gap-2 animate-in fade-in">
@@ -3168,13 +3421,13 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                   let isCobro = item._tipo === 'cobro';
 
                   if (isCobro) {
-                    docId = item.referencia || item.id;
+                    docId = item.referencia || (isUUID(item.id) ? `COB-${item.id.slice(0, 8).toUpperCase()}` : item.id);
                     const appliedAnt = Number(item.totalAnticiposAplicados) || 0;
                     descripcion = appliedAnt > 0
                       ? `Cobro Recibido (Anticipo aplicado: $${formatoES(appliedAnt)})`
                       : `Cobranza / Recibo de Pago`;
                   } else {
-                    docId = item.factura || item.factura_id || item.id;
+                    docId = getCleanDocNumber(item);
                     const isAnt = item.tipo === 'anticipo' || Number(item.total) < 0;
                     const isReint = item.tipo === 'reintegro';
                     if (isReint) {
@@ -3327,7 +3580,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                                       isOpen: true,
                                       title: 'Autorización Master Requerida',
                                       actionName: 'Eliminar Cuenta por Cobrar',
-                                      actionDetails: `Documento ${item.factura_id || item.id} - Monto: $${formatoES(item.total || item.monto)} (${selectedClient?.cliente || ''})`,
+                                      actionDetails: `Documento ${getCleanDocNumber(item)} - Monto: $${formatoES(item.total || item.monto)} (${selectedClient?.cliente || ''})`,
                                       onSuccess: async () => {
                                         onSave?.('cxc', { id: item.id, _delete: true });
 
@@ -3473,6 +3726,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                       const newPago = {
                         id: 'pago-' + Date.now(),
                         bancoId: '',
+                        metodo: 'Transferencia',
+                        terminalId: '',
                         referencia: '',
                         monto: '',
                         montoBs: ''
@@ -3488,9 +3743,30 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                 <div className="space-y-4">
                   {cobranzaForm.pagos.map((pago, idx) => {
                     const selB = bancos.find(b => b.id === pago.bancoId);
-                    const isBVES = selB?.moneda === 'VES' || selB?.moneda === 'Bs' || selB?.moneda === 'Bs.' || selB?.moneda === 'Bolivares';
+                    const isCaja = !!(selB?.es_caja || (selB?.tipo || '').toLowerCase().includes('caja') || (selB?.banco || '').toLowerCase().includes('caja'));
+                    const isUSD = !isCaja && (selB?.moneda === 'USD' || selB?.moneda === 'Dolares');
+                    const isBVES = !isCaja && (selB?.moneda === 'VES' || selB?.moneda === 'Bs' || selB?.moneda === 'Bs.' || selB?.moneda === 'Bolivares' || selB?.moneda === 'Bolívares');
+
+                    // Available methods based on account type
+                    let availableMethods = ['Transferencia', 'Depósito', 'Punto de Venta', 'Pago Móvil', 'Efectivo', 'Zelle', 'Binance'];
+                    if (isCaja) {
+                      availableMethods = ['Efectivo'];
+                    } else if (isUSD) {
+                      availableMethods = ['Transferencia', 'Depósito', 'Zelle', 'Binance', 'Punto de Venta'];
+                    } else if (isBVES) {
+                      availableMethods = ['Transferencia', 'Depósito', 'Pago Móvil', 'Punto de Venta'];
+                    }
+
+                    const isPos = pago.metodo === 'Punto de Venta';
+                    const activeTerminals = terminalesPos.filter(t => t.activo !== false);
+                    const selectedTerm = isPos
+                      ? (terminalesPos.find(t => t.id === pago.terminalId) || activeTerminals[0] || terminalesPos[0])
+                      : null;
+                    const isTermUSD = selectedTerm ? (selectedTerm.tipo_cuenta === 'internacional' || selectedTerm.moneda === 'USD') : false;
+                    const isEffectiveVES = isPos ? !isTermUSD : isBVES;
+
                     return (
-                      <div key={pago.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl relative group">
+                      <div key={pago.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl relative group space-y-2.5">
                         <button
                           type="button"
                           onClick={() => {
@@ -3498,90 +3774,192 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                             newPagos.splice(idx, 1);
                             setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
                           }}
-                          className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                          className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-80 hover:opacity-100 transition-opacity shadow-sm z-10"
+                          title="Eliminar método de pago"
                         >
                           <X size={12} />
                         </button>
 
-                        <div className="space-y-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Cuenta o Caja */}
                           <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase">Cuenta / Caja</label>
+                              {isCaja && <span className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded">Caja</span>}
+                            </div>
                             <select 
-                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-indigo-500"
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-indigo-500"
                               value={pago.bancoId}
                               onChange={e => {
+                                const newBankId = e.target.value;
+                                const newB = bancos.find(b => b.id === newBankId);
+                                const newIsCaja = !!(newB?.es_caja || (newB?.tipo || '').toLowerCase().includes('caja') || (newB?.banco || '').toLowerCase().includes('caja'));
+                                const newIsUSD = !newIsCaja && (newB?.moneda === 'USD' || newB?.moneda === 'Dolares');
+                                const newIsVES = !newIsCaja && (newB?.moneda === 'VES' || newB?.moneda === 'Bs' || newB?.moneda === 'Bs.' || newB?.moneda === 'Bolivares');
+
+                                let newMetodo = pago.metodo;
+                                if (newIsCaja) {
+                                  newMetodo = 'Efectivo';
+                                } else if (newIsUSD && !['Transferencia', 'Depósito', 'Zelle', 'Binance', 'Punto de Venta'].includes(newMetodo || '')) {
+                                  newMetodo = 'Transferencia';
+                                } else if (newIsVES && !['Transferencia', 'Depósito', 'Pago Móvil', 'Punto de Venta'].includes(newMetodo || '')) {
+                                  newMetodo = 'Transferencia';
+                                }
+
                                 const newPagos = [...cobranzaForm.pagos];
-                                newPagos[idx].bancoId = e.target.value;
+                                newPagos[idx].bancoId = newBankId;
+                                newPagos[idx].metodo = newMetodo;
                                 setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
                               }}
                             >
-                              <option value="">Seleccione un banco...</option>
-                              {bancos.map(b => (
-                                <option key={b.id} value={b.id}>{b.banco} ({b.moneda})</option>
+                              <option value="">Seleccione banco o caja...</option>
+                              {bancos.map(b => {
+                                const isBox = !!(b.es_caja || (b.tipo || '').toLowerCase().includes('caja') || (b.banco || '').toLowerCase().includes('caja'));
+                                return (
+                                  <option key={b.id} value={b.id}>
+                                    {isBox ? '💵 [Caja]' : '🏦 [Banco]'} {b.banco} ({b.moneda})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          {/* Método de Pago */}
+                          <div>
+                            <label className="text-[10px] font-black text-slate-500 uppercase block mb-1">Método de Pago</label>
+                            <select
+                              value={pago.metodo || availableMethods[0]}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const newPagos = [...cobranzaForm.pagos];
+                                newPagos[idx].metodo = val;
+                                if (val === 'Punto de Venta' && activeTerminals.length > 0 && !newPagos[idx].terminalId) {
+                                  newPagos[idx].terminalId = activeTerminals[0].id;
+                                  if (activeTerminals[0].banco_id) {
+                                    newPagos[idx].bancoId = activeTerminals[0].banco_id;
+                                  }
+                                }
+                                setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-indigo-500"
+                            >
+                              {availableMethods.map(m => (
+                                <option key={m} value={m}>{m}</option>
                               ))}
                             </select>
                           </div>
-                          
-                          <div className="grid grid-cols-2 gap-2">
-                            <input 
-                              type="text" 
-                              placeholder="Referencia"
-                              className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-indigo-500"
-                              value={pago.referencia}
+                        </div>
+
+                        {/* Si es Punto de Venta: Selector de Terminal Configurado */}
+                        {isPos && (
+                          <div className="bg-amber-50/80 border border-amber-200/80 rounded-lg p-2.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-bold text-amber-800 uppercase flex items-center gap-1">
+                                <CreditCard size={12} />
+                                <span>Terminal Configurado (Punto de Venta) *</span>
+                              </label>
+                              {isTermUSD ? (
+                                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                                  Internacional USD (Sin Tasa)
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded">
+                                  Nacional VES (Tasa BCV)
+                                </span>
+                              )}
+                            </div>
+                            <select
+                              value={pago.terminalId || (activeTerminals[0]?.id || '')}
                               onChange={e => {
+                                const termId = e.target.value;
+                                const term = terminalesPos.find(t => t.id === termId);
                                 const newPagos = [...cobranzaForm.pagos];
-                                newPagos[idx].referencia = e.target.value;
+                                newPagos[idx].terminalId = termId;
+                                if (term?.banco_id) newPagos[idx].bancoId = term.banco_id;
+                                if (term?.tipo_cuenta === 'internacional' || term?.moneda === 'USD') {
+                                  newPagos[idx].montoBs = '';
+                                }
                                 setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
                               }}
-                            />
-                            {isBVES ? (
-                              <div className="flex flex-col gap-0.5">
-                                <div className="relative">
-                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">Bs.</span>
-                                  <input 
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="Monto Bs"
-                                    className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                    value={pago.montoBs || ''}
-                                    onChange={e => {
-                                      const newPagos = [...cobranzaForm.pagos];
-                                      const valBs = e.target.value;
-                                      newPagos[idx].montoBs = valBs;
-                                      const t = Number(cobranzaForm.tasa) || 1;
-                                      if (t > 0 && valBs) {
-                                        newPagos[idx].monto = (Number(valBs) / t).toFixed(2);
-                                      } else {
-                                        newPagos[idx].monto = '';
-                                      }
-                                      setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
-                                    }}
-                                  />
-                                </div>
-                                {Number(pago.monto) > 0 && (
-                                  <div className="text-[10px] text-slate-500 font-bold ml-1">
-                                    Eqv: ${formatoES(pago.monto)}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
+                              className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+                            >
+                              {activeTerminals.length === 0 ? (
+                                <option value="">No hay terminales configurados</option>
+                              ) : (
+                                activeTerminals.map(t => {
+                                  const isInt = t.tipo_cuenta === 'internacional' || t.moneda === 'USD';
+                                  return (
+                                    <option key={t.id} value={t.id}>
+                                      {t.nombre} ({t.codigo}) - {isInt ? 'Internacional USD (Directo)' : 'Nacional VES (Tasa BCV)'}
+                                    </option>
+                                  );
+                                })
+                              )}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Referencia y Monto */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Referencia"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-indigo-500"
+                            value={pago.referencia}
+                            onChange={e => {
+                              const newPagos = [...cobranzaForm.pagos];
+                              newPagos[idx].referencia = e.target.value;
+                              setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
+                            }}
+                          />
+                          {isEffectiveVES ? (
+                            <div className="flex flex-col gap-0.5">
                               <div className="relative">
-                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">Bs.</span>
                                 <input 
-                                  type="number"
+                                  type="number" 
                                   step="0.01"
-                                  placeholder="Monto USD"
-                                  className="w-full pl-6 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                  value={pago.monto}
+                                  placeholder="Monto Bs"
+                                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  value={pago.montoBs || ''}
                                   onChange={e => {
                                     const newPagos = [...cobranzaForm.pagos];
-                                    newPagos[idx].monto = e.target.value;
-                                    newPagos[idx].montoBs = ''; // Clear Bs if USD
+                                    const valBs = e.target.value;
+                                    newPagos[idx].montoBs = valBs;
+                                    const t = Number(cobranzaForm.tasa) || 1;
+                                    if (t > 0 && valBs) {
+                                      newPagos[idx].monto = (Number(valBs) / t).toFixed(2);
+                                    } else {
+                                      newPagos[idx].monto = '';
+                                    }
                                     setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
                                   }}
                                 />
                               </div>
-                            )}
-                          </div>
+                              {Number(pago.monto) > 0 && (
+                                <div className="text-[10px] text-slate-500 font-bold ml-1">
+                                  Eqv: $ {formatNumber(pago.monto)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
+                              <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="Monto USD"
+                                className="w-full pl-6 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                value={pago.monto}
+                                onChange={e => {
+                                  const newPagos = [...cobranzaForm.pagos];
+                                  newPagos[idx].monto = e.target.value;
+                                  newPagos[idx].montoBs = '';
+                                  setCobranzaForm({ ...cobranzaForm, pagos: newPagos });
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -5101,7 +5479,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                         <div key={docId} className="px-4 py-2.5 flex items-center justify-between text-sm hover:bg-slate-50/30">
                           <div>
                             <span className="font-bold text-slate-700">Factura / Cobro:</span>{' '}
-                            <span className="font-mono text-xs text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{originalInvoice?.factura_id || docId}</span>
+                            <span className="font-mono text-xs text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{getCleanDocNumber(originalInvoice, docId)}</span>
                             {originalInvoice?.descripcion && <span className="text-xs text-slate-400 block mt-0.5">{originalInvoice.descripcion}</span>}
                           </div>
                           <span className="font-bold text-slate-800">${formatoES(amount)}</span>
@@ -5114,75 +5492,129 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
               {/* Accounting entry visual (Asiento Contable) */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Asiento Contable Generado</h4>
-                  {selectedCobranza.comprobanteId && (
-                    <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-mono font-bold px-2 py-0.5 rounded-full">
-                      Voucher: {selectedCobranza.comprobanteId}
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  const targetRef = String(selectedCobranza.referencia || selectedCobranza.reciboNumero || '').trim();
+                  const matchedComp = comprobantes.find((c: any) => 
+                    (selectedCobranza.comprobanteId && (String(c.id) === String(selectedCobranza.comprobanteId))) ||
+                    (targetRef && (
+                      String(c.referencia || '').trim() === targetRef ||
+                      String(c.numero || '').trim() === targetRef ||
+                      (c.referencia && String(c.referencia).toLowerCase().includes(targetRef.toLowerCase())) ||
+                      (targetRef && String(c.referencia || '').toLowerCase().includes(targetRef.toLowerCase()))
+                    )) ||
+                    (c.total && Math.abs(Number(c.total) - Number(selectedCobranza.montoTotal || selectedCobranza.monto)) < 0.01 && c.fecha === selectedCobranza.fecha)
+                  ) || (selectedCobranza?.lineas ? selectedCobranza : null);
 
-                <div className="overflow-hidden border border-slate-150 rounded-2xl">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-indigo-100/50 text-slate-500 uppercase font-black">
-                      <tr>
-                        <th className="px-4 py-3">Código</th>
-                        <th className="px-4 py-3">Cuenta</th>
-                        <th className="px-4 py-3 text-right">Debe</th>
-                        <th className="px-4 py-3 text-right">Haber</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {(() => {
-                        // Locate lines of this comprobante
-                        const matchedComp = comprobantes.find(c => c.id === selectedCobranza.comprobanteId) || selectedCobranza;
-                        const linesObj = matchedComp?.lineas || [];
+                  let linesObj = matchedComp?.lineas || [];
 
-                        if (linesObj.length === 0) {
-                          return (
-                            <tr>
-                              <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                                No se encontraron registros de líneas contables
-                              </td>
-                            </tr>
-                          );
+                  // Fallback dinámico si no hay líneas para que el comprobante nunca salga en blanco
+                  if (!linesObj || linesObj.length === 0) {
+                    const montoTotal = Number(selectedCobranza.montoTotal || selectedCobranza.monto) || 0;
+                    if (montoTotal > 0) {
+                      const selBanco = bancos.find(b => b.id === selectedCobranza.bancoId) || bancos.find(b => b.es_caja || (b.tipo || '').toLowerCase().includes('caja')) || bancos[0];
+                      const ctaBancoCode = selBanco?.cuenta_contable_id || '1.1.01.001';
+                      const ctaBancoObj = cuentasContables.find(c => String(c.codigo) === String(ctaBancoCode) || String(c.id) === String(ctaBancoCode));
+
+                      const ctaCxcCode = configContable?.cuentaCxc || '1.1.02.001';
+                      const ctaCxcObj = cuentasContables.find(c => String(c.codigo) === String(ctaCxcCode) || String(c.id) === String(ctaCxcCode));
+
+                      linesObj = [
+                        {
+                          id: 'syn-cob-debe',
+                          cuentaId: ctaBancoObj?.id || ctaBancoCode,
+                          codigo: ctaBancoObj?.codigo || ctaBancoCode,
+                          descripcion: `Ingreso Cobro ${selBanco?.banco || 'Caja Principal'} - Ref: ${targetRef || 'Efectivo'}`,
+                          debe: montoTotal,
+                          haber: 0
+                        },
+                        {
+                          id: 'syn-cob-haber',
+                          cuentaId: ctaCxcObj?.id || ctaCxcCode,
+                          codigo: ctaCxcObj?.codigo || ctaCxcCode,
+                          descripcion: `Cancelación CxC - ${selectedCobranza.clienteNombre || 'Cliente'}`,
+                          debe: 0,
+                          haber: montoTotal
                         }
+                      ];
+                    }
+                  }
 
-                        let totalDebe = 0;
-                        let totalHaber = 0;
+                  const voucherNumero = matchedComp?.numero || (selectedCobranza.comprobanteId ? (selectedCobranza.comprobanteId.startsWith('CMP-') ? selectedCobranza.comprobanteId : `CMP-${selectedCobranza.comprobanteId.slice(0, 8)}`) : (targetRef ? `CMP-${targetRef}` : 'CMP-COBRANZA'));
 
-                        return (
-                          <>
-                            {linesObj.map((l: any, i: number) => {
-                              const cuenta = cuentasContables.find(c => c.codigo === l.cuentaId || c.id === l.cuentaId);
-                              const debe = Number(l.debe) || 0;
-                              const haber = Number(l.haber) || 0;
-                              totalDebe += debe;
-                              totalHaber += haber;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Asiento Contable Generado</h4>
+                        <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-mono font-bold px-2 py-0.5 rounded-full">
+                          Voucher: {voucherNumero}
+                        </span>
+                      </div>
+
+                      <div className="overflow-hidden border border-slate-150 rounded-2xl">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-indigo-100/50 text-slate-500 uppercase font-black">
+                            <tr>
+                              <th className="px-4 py-3">Código</th>
+                              <th className="px-4 py-3">Cuenta</th>
+                              <th className="px-4 py-3 text-right">Debe</th>
+                              <th className="px-4 py-3 text-right">Haber</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {(() => {
+                              if (linesObj.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                                      No se encontraron registros de líneas contables
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              let totalDebe = 0;
+                              let totalHaber = 0;
 
                               return (
-                                <tr key={l.id || i} className="hover:bg-slate-50/50">
-                                  <td className="px-4 py-2.5 font-mono text-indigo-600 font-bold">{l.cuentaId}</td>
-                                  <td className="px-4 py-2.5 text-slate-700 max-w-[200px] truncate" title={cuenta?.nombre || l.descripcion}>
-                                    {cuenta?.nombre || l.descripcion || 'Cuenta Contable'}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right font-bold text-slate-800">{debe > 0 ? `$${formatoES(debe)}` : '-'}</td>
-                                  <td className="px-4 py-2.5 text-right font-bold text-slate-800">{haber > 0 ? `$${formatoES(haber)}` : '-'}</td>
-                                </tr>
+                                <>
+                                  {linesObj.map((l: any, i: number) => {
+                                    const cuenta = cuentasContables.find(c => 
+                                      String(c.codigo) === String(l.cuentaId) || 
+                                      String(c.id) === String(l.cuentaId) || 
+                                      String(c.id) === String(l.cuenta_id) || 
+                                      String(c.codigo) === String(l.codigo)
+                                    );
+                                    const codigoCuenta = cuenta?.codigo || l.cuentaCodigo || l.codigo || (l.cuentaId && !l.cuentaId.includes('-') ? l.cuentaId : '---');
+                                    const debe = Number(l.debe) || 0;
+                                    const haber = Number(l.haber) || 0;
+                                    totalDebe += debe;
+                                    totalHaber += haber;
+
+                                    return (
+                                      <tr key={l.id || i} className="hover:bg-slate-50/50">
+                                        <td className="px-4 py-2.5 font-mono text-indigo-600 font-bold">{codigoCuenta}</td>
+                                        <td className="px-4 py-2.5 text-slate-700 max-w-[200px] truncate" title={cuenta?.nombre || l.descripcion}>
+                                          {cuenta?.nombre || l.descripcion || 'Cuenta Contable'}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">{debe > 0 ? `$${formatoES(debe)}` : '-'}</td>
+                                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">{haber > 0 ? `$${formatoES(haber)}` : '-'}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                  <tr className="bg-slate-50/40 font-bold text-slate-800">
+                                    <td colSpan={2} className="px-4 py-2.5 text-right uppercase tracking-wider text-[10px]">Totales:</td>
+                                    <td className="px-4 py-2.5 text-right border-t border-slate-200 text-slate-800 font-bold">${formatoES(totalDebe)}</td>
+                                    <td className="px-4 py-2.5 text-right border-t border-slate-200 text-slate-800 font-bold">${formatoES(totalHaber)}</td>
+                                  </tr>
+                                </>
                               );
-                            })}
-                            <tr className="bg-slate-50/40 font-bold text-slate-800">
-                              <td colSpan={2} className="px-4 py-2.5 text-right uppercase tracking-wider text-[10px]">Totales:</td>
-                              <td className="px-4 py-2.5 text-right border-t border-slate-200 text-slate-800 font-bold">${formatoES(totalDebe)}</td>
-                              <td className="px-4 py-2.5 text-right border-t border-slate-200 text-slate-800 font-bold">${formatoES(totalHaber)}</td>
-                            </tr>
-                          </>
-                        );
-                      })()}
-                    </tbody>
-                  </table>
-                </div>
+                            })()}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
             </div>
 

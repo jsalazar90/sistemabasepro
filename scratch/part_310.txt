@@ -1,0 +1,79 @@
+Created At: 2026-09-12T17:36:18-04:00
+Completed At: 2026-09-12T17:36:18-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 310 to 380
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+310:       retIslrMonto,
+311:       retIslrMontoUSD,
+312:       retIslrMontoBs,
+313:       netoCobrar,
+314:       netoCobrarUSD,
+315:       netoCobrarBs
+316:     };
+317:   }, [items, currency, exchangeRate, applyRetIva, retIvaPercent, applyRetIslr, retIslrPercent, applyIgtf, igtfPercent]);
+318: 
+319:   // Formateador de moneda
+320:   const formatMoney = (amount: number, curr = currency) => {
+321:     return new Intl.NumberFormat('es-VE', { 
+322:       style: 'currency', 
+323:       currency: curr === 'VES' ? 'VES' : 'USD',
+324:       minimumFractionDigits: 2 
+325:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+326:   };
+327: 
+328:   // Manejo de Cliente
+329:   const handleSelectCustomer = (cust: any) => {
+330:     setSelectedCustomerId(cust.id);
+331:     setCustomerName(cust.name || cust.nombre || '');
+332:     setCustomerRif(cust.taxId || cust.rif || '');
+333:     setCustomerAddress(cust.address || cust.direccion || '');
+334:     setCustomerPhone(cust.phone || cust.telefono || '');
+335:     setCustomerEmail(cust.email || '');
+336:     setIsCustomerModalOpen(false);
+337:   };
+338: 
+339:   const handleClearCustomer = () => {
+340:     setSelectedCustomerId('');
+341:     setCustomerName('');
+342:     setCustomerRif('');
+343:     setCustomerAddress('');
+344:     setCustomerPhone('');
+345:     setCustomerEmail('');
+346:   };
+347: 
+348:   // Categorías únicas de productos
+349:   const productCategories = useMemo(() => {
+350:     const cats = new Set<string>();
+351:     products.forEach(p => {
+352:       if (p.categoria && p.categoria.trim()) {
+353:         cats.add(p.categoria.trim());
+354:       }
+355:     });
+356:     return Array.from(cats);
+357:   }, [products]);
+358: 
+359:   // Lista de productos filtrada para el modal
+360:   const filteredProducts = useMemo(() => {
+361:     const term = productSearchTerm.toLowerCase().trim();
+362:     return products.filter(p => {
+363:       const matchesCategory = selectedProductCategory === 'all' || p.categoria === selectedProductCategory;
+364:       if (!matchesCategory) return false;
+365:       if (!term) return true;
+366:       return (
+367:         (p.codigo || '').toLowerCase().includes(term) ||
+368:         (p.nombre || '').toLowerCase().includes(term) ||
+369:         (p.descripcion || '').toLowerCase().includes(term) ||
+370:         (p.categoria || '').toLowerCase().includes(term)
+371:       );
+372:     });
+373:   }, [products, productSearchTerm, selectedProductCategory]);
+374: 
+375:   const handleOpenProductModal = (index: number | null = null) => {
+376:     setActiveItemIndexForProduct(index);
+377:     setProductSearchTerm('');
+378:     setSelectedProductCategory('all');
+379:     setIsProductModalOpen(true);
+380:   };
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

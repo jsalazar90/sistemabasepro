@@ -1,0 +1,44 @@
+Created At: 2026-09-12T16:03:36-04:00
+Completed At: 2026-09-12T16:03:36-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1618
+Total Bytes: 74755
+Showing lines 170 to 205
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+170:       currency: curr === 'VES' ? 'VES' : 'USD',
+171:       minimumFractionDigits: 2 
+172:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+173:   };
+174: 
+175:   // Manejo de Cliente
+176:   const handleSelectCustomer = (cust: any) => {
+177:     setSelectedCustomerId(cust.id);
+178:     setCustomerName(cust.name || cust.nombre || '');
+179:     setCustomerRif(cust.taxId || cust.rif || '');
+180:     setCustomerAddress(cust.address || cust.direccion || '');
+181:     setCustomerPhone(cust.phone || cust.telefono || '');
+182:     setCustomerEmail(cust.email || '');
+183:     setIsCustomerModalOpen(false);
+184:   };
+185: 
+186:   const handleSaveQuickCustomer = () => {
+187:     if (!newCustName.trim() || !newCustRif.trim()) {
+188:       showToast?.('Nombre y RIF son requeridos para el cliente', 'error');
+189:       return;
+190:     }
+191: 
+192:     const newCust = {
+193:       id: `ct_${Date.now()}`,
+194:       name: newCustName.trim(),
+195:       taxId: newCustRif.trim(),
+196:       type: 'customer',
+197:       address: newCustAddress.trim(),
+198:       phone: newCustPhone.trim(),
+199:       isCompany: true
+200:     };
+201: 
+202:     onSave?.('contactos', newCust);
+203:     handleSelectCustomer(newCust);
+204:     setIsNewCustomerModalOpen(false);
+205:     showToast?.('Cliente registrado y seleccionado', 'success');
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

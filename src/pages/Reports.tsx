@@ -65,7 +65,6 @@ import EstadoResultadosParamsModal from '../components/accounting/EstadoResultad
 import BalanceComprobacionParamsModal from '../components/accounting/BalanceComprobacionParamsModal';
 import LibroMayorParamsModal from '../components/accounting/LibroMayorParamsModal';
 import LibroDiarioParamsModal from '../components/accounting/LibroDiarioParamsModal';
-import { SAMPLE_FULL_BALANCE_CUENTAS } from '../services/db';
 
 interface ReportsProps {
   facturasServicio?: any[];
@@ -897,12 +896,18 @@ export default function Reports({
       return cashBankIds.has(valStr) || cashBankCodigos.has(valStr);
     };
 
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
     // Calculate initial cumulative cash balance before first month in chart range
-    const pastComps = (comprobantes || []).filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] < firstYearMonthStr);
+    const pastComps = (comprobantes || []).filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] < firstYearMonthStr);
     let cumulative = 0;
     pastComps.forEach(comp => {
       (comp.lineas || []).forEach((line: any) => {
-        if (isCashBankIdOrCodigo(line.cuentaId)) {
+        if (isCashBankIdOrCodigo(line.cuentaId || line.cuenta_id)) {
           cumulative += (Number(line.debe) || 0) - (Number(line.haber) || 0);
         }
       });
@@ -917,7 +922,7 @@ export default function Reports({
       const yearMonthKey = `${currentY}-${monthStr}`;
 
       const monthComps = (comprobantes || []).filter(c => 
-        c.estado === 'Contabilizado' && 
+        isContabilizado(c) && 
         c.fecha.startsWith(yearMonthKey) && 
         (c.fecha || '').split('T')[0] >= startDate && 
         (c.fecha || '').split('T')[0] <= endDate
@@ -928,7 +933,7 @@ export default function Reports({
       
       monthComps.forEach(comp => {
         (comp.lineas || []).forEach((line: any) => {
-          if (isCashBankIdOrCodigo(line.cuentaId)) {
+          if (isCashBankIdOrCodigo(line.cuentaId || line.cuenta_id)) {
             const debe = Number(line.debe) || 0;
             const haber = Number(line.haber) || 0;
             if (debe > 0) ingresos += debe;
@@ -973,10 +978,22 @@ export default function Reports({
 
   // 1. Balance de Comprobación
   const balanceComprobacion = useMemo(() => {
-    const cuentasMovimiento = cuentasContables.filter(c => c.tipo === 'Movimiento').sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const isLineForAccount = (linea: any, cuenta: any) => {
+      const cId = String(linea.cuentaId || linea.cuenta_id || linea.cuentaCodigo || linea.codigo || '').trim();
+      if (!cId) return false;
+      return String(cuenta.id) === cId || String(cuenta.codigo) === cId || (cuenta.codigo && cuenta.codigo.replace(/\./g, '') === cId.replace(/\./g, ''));
+    };
+
+    const cuentasMovimiento = cuentasContables.filter(c => c.tipo === 'Movimiento' || (!c.tipo && c.codigo && c.codigo.split('.').length >= 3)).sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
     
-    const pastComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] < startDate);
-    const periodComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
+    const pastComprobantes = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] < startDate);
+    const periodComprobantes = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
 
     const report = cuentasMovimiento.map(cuenta => {
       let saldoInicialDeudor = 0;
@@ -990,7 +1007,7 @@ export default function Reports({
 
       pastComprobantes.forEach(comp => {
         (comp.lineas || []).forEach((linea: any) => {
-          if (String(linea.cuentaId) === String(cuenta.id)) {
+          if (isLineForAccount(linea, cuenta)) {
             pastDebitosTotal += Number(linea.debe) || 0;
             pastCreditosTotal += Number(linea.haber) || 0;
           }
@@ -1022,7 +1039,7 @@ export default function Reports({
       // 2- MOVIMIENTOS REALES: Lectura cronológica exacta de los débitos y créditos del período actual seleccionado sin alterar movimientos vigentes.
       periodComprobantes.forEach(comp => {
         (comp.lineas || []).forEach((linea: any) => {
-          if (String(linea.cuentaId) === String(cuenta.id)) {
+          if (isLineForAccount(linea, cuenta)) {
             debitos += Number(linea.debe) || 0;
             creditos += Number(linea.haber) || 0;
           }
@@ -1092,10 +1109,22 @@ export default function Reports({
 
   // 1.1 Libro Mayor (General Ledger) calculation
   const libroMayorData = useMemo(() => {
-    const cuentasMovimiento = cuentasContables.filter(c => c.tipo === 'Movimiento').sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const isLineForAccount = (linea: any, cuenta: any) => {
+      const cId = String(linea.cuentaId || linea.cuenta_id || linea.cuentaCodigo || linea.codigo || '').trim();
+      if (!cId) return false;
+      return String(cuenta.id) === cId || String(cuenta.codigo) === cId || (cuenta.codigo && cuenta.codigo.replace(/\./g, '') === cId.replace(/\./g, ''));
+    };
+
+    const cuentasMovimiento = cuentasContables.filter(c => c.tipo === 'Movimiento' || (!c.tipo && c.codigo && c.codigo.split('.').length >= 3)).sort((a, b) => (a.codigo || '').localeCompare(b.codigo || ''));
     
-    const pastComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] < startDate);
-    const periodComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
+    const pastComprobantes = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] < startDate);
+    const periodComprobantes = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
 
     return cuentasMovimiento.map(cuenta => {
       let pastDebitosTotal = 0;
@@ -1103,7 +1132,7 @@ export default function Reports({
 
       pastComprobantes.forEach(comp => {
         (comp.lineas || []).forEach((linea: any) => {
-          if (String(linea.cuentaId) === String(cuenta.id)) {
+          if (isLineForAccount(linea, cuenta)) {
             pastDebitosTotal += Number(linea.debe) || 0;
             pastCreditosTotal += Number(linea.haber) || 0;
           }
@@ -1125,7 +1154,7 @@ export default function Reports({
 
       sortedPeriodComprobantes.forEach(comp => {
         (comp.lineas || []).forEach((linea: any) => {
-          if (String(linea.cuentaId) === String(cuenta.id)) {
+          if (isLineForAccount(linea, cuenta)) {
             const debeVal = Number(linea.debe) || 0;
             const haberVal = Number(linea.haber) || 0;
             
@@ -1138,7 +1167,7 @@ export default function Reports({
 
               entries.push({
                 fecha: comp.fecha,
-                comprobante: comp.codigo || 'N/A',
+                comprobante: comp.numero || comp.codigo || 'N/A',
                 comprobanteNumero: comp.numero || '',
                 concepto: linea.descripcion || comp.descripcion || comp.glosa || comp.concepto || 'Sin descripción',
                 debe: debeVal,
@@ -1372,29 +1401,46 @@ export default function Reports({
 
   // Filas para el Resumen de Diario
   const resumenDiarioRows = useMemo(() => {
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
     const periodComprobantes = comprobantes.filter(
-      c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate
+      c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate
     );
 
     const aggregates: Record<string, { debe: number; haber: number }> = {};
     
     periodComprobantes.forEach(comp => {
       (comp.lineas || []).forEach((linea: any) => {
-        const cId = String(linea.cuentaId);
+        const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+        if (!cId) return;
+        const matched = cuentasContables.find(item => 
+          String(item.id) === cId || 
+          String(item.codigo) === cId || 
+          (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
+        const key = matched ? matched.id : cId;
         const debe = Number(linea.debe) || 0;
         const haber = Number(linea.haber) || 0;
         if (debe > 0 || haber > 0) {
-          if (!aggregates[cId]) {
-            aggregates[cId] = { debe: 0, haber: 0 };
+          if (!aggregates[key]) {
+            aggregates[key] = { debe: 0, haber: 0 };
           }
-          aggregates[cId].debe += debe;
-          aggregates[cId].haber += haber;
+          aggregates[key].debe += debe;
+          aggregates[key].haber += haber;
         }
       });
     });
 
     const rows = Object.entries(aggregates).map(([cId, vals]) => {
-      const cuentaObj = cuentasContables.find(item => String(item.id) === cId);
+      const cuentaObj = cuentasContables.find(item => 
+        String(item.id) === cId || 
+        String(item.codigo) === cId || 
+        (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+      );
       return {
         id: cId,
         codigo: cuentaObj?.codigo || '',
@@ -1420,9 +1466,14 @@ export default function Reports({
 
   // 2. Estado de Resultados (Ingresos vs Gastos)
   const estadoResultados = useMemo(() => {
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
     // 2.1 Filter all movement accounts from group 4 to 9
     const cuentasResultadoMovimiento = cuentasContables.filter(c => {
-      if (c.tipo !== 'Movimiento') return false;
       const firstChar = c.codigo?.charAt(0);
       return firstChar >= '4' && firstChar <= '9';
     });
@@ -1434,14 +1485,20 @@ export default function Reports({
       balancesNominales[c.id] = { debe: 0, haber: 0 };
     });
 
-    const periodComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
+    const periodComprobantes = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= startDate && (c.fecha || '').split('T')[0] <= endDate);
 
     periodComprobantes.forEach(comp => {
       (comp.lineas || []).forEach((linea: any) => {
-        const cId = String(linea.cuentaId);
-        if (balancesNominales[cId] !== undefined) {
-          balancesNominales[cId].debe += Number(linea.debe) || 0;
-          balancesNominales[cId].haber += Number(linea.haber) || 0;
+        const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+        if (!cId) return;
+        const matched = cuentasResultadoMovimiento.find(item => 
+          String(item.id) === cId || 
+          String(item.codigo) === cId || 
+          (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
+        if (matched && balancesNominales[matched.id] !== undefined) {
+          balancesNominales[matched.id].debe += Number(linea.debe) || 0;
+          balancesNominales[matched.id].haber += Number(linea.haber) || 0;
         }
       });
     });
@@ -1527,8 +1584,13 @@ export default function Reports({
 
     periodComprobantes.forEach(comp => {
       (comp.lineas || []).forEach((linea: any) => {
-        const cId = linea.cuentaId;
-        const cuentaObj = cuentasContables.find(ct => String(ct.id) === String(cId));
+        const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+        if (!cId) return;
+        const cuentaObj = cuentasContables.find(ct => 
+          String(ct.id) === cId || 
+          String(ct.codigo) === cId || 
+          (ct.codigo && ct.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
         if (!cuentaObj) return;
 
         const cod = cuentaObj.codigo || '';
@@ -1570,9 +1632,7 @@ export default function Reports({
 
   // 3. Balance General
   const balanceGeneral = useMemo(() => {
-    const activeCuentas = (cuentasContables && cuentasContables.length >= 25)
-      ? cuentasContables
-      : SAMPLE_FULL_BALANCE_CUENTAS;
+    const activeCuentas = cuentasContables || [];
 
     const pastComprobantes = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] <= endDate);
 
@@ -1667,8 +1727,7 @@ export default function Reports({
       }
     });
 
-    const isUsingSample = activeCuentas === SAMPLE_FULL_BALANCE_CUENTAS;
-    if (!isUsingSample) {
+    {
       const utilidadResultados = estadoResultados.utilidadNeta;
       if (Math.abs(utilidadResultados) > 0.009) {
         patrimonio.push({

@@ -1,0 +1,34 @@
+Created At: 2026-09-12T16:31:44-04:00
+Completed At: 2026-09-12T16:31:44-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2613
+Total Bytes: 126550
+Showing lines 1740 to 1765
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1740:                   {currency === 'USD' && (
+1741:                     <p className="text-[11px] font-bold text-emerald-600">
+1742:                       Equiv: Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(totals.totalBs)}
+1743:                     </p>
+1744:                   )}
+1745:                 </div>
+1746:                 <div className="text-right">
+1747:                   <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Fecha de Pago</label>
+1748:                   <input
+1749:                     type="date"
+1750:                     value={cobranzaForm.fecha}
+1751:                     onChange={(e) => setCobranzaForm({ ...cobranzaForm, fecha: e.target.value })}
+1752:                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+1753:                   />
+1754:                 </div>
+1755:               </div>
+1756: 
+1757:               {/* Lista de Pagos Recibidos */}
+1758:               <div className="space-y-3">
+1759:                 <div className="flex justify-between items-center">
+1760:                   <h4 className="font-bold text-slate-800 text-xs">Desglose de Formas de Pago Recibidas</h4>
+1761:                   <button
+1762:                     type="button"
+1763:                     onClick={handleAddPagoCobranza}
+1764:                     className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 transition"
+1765:                   >
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

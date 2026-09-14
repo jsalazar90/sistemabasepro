@@ -1,0 +1,79 @@
+Created At: 2026-09-12T17:28:52-04:00
+Completed At: 2026-09-12T17:28:52-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2957
+Total Bytes: 142667
+Showing lines 1220 to 1290
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1220:           </div>
+1221: 
+1222:           {/* Fila de Datos del Documento */}
+1223:           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 text-xs">
+1224:             <div>
+1225:               <label className="block text-slate-700 font-bold mb-1">N° de Factura / Correlativo *</label>
+1226:               <input
+1227:                 type="text"
+1228:                 required
+1229:                 value={invoiceNumber}
+1230:                 onChange={(e) => setInvoiceNumber(e.target.value)}
+1231:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-indigo-600 focus:bg-white focus:border-indigo-600 outline-none uppercase"
+1232:               />
+1233:             </div>
+1234: 
+1235:             <div>
+1236:               <label className="block text-slate-700 font-bold mb-1">N° de Control Fiscal</label>
+1237:               <input
+1238:                 type="text"
+1239:                 placeholder="00-000000"
+1240:                 value={controlNumber}
+1241:                 onChange={(e) => setControlNumber(e.target.value)}
+1242:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-slate-700 focus:bg-white focus:border-indigo-600 outline-none"
+1243:               />
+1244:             </div>
+1245: 
+1246:             <div>
+1247:               <div className="flex items-center justify-between mb-1">
+1248:                 <label className="block text-slate-700 font-bold">Fecha de Emisión *</label>
+1249:                 <span className="text-[11px] font-bold text-indigo-600 font-mono">
+1250:                   {formatDate(issueDate)}
+1251:                 </span>
+1252:               </div>
+1253:               <input
+1254:                 type="date"
+1255:                 required
+1256:                 value={issueDate}
+1257:                 onChange={(e) => setIssueDate(e.target.value)}
+1258:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
+1259:               />
+1260:             </div>
+1261: 
+1262:             <div>
+1263:               <div className="flex items-center justify-between mb-1">
+1264:                 <label className="block text-slate-700 font-bold">Tasa de Cambio Oficial (Bs./$)</label>
+1265:                 <div className="flex items-center gap-2.5">
+1266:                   {currency === 'VES' && items.some(it => it.producto_id || it.precio_unitario > 0) && (
+1267:                     <button
+1268:                       type="button"
+1269:                       onClick={() => recalculateItemsInVES()}
+1270:                       className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 hover:underline cursor-pointer"
+1271:                       title="Recalcular precios de los productos según esta tasa de cambio"
+1272:                     >
+1273:                       <RefreshCw size={11} />
+1274:                       <span>Recalcular Precios</span>
+1275:                     </button>
+1276:                   )}
+1277:                   <button
+1278:                     type="button"
+1279:                     onClick={() => setIsTasaModalOpen(true)}
+1280:                     className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 hover:underline cursor-pointer"
+1281:                     title="Gestionar histórico de tasas oficiales BCV"
+1282:                   >
+1283:                     <Coins size={12} />
+1284:                     <span>Tasas BCV</span>
+1285:                   </button>
+1286:                 </div>
+1287:               </div>
+1288:               <div className="relative">
+1289:                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400 select-none">Bs.</span>
+1290:                 <input
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

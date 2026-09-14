@@ -1,0 +1,159 @@
+Created At: 2026-09-12T16:36:46-04:00
+Completed At: 2026-09-12T16:36:46-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2612
+Total Bytes: 126667
+Showing lines 2350 to 2500
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2350:             </form>
+2351:           </div>
+2352:         </div>
+2353:       )}
+2354: 
+2355:       {/* Modal Selector de Cuenta para el Cliente */}
+2356:       <CuentaContableModal
+2357:         isOpen={showCustomerCuentaModal}
+2358:         onClose={() => {
+2359:           setShowCustomerCuentaModal(false);
+2360:           setActiveCustomerAccountKey(null);
+2361:         }}
+2362:         cuentasContables={cuentasContables}
+2363:         selectedCuentaId={activeCustomerAccountKey ? (customerModalForm as any)[activeCustomerAccountKey] : ''}
+2364:         onSelect={(cuenta) => {
+2365:           if (activeCustomerAccountKey && cuenta) {
+2366:             setCustomerModalForm(prev => ({ ...prev, [activeCustomerAccountKey]: cuenta.id }));
+2367:           }
+2368:           setShowCustomerCuentaModal(false);
+2369:           setActiveCustomerAccountKey(null);
+2370:         }}
+2371:       />
+2372: 
+2373:       {/* ========================================================================= */}
+2374:       {/* MODAL DE SELECCIÓN RÁPIDA DE ARTÍCULOS DE INVENTARIO */}
+2375:       {/* ========================================================================= */}
+2376:       {isProductModalOpen && (
+2377:         <div className="fixed inset-0 z-[375] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 animate-in fade-in duration-200">
+2378:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl flex flex-col overflow-hidden max-h-[90vh] border border-slate-100 animate-in zoom-in-95 duration-200">
+2379:             {/* Header del Modal */}
+2380:             <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/30 flex justify-between items-center shrink-0">
+2381:               <div className="flex items-center gap-3">
+2382:                 <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm shadow-indigo-500/20">
+2383:                   <Package size={20} />
+2384:                 </div>
+2385:                 <div>
+2386:                   <h3 className="text-base font-black text-slate-900">
+2387:                     Catálogo de Inventario de Mercancía
+2388:                   </h3>
+2389:                   <p className="text-xs text-slate-500 font-medium">
+2390:                     Busque y seleccione el artículo para cargarlo a la factura
+2391:                   </p>
+2392:                 </div>
+2393:               </div>
+2394:               <button
+2395:                 type="button"
+2396:                 onClick={() => {
+2397:                   setIsProductModalOpen(false);
+2398:                   setActiveItemIndexForProduct(null);
+2399:                 }}
+2400:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition font-bold cursor-pointer"
+2401:               >
+2402:                 ✕
+2403:               </button>
+2404:             </div>
+2405: 
+2406:             {/* Barra de Búsqueda y Filtros de Categoría */}
+2407:             <div className="p-4 border-b border-slate-100 bg-white space-y-3 shrink-0">
+2408:               <div className="relative">
+2409:                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+2410:                 <input
+2411:                   type="text"
+2412:                   autoFocus
+2413:                   placeholder="Buscar por código, SKU, nombre, categoría o descripción..."
+2414:                   value={productSearchTerm}
+2415:                   onChange={(e) => setProductSearchTerm(e.target.value)}
+2416:                   className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none transition"
+2417:                 />
+2418:                 {productSearchTerm && (
+2419:                   <button
+2420:                     type="button"
+2421:                     onClick={() => setProductSearchTerm('')}
+2422:                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+2423:                   >
+2424:                     ✕
+2425:                   </button>
+2426:                 )}
+2427:               </div>
+2428: 
+2429:               {/* Filtros de Categoría */}
+2430:               {productCategories.length > 0 && (
+2431:                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+2432:                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+2433:                     Categoría:
+2434:                   </span>
+2435:                   <button
+2436:                     type="button"
+2437:                     onClick={() => setSelectedProductCategory('all')}
+2438:                     className={`px-3 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer ${
+2439:                       selectedProductCategory === 'all'
+2440:                         ? 'bg-indigo-600 text-white shadow-xs'
+2441:                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+2442:                     }`}
+2443:                   >
+2444:                     Todas ({products.length})
+2445:                   </button>
+2446:                   {productCategories.map(cat => (
+2447:                     <button
+2448:                       key={cat}
+2449:                       type="button"
+2450:                       onClick={() => setSelectedProductCategory(cat)}
+2451:                       className={`px-3 py-1 rounded-lg text-xs font-bold transition shrink-0 cursor-pointer ${
+2452:                         selectedProductCategory === cat
+2453:                           ? 'bg-indigo-600 text-white shadow-xs'
+2454:                           : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+2455:                       }`}
+2456:                     >
+2457:                       {cat}
+2458:                     </button>
+2459:                   ))}
+2460:                 </div>
+2461:               )}
+2462:             </div>
+2463: 
+2464:             {/* Listado de Artículos */}
+2465:             <div className="overflow-y-auto flex-1 p-4">
+2466:               {filteredProducts.length === 0 ? (
+2467:                 <div className="p-12 text-center text-slate-400">
+2468:                   <Package size={40} className="mx-auto mb-3 opacity-30 text-slate-400" />
+2469:                   <p className="font-bold text-sm text-slate-700">No se encontraron artículos</p>
+2470:                   <p className="text-xs mt-1 text-slate-400">
+2471:                     {productSearchTerm
+2472:                       ? `No hay coincidencias para "${productSearchTerm}". Intente con otro término.`
+2473:                       : 'No hay productos registrados en el inventario.'}
+2474:                   </p>
+2475:                   {productSearchTerm && (
+2476:                     <button
+2477:                       type="button"
+2478:                       onClick={() => {
+2479:                         setProductSearchTerm('');
+2480:                         setSelectedProductCategory('all');
+2481:                       }}
+2482:                       className="mt-3 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition cursor-pointer"
+2483:                     >
+2484:                       Limpiar búsqueda
+2485:                     </button>
+2486:                   )}
+2487:                 </div>
+2488:               ) : (
+2489:                 <div className="border border-slate-200 rounded-2xl overflow-hidden">
+2490:                   <table className="w-full text-left text-xs">
+2491:                     <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+2492:                       <tr>
+2493:                         <th className="px-3.5 py-2.5 w-24">Código</th>
+2494:                         <th className="px-3.5 py-2.5">Artículo / Categoría</th>
+2495:                         <th className="px-3.5 py-2.5 w-32 text-center">Stock Actual</th>
+2496:                         <th className="px-3.5 py-2.5 w-32 text-right">Precio Ref. ($)</th>
+2497:                         <th className="px-3.5 py-2.5 w-32 text-right">
+2498:                           Precio ({currency === 'USD' ? '$' : 'Bs.'})
+2499:                         </th>
+2500:                         <th className="px-3.5 py-2.5 w-20 text-center">IVA</th>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,69 @@
+Created At: 2026-09-12T18:16:25-04:00
+Completed At: 2026-09-12T18:16:25-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3220
+Total Bytes: 156799
+Showing lines 1200 to 1260
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1200:                   fecha_apertura: issueDate,
+1201:                   total_operaciones: 0,
+1202:                   monto_bruto_sistema: 0,
+1203:                   monto_bruto_ticket: 0,
+1204:                   diferencia: 0,
+1205:                   comision_monto: 0,
+1206:                   monto_neto_banco: 0,
+1207:                   estado: 'abierto',
+1208:                   transacciones: []
+1209:                 };
+1210:               }
+1211: 
+1212:               const newTx: LotePosTransaccion = {
+1213:                 id: `tx_pos_${Date.now()}_${idx}`,
+1214:                 factura_id: newFactura.id,
+1215:                 factura_numero: newFactura.numero,
+1216:                 cliente_nombre: customerName,
+1217:                 referencia: pago.referencia || 'VOUCHER',
+1218:                 monto_bs: pagoMontoBsNum,
+1219:                 monto_usd: pagoMontoNum,
+1220:                 hora: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+1221:                 fecha: issueDate
+1222:               };
+1223: 
+1224:               const updatedLote = {
+1225:                 ...openLote,
+1226:                 total_operaciones: (openLote.transacciones?.length || 0) + 1,
+1227:                 monto_bruto_sistema: Number(((openLote.monto_bruto_sistema || 0) + pagoMontoBsNum).toFixed(2)),
+1228:                 transacciones: [...(openLote.transacciones || []), newTx],
+1229:                 updated_at: new Date().toISOString()
+1230:               };
+1231: 
+1232:               await dbSaveLotePos(updatedLote);
+1233:               onSave?.('lotesPos', updatedLote);
+1234:             } catch (err) {
+1235:               console.error("Error acumulando en lote POS:", err);
+1236:             }
+1237:           } else {
+1238:             const bank = bancos.find(b => b.id === pago.bancoId);
+1239:             if (bank) {
+1240:               const isBankVES = bank.moneda === 'VES' || bank.moneda === 'Bs';
+1241:               onSave?.('movimientosBancos', {
+1242:                 id: `mov_bnk_${Date.now()}_${idx}`,
+1243:                 banco_id: bank.id,
+1244:                 fecha: issueDate,
+1245:                 ref: pago.referencia || newFactura.numero,
+1246:                 descripcion: `Ingreso Cobranza Factura ${newFactura.numero} (${customerName}) - ${pago.metodoPago}`,
+1247:                 tipo: 'ingreso',
+1248:                 monto: isBankVES ? pagoMontoBsNum : pagoMontoNum,
+1249:                 tasa: exchangeRate,
+1250:                 estado: 'conciliado',
+1251:                 comprobante_id: voucherId,
+1252:                 created_at: new Date().toISOString()
+1253:               });
+1254:             }
+1255:           }
+1256:         });
+1257:       }
+1258: 
+1259:       // 5. Guardar Asiento Contable
+1260:       if (pendingVoucher) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

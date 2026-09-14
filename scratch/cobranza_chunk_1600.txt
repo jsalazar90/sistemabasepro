@@ -1,0 +1,159 @@
+Created At: 2026-09-12T16:30:30-04:00
+Completed At: 2026-09-12T16:30:30-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2576
+Total Bytes: 124528
+Showing lines 1600 to 1750
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1600:               >
+1601:                 ✕
+1602:               </button>
+1603:             </div>
+1604: 
+1605:             <div className="p-6 space-y-4 text-xs">
+1606:               <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100 flex justify-between items-center">
+1607:                 <div>
+1608:                   <p className="text-[10px] font-bold uppercase text-indigo-500">Cliente:</p>
+1609:                   <p className="font-bold text-slate-900 text-sm">{customerName}</p>
+1610:                 </div>
+1611:                 <div className="text-right">
+1612:                   <p className="text-[10px] font-bold uppercase text-indigo-500">Total Documento:</p>
+1613:                   <p className="font-black text-indigo-600 text-base">{formatMoney(totals.total, currency)}</p>
+1614:                 </div>
+1615:               </div>
+1616: 
+1617:               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+1618:                 {/* TARJETA CONTADO */}
+1619:                 <div 
+1620:                   onClick={() => handleSelectCondition('contado')}
+1621:                   className="p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 hover:border-emerald-500 cursor-pointer transition flex flex-col justify-between gap-3 group"
+1622:                 >
+1623:                   <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+1624:                     <DollarSign size={22} />
+1625:                   </div>
+1626:                   <div>
+1627:                     <h4 className="font-black text-slate-900 text-sm group-hover:text-emerald-700 transition">
+1628:                       Factura de Contado
+1629:                     </h4>
+1630:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+1631:                       El cliente cancela de inmediato. Se registrará la cobranza y el ingreso bancario.
+1632:                     </p>
+1633:                   </div>
+1634:                   <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+1635:                     <span>Cobrar ahora</span>
+1636:                     <ArrowRight size={14} />
+1637:                   </span>
+1638:                 </div>
+1639: 
+1640:                 {/* TARJETA CRÉDITO */}
+1641:                 <div 
+1642:                   onClick={() => handleSelectCondition('credito')}
+1643:                   className="p-5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-500 cursor-pointer transition flex flex-col justify-between gap-3 group"
+1644:                 >
+1645:                   <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+1646:                     <Calendar size={22} />
+1647:                   </div>
+1648:                   <div>
+1649:                     <h4 className="font-black text-slate-900 text-sm group-hover:text-indigo-700 transition">
+1650:                       Factura a Crédito
+1651:                     </h4>
+1652:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+1653:                       Se generará una cuenta por cobrar (CxC) pendiente con fecha de vencimiento.
+1654:                     </p>
+1655:                   </div>
+1656:                   <span className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
+1657:                     <span>Asignar crédito</span>
+1658:                     <ArrowRight size={14} />
+1659:                   </span>
+1660:                 </div>
+1661:               </div>
+1662:             </div>
+1663:           </div>
+1664:         </div>
+1665:       )}
+1666: 
+1667:       {/* ========================================================================= */}
+1668:       {/* PASO 2 (SI ES CONTADO): MODAL DE COBRANZA (IDÉNTICO AL SISTEMA) */}
+1669:       {/* ========================================================================= */}
+1670:       {isCobranzaModalOpen && (
+1671:         <div className="fixed inset-0 z-[360] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+1672:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-100">
+1673:             {/* Header del Modal de Cobranza */}
+1674:             <div className="p-5 border-b border-slate-100 bg-emerald-50/70 flex justify-between items-center shrink-0">
+1675:               <div className="flex items-center gap-3">
+1676:                 <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
+1677:                   <CreditCard size={20} />
+1678:                 </div>
+1679:                 <div>
+1680:                   <h3 className="text-base font-black text-slate-900">Registro de Cobranza (Contado)</h3>
+1681:                   <p className="text-xs text-emerald-800 font-semibold">
+1682:                     Factura {invoiceNumber} • {customerName}
+1683:                   </p>
+1684:                 </div>
+1685:               </div>
+1686:               <button
+1687:                 type="button"
+1688:                 onClick={() => setIsCobranzaModalOpen(false)}
+1689:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold"
+1690:               >
+1691:                 ✕
+1692:               </button>
+1693:             </div>
+1694: 
+1695:             {/* Cuerpo del Modal de Cobranza */}
+1696:             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+1697:               
+1698:               {/* Tarjeta de Resumen del Cobro */}
+1699:               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+1700:                 <div>
+1701:                   <p className="text-[10px] font-bold uppercase text-slate-400">Total Factura a Cobrar:</p>
+1702:                   <p className="text-lg font-black text-slate-900">{formatMoney(totals.total, currency)}</p>
+1703:                   {currency === 'USD' && (
+1704:                     <p className="text-[11px] font-bold text-emerald-600">
+1705:                       Equiv: Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(totals.totalBs)}
+1706:                     </p>
+1707:                   )}
+1708:                 </div>
+1709:                 <div className="text-right">
+1710:                   <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Fecha de Pago</label>
+1711:                   <input
+1712:                     type="date"
+1713:                     value={cobranzaForm.fecha}
+1714:                     onChange={(e) => setCobranzaForm({ ...cobranzaForm, fecha: e.target.value })}
+1715:                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+1716:                   />
+1717:                 </div>
+1718:               </div>
+1719: 
+1720:               {/* Lista de Pagos Recibidos */}
+1721:               <div className="space-y-3">
+1722:                 <div className="flex justify-between items-center">
+1723:                   <h4 className="font-bold text-slate-800 text-xs">Desglose de Formas de Pago Recibidas</h4>
+1724:                   <button
+1725:                     type="button"
+1726:                     onClick={handleAddPagoCobranza}
+1727:                     className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 transition"
+1728:                   >
+1729:                     <Plus size={13} />
+1730:                     <span>Agregar otra forma de pago</span>
+1731:                   </button>
+1732:                 </div>
+1733: 
+1734:                 {cobranzaForm.pagos.map((pago, pIdx) => {
+1735:                   const selB = bancos.find(b => b.id === pago.bancoId);
+1736:                   const isBVES = selB && (selB.moneda === 'VES' || selB.moneda === 'Bs' || selB.moneda === 'Bolivares');
+1737: 
+1738:                   return (
+1739:                     <div key={pago.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2.5">
+1740:                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+1741:                         {/* Selector de Banco / Caja */}
+1742:                         <div className="sm:col-span-2">
+1743:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+1744:                             Banco / Caja de Destino *
+1745:                           </label>
+1746:                           <select
+1747:                             value={pago.bancoId}
+1748:                             onChange={(e) => {
+1749:                               const updated = [...cobranzaForm.pagos];
+1750:                               updated[pIdx].bancoId = e.target.value;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

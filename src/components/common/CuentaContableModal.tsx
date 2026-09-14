@@ -51,7 +51,7 @@ export default function CuentaContableModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[600] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden max-h-[85vh] animate-in zoom-in-95 duration-200 border border-slate-100">
         {/* Header */}
         <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center shrink-0">

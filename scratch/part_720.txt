@@ -1,0 +1,159 @@
+Created At: 2026-09-12T18:39:16-04:00
+Completed At: 2026-09-12T18:39:16-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3221
+Total Bytes: 156901
+Showing lines 720 to 870
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+720: 
+721:       updated[index] = item;
+722:       return updated;
+723:     });
+724:   };
+725: 
+726:   // =========================================================================
+727:   // PASO 1: Validar Formulario y Abrir Modal de Condición (Contado o Crédito)
+728:   // =========================================================================
+729:   const handleStartEmission = (e: React.FormEvent) => {
+730:     e.preventDefault();
+731: 
+732:     if (!customerName || !customerRif) {
+733:       showToast?.('Seleccione o registre el cliente a quien se emitirá la factura', 'error');
+734:       return;
+735:     }
+736: 
+737:     if (!invoiceNumber.trim()) {
+738:       showToast?.('El número de documento es obligatorio', 'error');
+739:       return;
+740:     }
+741: 
+742:     if (items.some(i => !i.descripcion.trim() || i.cantidad <= 0)) {
+743:       showToast?.('Complete la descripción y cantidad válida en cada línea', 'error');
+744:       return;
+745:     }
+746: 
+747:     if (totals.total <= 0) {
+748:       showToast?.('El total de la factura debe ser mayor a 0', 'error');
+749:       return;
+750:     }
+751: 
+752:     // Validar año contable
+753:     if (workingYear && issueDate) {
+754:       const yr = issueDate.substring(0, 4);
+755:       if (yr !== workingYear) {
+756:         showToast?.(`La fecha (${yr}) no coincide con el período contable seleccionado (${workingYear})`, 'error');
+757:         return;
+758:       }
+759:     }
+760: 
+761:     // Si hay productos con stock 0 o insuficiente y aún no han sido autorizados con clave master
+762:     if (zeroStockItems.length > 0 && !isZeroStockAuthorized) {
+763:       setIsMasterAuthModalOpen(true);
+764:       return;
+765:     }
+766: 
+767:     // Abrir modal de selección Contado vs Crédito
+768:     setIsConditionModalOpen(true);
+769:   };
+770: 
+771:   // =========================================================================
+772:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+773:   // =========================================================================
+774:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+775:     setSelectedCondition(cond);
+776:     setIsConditionModalOpen(false);
+777: 
+778:     if (cond === 'credito') {
+779:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+780:       buildAndShowVoucher('credito');
+781:     } else {
+782:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+783:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+784:       const isBancoVES = defaultBanco && (defaultBanco.moneda === 'VES' || defaultBanco.moneda === 'Bs');
+785:       
+786:       const pagoInicial = {
+787:         id: `pg_${Date.now()}`,
+788:         bancoId: defaultBanco ? defaultBanco.id : '',
+789:         metodoPago: 'Transferencia',
+790:         referencia: '',
+791:         monto: currency === 'USD' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarUSD.toFixed(2),
+792:         montoBs: currency === 'VES' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarBs.toFixed(2)
+793:       };
+794: 
+795:       setCobranzaForm({
+796:         fecha: issueDate,
+797:         tasa: exchangeRate,
+798:         pagos: [pagoInicial]
+799:       });
+800:       setIsCobranzaModalOpen(true);
+801:     }
+802:   };
+803: 
+804:   // Manejo de pagos en el Modal de Cobranza
+805:   const handleAddPagoCobranza = () => {
+806:     const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+807:     setCobranzaForm(prev => ({
+808:       ...prev,
+809:       pagos: [
+810:         ...prev.pagos,
+811:         {
+812:           id: `pg_${Date.now()}_${prev.pagos.length + 1}`,
+813:           bancoId: defaultBanco ? defaultBanco.id : '',
+814:           metodoPago: 'Transferencia',
+815:           referencia: '',
+816:           monto: '0.00',
+817:           montoBs: '0.00'
+818:         }
+819:       ]
+820:     }));
+821:   };
+822: 
+823:   const handleRemovePagoCobranza = (index: number) => {
+824:     if (cobranzaForm.pagos.length === 1) return;
+825:     setCobranzaForm(prev => ({
+826:       ...prev,
+827:       pagos: prev.pagos.filter((_, i) => i !== index)
+828:     }));
+829:   };
+830: 
+831:   // Proceder desde Cobranza al Asiento Contable
+832:   const handleConfirmCobranzaToVoucher = () => {
+833:     const totalPagado = cobranzaForm.pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+834:     if (cobranzaForm.pagos.length === 0 || totalPagado <= 0) {
+835:       showToast?.('Ingrese al menos un pago con monto válido en la cobranza', 'error');
+836:       return;
+837:     }
+838: 
+839:     setIsCobranzaModalOpen(false);
+840:     buildAndShowVoucher('contado');
+841:   };
+842: 
+843:   // =========================================================================
+844:   // PASO 3: Construir Asiento Contable y Mostrar Previsualización
+845:   // =========================================================================
+846:   const buildAndShowVoucher = (condition: 'contado' | 'credito') => {
+847:     const mainCustomerAccount = configContable?.cuentaCxc || '1.1.02.001';
+848:     const mainSalesAccount = configContable?.cuentaVentas || '4.1.01.001';
+849:     const mainTaxAccount = configContable?.cuentaDebitoFiscal || '2.1.02.001';
+850: 
+851:     const linesVoucher: any[] = [];
+852:     const totalAmount = totals.totalUSD;
+853:     const netoAmount = totals.netoCobrarUSD;
+854: 
+855:     if (condition === 'credito') {
+856:       // Debe: CxC Clientes (por el monto neto a percibir de la factura en USD)
+857:       linesVoucher.push({
+858:         id: `vl_cxc`,
+859:         cuentaId: mainCustomerAccount,
+860:         nombreCuenta: `Cuentas por Cobrar Clientes (${customerName})`,
+861:         descripcion: `Factura a crédito ${invoiceNumber} - Venc. ${formatDate(calculatedDueDate)}`,
+862:         debe: netoAmount,
+863:         haber: 0
+864:       });
+865:     } else {
+866:       // Debe: Banco(s) o Cuenta Puente POS según pagos registrados en el modal de cobranza
+867:       cobranzaForm.pagos.forEach((pago, pIdx) => {
+868:         const isPos = pago.metodoPago === 'Punto de Venta';
+869:         const bank = bancos.find(b => b.id === pago.bancoId);
+870:         const term = terminalesPos.find(t => t.id === pago.terminalId);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

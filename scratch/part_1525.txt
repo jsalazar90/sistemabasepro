@@ -1,0 +1,29 @@
+Created At: 2026-09-12T18:58:09-04:00
+Completed At: 2026-09-12T18:58:09-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3528
+Total Bytes: 169955
+Showing lines 1525 to 1545
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1525:             title="Limpiar formulario y reiniciar documento"
+1526:           >
+1527:             <Trash2 size={13} />
+1528:             <span className="hidden sm:inline">Limpiar</span>
+1529:           </button>
+1530:           <button
+1531:             type="submit"
+1532:             form="invoice-main-form"
+1533:             className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-500/25 transition cursor-pointer"
+1534:           >
+1535:             <Save size={14} />
+1536:             <span>EMITIR FACTURA (F2)</span>
+1537:           </button>
+1538:           {isModal && (
+1539:             <button
+1540:               type="button"
+1541:               onClick={onClose}
+1542:               className="w-7 h-7 rounded-full bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white flex items-center justify-center transition font-bold text-xs cursor-pointer border border-slate-700 hover:border-rose-500 shrink-0 ml-1"
+1543:               title="Cerrar ventana"
+1544:             >
+1545:               <X size={14} />
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

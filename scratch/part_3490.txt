@@ -1,0 +1,21 @@
+Created At: 2026-09-12T19:24:03-04:00
+Completed At: 2026-09-12T19:24:03-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3502
+Total Bytes: 169510
+Showing lines 3490 to 3502
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+3490:       />
+3491: 
+3492:       {/* Modal de Impresión de Factura Emitida */}
+3493:       <InvoicePrintModal
+3494:         isOpen={isPrintModalOpen}
+3495:         onClose={() => setIsPrintModalOpen(false)}
+3496:         factura={lastEmittedInvoice}
+3497:         empresa={empresa}
+3498:       />
+3499: 
+3500:     </div>
+3501:   );
+3502: }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

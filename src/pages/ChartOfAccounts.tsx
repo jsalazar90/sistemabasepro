@@ -118,7 +118,7 @@ export default function ChartOfAccounts({
     }
 
     const newAccount = {
-      id: editingId || `acc-${Date.now()}`,
+      id: editingId || crypto.randomUUID(),
       ...form,
     };
 

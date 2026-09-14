@@ -1,0 +1,39 @@
+Created At: 2026-09-12T17:37:07-04:00
+Completed At: 2026-09-12T17:37:07-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 80 to 110
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+80:   // Auto-sincronizar tasa BCV al ingresar si está en valor por defecto
+81:   useEffect(() => {
+82:     const today = new Date().toISOString().split('T')[0];
+83:     const stored = getTasaForDate(today);
+84:     if (stored === 36.5) {
+85:       fetchLiveBcvRate(false).then(res => {
+86:         if (res.success && res.tasa) {
+87:           setExchangeRateInput(res.tasa.toFixed(2));
+88:         }
+89:       });
+90:     }
+91:   }, []);
+92: 
+93:   // Sincronizar tasa si cambia la fecha de emisión
+94:   useEffect(() => {
+95:     const rate = getTasaForDate(issueDate);
+96:     setExchangeRateInput(rate.toFixed(2));
+97:   }, [issueDate]);
+98: 
+99:   // Escuchar eventos globales de actualización de tasa
+100:   useEffect(() => {
+101:     const handleTasaUpdated = (e: any) => {
+102:       const detail = e.detail;
+103:       if (detail && detail.tasa) {
+104:         if (!detail.fecha || detail.fecha === issueDate) {
+105:           setExchangeRateInput(Number(detail.tasa).toFixed(2));
+106:         }
+107:       }
+108:     };
+109:     window.addEventListener('tasa-cambio-updated', handleTasaUpdated);
+110:     return () => window.removeEventListener('tasa-cambio-updated', handleTasaUpdated);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

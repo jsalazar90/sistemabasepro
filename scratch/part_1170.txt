@@ -1,0 +1,44 @@
+Created At: 2026-09-12T17:50:43-04:00
+Completed At: 2026-09-12T17:50:43-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3120
+Total Bytes: 151051
+Showing lines 1170 to 1205
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1170:             monto_original: montoCxCUSD,
+1171:             monto_bs: montoCxCBs,
+1172:             monto_usd: montoCxCUSD
+1173:           },
+1174:           created_at: new Date().toISOString()
+1175:         });
+1176:       }
+1177: 
+1178:       // 4. Registrar Cobranza y Movimiento Bancario si fue de Contado
+1179:       if (selectedCondition === 'contado') {
+1180:         cobranzaForm.pagos.forEach((pago, idx) => {
+1181:           const bank = bancos.find(b => b.id === pago.bancoId);
+1182:           if (bank) {
+1183:             const isBankVES = bank.moneda === 'VES' || bank.moneda === 'Bs';
+1184:             const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
+1185:             const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
+1186: 
+1187:             onSave?.('movimientosBancos', {
+1188:               id: `mov_bnk_${Date.now()}_${idx}`,
+1189:               banco_id: bank.id,
+1190:               fecha: issueDate,
+1191:               ref: pago.referencia || newFactura.numero,
+1192:               descripcion: `Ingreso Cobranza Factura ${newFactura.numero} (${customerName})`,
+1193:               tipo: 'ingreso',
+1194:               monto: isBankVES ? pagoMontoBsNum : pagoMontoNum,
+1195:               tasa: exchangeRate,
+1196:               estado: 'conciliado',
+1197:               comprobante_id: voucherId,
+1198:               created_at: new Date().toISOString()
+1199:             });
+1200:           }
+1201:         });
+1202:       }
+1203: 
+1204:       // 5. Guardar Asiento Contable
+1205:       if (pendingVoucher) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

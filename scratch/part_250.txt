@@ -1,0 +1,159 @@
+Created At: 2026-09-12T18:39:11-04:00
+Completed At: 2026-09-12T18:39:11-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3221
+Total Bytes: 156901
+Showing lines 250 to 400
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+250:       const match = !term || 
+251:         (c.name || '').toLowerCase().includes(term) ||
+252:         (c.taxId || '').toLowerCase().includes(term);
+253:       return isCust && match;
+254:     });
+255:   }, [contactos, customerSearchTerm]);
+256: 
+257:   // Totales calculados en tiempo real (con Retenciones e IGTF de acuerdo a leyes venezolanas)
+258:   const totals = useMemo(() => {
+259:     let subtotal = 0;
+260:     let montoExento = 0;
+261:     let baseImponible = 0;
+262:     let ivaMonto = 0;
+263: 
+264:     items.forEach(item => {
+265:       const lineSubtotal = (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0);
+266:       subtotal += lineSubtotal;
+267:       if (item.exento) {
+268:         montoExento += lineSubtotal;
+269:       } else {
+270:         baseImponible += lineSubtotal;
+271:         ivaMonto += lineSubtotal * 0.16;
+272:       }
+273:     });
+274: 
+275:     // 1. IGTF 3% (Ley de Reforma del IGTF: Percepción por cobro en divisas o moneda extranjera)
+276:     const igtfMonto = applyIgtf ? (subtotal + ivaMonto) * (igtfPercent / 100) : 0;
+277: 
+278:     // Total de la Factura (Subtotal + IVA + IGTF si aplica)
+279:     const totalFactura = subtotal + ivaMonto + igtfMonto;
+280: 
+281:     // 2. Retención de IVA (Providencia SNAT/2015/0049: 75% o 100% sobre el IVA facturado)
+282:     const retIvaMonto = applyRetIva ? ivaMonto * (retIvaPercent / 100) : 0;
+283: 
+284:     // 3. Retención de ISLR (Decreto 1808: 2%, 5%, 1% o 3% sobre la Base Imponible)
+285:     const retIslrMonto = applyRetIslr ? baseImponible * (retIslrPercent / 100) : 0;
+286: 
+287:     // 4. Neto a Cobrar / Pagar (Total Facturado menos Retenciones que el cliente entrega en comprobante)
+288:     const netoCobrar = Math.max(0, totalFactura - retIvaMonto - retIslrMonto);
+289: 
+290:     // Calcular montos en USD y Bs. según la moneda seleccionada en pantalla
+291:     const isVes = currency === 'VES' && exchangeRate > 0;
+292:     const factorToUSD = isVes ? (1 / exchangeRate) : 1;
+293:     const factorToBs = isVes ? 1 : (exchangeRate || 1);
+294: 
+295:     const subtotalUSD = subtotal * factorToUSD;
+296:     const subtotalBs = subtotal * factorToBs;
+297:     const montoExentoUSD = montoExento * factorToUSD;
+298:     const montoExentoBs = montoExento * factorToBs;
+299:     const baseImponibleUSD = baseImponible * factorToUSD;
+300:     const baseImponibleBs = baseImponible * factorToBs;
+301:     const ivaMontoUSD = ivaMonto * factorToUSD;
+302:     const ivaMontoBs = ivaMonto * factorToBs;
+303:     const igtfMontoUSD = igtfMonto * factorToUSD;
+304:     const igtfMontoBs = igtfMonto * factorToBs;
+305:     const totalUSD = totalFactura * factorToUSD;
+306:     const totalBs = totalFactura * factorToBs;
+307:     const retIvaMontoUSD = retIvaMonto * factorToUSD;
+308:     const retIvaMontoBs = retIvaMonto * factorToBs;
+309:     const retIslrMontoUSD = retIslrMonto * factorToUSD;
+310:     const retIslrMontoBs = retIslrMonto * factorToBs;
+311:     const netoCobrarUSD = netoCobrar * factorToUSD;
+312:     const netoCobrarBs = netoCobrar * factorToBs;
+313: 
+314:     return { 
+315:       subtotal, 
+316:       montoExento, 
+317:       baseImponible, 
+318:       ivaMonto, 
+319:       igtfMonto,
+320:       total: totalFactura, 
+321:       totalUSD, 
+322:       totalBs,
+323:       subtotalUSD,
+324:       subtotalBs,
+325:       montoExentoUSD,
+326:       montoExentoBs,
+327:       baseImponibleUSD,
+328:       baseImponibleBs,
+329:       ivaMontoUSD,
+330:       ivaMontoBs,
+331:       igtfMontoUSD,
+332:       igtfMontoBs,
+333:       retIvaMonto,
+334:       retIvaMontoUSD,
+335:       retIvaMontoBs,
+336:       retIslrMonto,
+337:       retIslrMontoUSD,
+338:       retIslrMontoBs,
+339:       netoCobrar,
+340:       netoCobrarUSD,
+341:       netoCobrarBs
+342:     };
+343:   }, [items, currency, exchangeRate, applyRetIva, retIvaPercent, applyRetIslr, retIslrPercent, applyIgtf, igtfPercent]);
+344: 
+345:   // Formateador de moneda
+346:   const formatMoney = (amount: number, curr = currency) => {
+347:     return new Intl.NumberFormat('es-VE', { 
+348:       style: 'currency', 
+349:       currency: curr === 'VES' ? 'VES' : 'USD',
+350:       minimumFractionDigits: 2 
+351:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+352:   };
+353: 
+354:   // Manejo de Cliente
+355:   const handleSelectCustomer = (cust: any) => {
+356:     setSelectedCustomerId(cust.id);
+357:     setCustomerName(cust.name || cust.nombre || '');
+358:     setCustomerRif(cust.taxId || cust.rif || '');
+359:     setCustomerAddress(cust.address || cust.direccion || '');
+360:     setCustomerPhone(cust.phone || cust.telefono || '');
+361:     setCustomerEmail(cust.email || '');
+362:     setIsCustomerModalOpen(false);
+363:   };
+364: 
+365:   const handleClearCustomer = () => {
+366:     setSelectedCustomerId('');
+367:     setCustomerName('');
+368:     setCustomerRif('');
+369:     setCustomerAddress('');
+370:     setCustomerPhone('');
+371:     setCustomerEmail('');
+372:   };
+373: 
+374:   // Categorías únicas de productos
+375:   const productCategories = useMemo(() => {
+376:     const cats = new Set<string>();
+377:     products.forEach(p => {
+378:       if (p.categoria && p.categoria.trim()) {
+379:         cats.add(p.categoria.trim());
+380:       }
+381:     });
+382:     return Array.from(cats);
+383:   }, [products]);
+384: 
+385:   // Lista de productos filtrada para el modal
+386:   const filteredProducts = useMemo(() => {
+387:     const term = productSearchTerm.toLowerCase().trim();
+388:     return products.filter(p => {
+389:       const matchesCategory = selectedProductCategory === 'all' || p.categoria === selectedProductCategory;
+390:       if (!matchesCategory) return false;
+391:       if (!term) return true;
+392:       return (
+393:         (p.codigo || '').toLowerCase().includes(term) ||
+394:         (p.nombre || '').toLowerCase().includes(term) ||
+395:         (p.descripcion || '').toLowerCase().includes(term) ||
+396:         (p.categoria || '').toLowerCase().includes(term)
+397:       );
+398:     });
+399:   }, [products, productSearchTerm, selectedProductCategory]);
+400: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

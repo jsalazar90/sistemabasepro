@@ -1,0 +1,79 @@
+Created At: 2026-09-12T16:30:21-04:00
+Completed At: 2026-09-12T16:30:21-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2576
+Total Bytes: 124528
+Showing lines 190 to 260
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+190:     const retIslrMonto = applyRetIslr ? baseImponible * (retIslrPercent / 100) : 0;
+191: 
+192:     // 4. Neto a Cobrar / Pagar (Total Facturado menos Retenciones que el cliente entrega en comprobante)
+193:     const netoCobrar = Math.max(0, totalFactura - retIvaMonto - retIslrMonto);
+194: 
+195:     // Calcular montos en USD y Bs. según la moneda seleccionada
+196:     let totalUSD = 0;
+197:     let totalBs = 0;
+198:     let netoCobrarUSD = 0;
+199:     let netoCobrarBs = 0;
+200: 
+201:     if (currency === 'USD') {
+202:       totalUSD = totalFactura;
+203:       totalBs = totalFactura * (exchangeRate || 1);
+204:       netoCobrarUSD = netoCobrar;
+205:       netoCobrarBs = netoCobrar * (exchangeRate || 1);
+206:     } else {
+207:       totalBs = totalFactura;
+208:       totalUSD = (exchangeRate > 0) ? (totalFactura / exchangeRate) : totalFactura;
+209:       netoCobrarBs = netoCobrar;
+210:       netoCobrarUSD = (exchangeRate > 0) ? (netoCobrar / exchangeRate) : netoCobrar;
+211:     }
+212: 
+213:     return { 
+214:       subtotal, 
+215:       montoExento, 
+216:       baseImponible, 
+217:       ivaMonto, 
+218:       igtfMonto,
+219:       total: totalFactura, 
+220:       totalUSD, 
+221:       totalBs,
+222:       retIvaMonto,
+223:       retIslrMonto,
+224:       netoCobrar,
+225:       netoCobrarUSD,
+226:       netoCobrarBs
+227:     };
+228:   }, [items, currency, exchangeRate, applyRetIva, retIvaPercent, applyRetIslr, retIslrPercent, applyIgtf, igtfPercent]);
+229: 
+230:   // Formateador de moneda
+231:   const formatMoney = (amount: number, curr = currency) => {
+232:     return new Intl.NumberFormat('es-VE', { 
+233:       style: 'currency', 
+234:       currency: curr === 'VES' ? 'VES' : 'USD',
+235:       minimumFractionDigits: 2 
+236:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+237:   };
+238: 
+239:   // Manejo de Cliente
+240:   const handleSelectCustomer = (cust: any) => {
+241:     setSelectedCustomerId(cust.id);
+242:     setCustomerName(cust.name || cust.nombre || '');
+243:     setCustomerRif(cust.taxId || cust.rif || '');
+244:     setCustomerAddress(cust.address || cust.direccion || '');
+245:     setCustomerPhone(cust.phone || cust.telefono || '');
+246:     setCustomerEmail(cust.email || '');
+247:     setIsCustomerModalOpen(false);
+248:   };
+249: 
+250:   const handleClearCustomer = () => {
+251:     setSelectedCustomerId('');
+252:     setCustomerName('');
+253:     setCustomerRif('');
+254:     setCustomerAddress('');
+255:     setCustomerPhone('');
+256:     setCustomerEmail('');
+257:   };
+258: 
+259:   // Categorías únicas de productos
+260:   const productCategories = useMemo(() => {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

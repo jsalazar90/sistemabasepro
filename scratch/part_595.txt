@@ -1,0 +1,144 @@
+Created At: 2026-09-12T16:25:55-04:00
+Completed At: 2026-09-12T16:25:55-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2355
+Total Bytes: 113482
+Showing lines 595 to 730
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+595:   };
+596: 
+597:   // Proceder desde Cobranza al Asiento Contable
+598:   const handleConfirmCobranzaToVoucher = () => {
+599:     const totalPagado = cobranzaForm.pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+600:     if (cobranzaForm.pagos.length === 0 || totalPagado <= 0) {
+601:       showToast?.('Ingrese al menos un pago con monto válido en la cobranza', 'error');
+602:       return;
+603:     }
+604: 
+605:     setIsCobranzaModalOpen(false);
+606:     buildAndShowVoucher('contado');
+607:   };
+608: 
+609:   // =========================================================================
+610:   // PASO 3: Construir Asiento Contable y Mostrar Previsualización
+611:   // =========================================================================
+612:   const buildAndShowVoucher = (condition: 'contado' | 'credito') => {
+613:     const mainCustomerAccount = configContable?.cuentaCxc || '1.1.02.001';
+614:     const mainSalesAccount = configContable?.cuentaVentas || '4.1.01.001';
+615:     const mainTaxAccount = configContable?.cuentaDebitoFiscal || '2.1.02.001';
+616: 
+617:     const linesVoucher: any[] = [];
+618:     const totalAmount = totals.total;
+619: 
+620:     if (condition === 'credito') {
+621:       // Debe: CxC Clientes
+622:       linesVoucher.push({
+623:         id: `vl_cxc`,
+624:         cuentaId: mainCustomerAccount,
+625:         nombreCuenta: `Cuentas por Cobrar Clientes (${customerName})`,
+626:         descripcion: `Factura a crédito ${invoiceNumber} - Venc. ${calculatedDueDate}`,
+627:         debe: totalAmount,
+628:         haber: 0
+629:       });
+630:     } else {
+631:       // Debe: Banco(s) según pagos registrados en el modal de cobranza
+632:       cobranzaForm.pagos.forEach((pago, pIdx) => {
+633:         const bank = bancos.find(b => b.id === pago.bancoId);
+634:         const bankAccount = bank?.cuenta_contable_id || configContable?.cuentaBancos || '1.1.01.004';
+635:         const pagoMonto = parseFloat(pago.monto) || (totalAmount / cobranzaForm.pagos.length);
+636: 
+637:         linesVoucher.push({
+638:           id: `vl_bnk_${pIdx}`,
+639:           cuentaId: bankAccount,
+640:           nombreCuenta: bank ? `${bank.banco} (${bank.moneda})` : 'Efectivo en Bancos',
+641:           descripcion: `Cobro contado Fac ${invoiceNumber} - Ref: ${pago.referencia || 'S/R'}`,
+642:           debe: pagoMonto,
+643:           haber: 0
+644:         });
+645:       });
+646:     }
+647: 
+648:     // Haber: Ventas por el subtotal neto
+649:     linesVoucher.push({
+650:       id: `vl_vta`,
+651:       cuentaId: mainSalesAccount,
+652:       nombreCuenta: 'Ventas de Mercancías',
+653:       descripcion: `Ingreso por venta Factura ${invoiceNumber}`,
+654:       debe: 0,
+655:       haber: totals.subtotal
+656:     });
+657: 
+658:     // Haber: IVA Débito Fiscal si aplica
+659:     if (totals.ivaMonto > 0) {
+660:       linesVoucher.push({
+661:         id: `vl_iva`,
+662:         cuentaId: mainTaxAccount,
+663:         nombreCuenta: 'IVA Débito Fiscal (16%)',
+664:         descripcion: `IVA 16% Factura ${invoiceNumber}`,
+665:         debe: 0,
+666:         haber: totals.ivaMonto
+667:       });
+668:     }
+669: 
+670:     const voucher = {
+671:       id: `comp_${Date.now()}`,
+672:       numero: `AS-FAC-${invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+673:       fecha: issueDate,
+674:       concepto: `Registro de Factura de Venta ${invoiceNumber} a ${customerName} (${condition.toUpperCase()})`,
+675:       total: totalAmount,
+676:       lineas: linesVoucher,
+677:       estado: 'Contabilizado',
+678:       modulo: 'facturacion'
+679:     };
+680: 
+681:     setPendingVoucher(voucher);
+682:     setIsVoucherModalOpen(true);
+683:   };
+684: 
+685:   // =========================================================================
+686:   // PASO 4: Confirmación Final y Guardado Transaccional
+687:   // =========================================================================
+688:   const handleFinalSaveInvoice = async () => {
+689:     try {
+690:       const factId = `fac_${Date.now()}`;
+691:       const cxcDocId = `cxc_${Date.now()}`;
+692:       const voucherId = pendingVoucher ? pendingVoucher.id : `comp_${Date.now()}`;
+693: 
+694:       // 1. Guardar la Factura
+695:       const newFactura: FacturaVentaModel = {
+696:         id: factId,
+697:         empresa_id: '',
+698:         numero: invoiceNumber.trim().toUpperCase(),
+699:         control_numero: controlNumber.trim(),
+700:         tipo_documento: docType,
+701:         condicion: selectedCondition,
+702:         dias_credito: selectedCondition === 'credito' ? creditDays : 0,
+703:         cliente_id: selectedCustomerId || `ct_${Date.now()}`,
+704:         cliente_nombre: customerName.trim(),
+705:         cliente_rif: customerRif.trim(),
+706:         cliente_direccion: customerAddress.trim(),
+707:         cliente_telefono: customerPhone.trim(),
+708:         cliente_email: customerEmail.trim(),
+709:         fecha_emision: issueDate,
+710:         fecha_vencimiento: selectedCondition === 'credito' ? calculatedDueDate : issueDate,
+711:         moneda: currency,
+712:         tasa_cambio: exchangeRate,
+713:         items: items,
+714:         subtotal: totals.subtotal,
+715:         base_imponible: totals.baseImponible,
+716:         monto_exento: totals.montoExento,
+717:         iva_porcentaje: 16,
+718:         iva_monto: totals.ivaMonto,
+719:         igtf_monto: 0,
+720:         total: totals.total,
+721:         total_bs: totals.totalBs,
+722:         saldo_pendiente: selectedCondition === 'credito' ? totals.total : 0,
+723:         estado: selectedCondition === 'credito' ? 'emitida' : 'cobrada',
+724:         banco_id: selectedCondition === 'contado' && cobranzaForm.pagos.length > 0 ? cobranzaForm.pagos[0].bancoId : undefined,
+725:         comprobante_id: voucherId,
+726:         cxc_id: selectedCondition === 'credito' ? cxcDocId : undefined,
+727:         notas: notes.trim(),
+728:         created_at: new Date().toISOString()
+729:       };
+730: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

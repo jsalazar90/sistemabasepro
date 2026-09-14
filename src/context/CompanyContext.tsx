@@ -82,11 +82,20 @@ ALL_MODULES.forEach((m) => {
 });
 
 export function CompanyProvider({ children }: { children: ReactNode }) {
-  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
+  const [activeCompanyId, setActiveCompanyId] = useState<string | null>(() => {
+    return localStorage.getItem("erp_active_company_id") || null;
+  });
   const [workingYear, setWorkingYear] = useState<string>(() => String(new Date().getFullYear()));
   const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
   const [dbUsers, setDbUsers] = useState<UserSession[]>(INITIAL_DEFAULT_USERS);
   const [currentUserEmpresas, setCurrentUserEmpresas] = useState<any[]>([]);
+
+  // Guardar activeCompanyId en localStorage para que nuevas pestañas y ventanas popup lo reconozcan de inmediato
+  useEffect(() => {
+    if (activeCompanyId) {
+      localStorage.setItem("erp_active_company_id", activeCompanyId);
+    }
+  }, [activeCompanyId]);
 
   // Estado de Sesión de Usuario en memoria (con fallback al usuario Master por defecto)
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
@@ -125,9 +134,14 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       setAvailableCompanies(userPermittedCompanies);
       
       setActiveCompanyId(prev => {
-        const selected = prev && userPermittedCompanies.some(c => c.id === prev) 
-          ? prev 
+        const stored = localStorage.getItem("erp_active_company_id");
+        const candidate = prev || stored;
+        const selected = candidate && userPermittedCompanies.some(c => c.id === candidate) 
+          ? candidate 
           : (userPermittedCompanies.length > 0 ? userPermittedCompanies[0].id : null);
+        if (selected) {
+          localStorage.setItem("erp_active_company_id", selected);
+        }
         const found = userPermittedCompanies.find(c => c.id === selected);
         if (found && ((found as any).workingYear || (found as any).anoInicio)) {
           setWorkingYear((found as any).workingYear || (found as any).anoInicio);
@@ -165,6 +179,72 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
+    try {
+      const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
+      
+      if (isSupabaseConfigured && supabase) {
+        // 1. Autenticación Segura con Supabase Auth
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password: cleanPass
+        });
+
+        if (authError) {
+           return { 
+             success: false, 
+             error: authError.message.includes('credentials') 
+               ? 'Contraseña incorrecta o usuario no registrado en el nuevo sistema de seguridad.' 
+               : authError.message 
+           };
+        }
+
+        // 2. Obtener metadatos del usuario desde public.usuarios
+        const { data: userData, error: fetchError } = await supabase.from('usuarios').select('*').eq('email', cleanEmail).maybeSingle();
+        
+        if (userData && userData.activo === false) {
+          await supabase.auth.signOut();
+          return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
+        }
+
+        // Si el usuario es el administrador principal, forzar rol Master para que vea todas las empresas
+        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com' || cleanEmail === 'jefe@halleyerp.com';
+        const assignedRole = isSuperAdmin ? 'Master' : (userData?.role || 'Operador');
+
+        // Auto-registrar al Master en la base de datos pública si es su primera vez
+        if (isSuperAdmin && !userData) {
+          try {
+            await supabase.from('usuarios').upsert({
+              id: authData.user?.id || `u-${Date.now()}`,
+              email: cleanEmail,
+              nombre: cleanEmail === 'jhoansg@gmail.com' ? 'Jhoan SG' : 'Master',
+              role: 'Master',
+              activo: true
+            });
+          } catch (e) {
+            console.warn("No se pudo auto-registrar al master:", e);
+          }
+        }
+
+        const user: UserSession = {
+          id: userData?.id || authData.user?.id || `u-${Date.now()}`,
+          email: cleanEmail,
+          name: userData?.nombre || cleanEmail.split('@')[0],
+          role: assignedRole,
+          activo: true,
+          companyRoles: {},
+          companyConfigs: {}
+        };
+
+        setCurrentUser(user);
+        sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+        await refreshCompanies(user);
+        return { success: true };
+      }
+    } catch (e: any) {
+      console.warn("Fallo de red o Supabase Auth, intentando fallback local...", e);
+    }
+
+    // --- FALLBACK LOCAL OFFLINE ---
     let usersList = dbUsers;
     try {
       const { dbFetchUsuarios } = await import("../services/db");
@@ -178,23 +258,24 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
 
     let user = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-    if (!user && cleanEmail === "jefe@halleyerp.com" && cleanPass === "19072828") {
+    if (!user && (cleanEmail === "jefe@halleyerp.com" || cleanEmail === "jhoansg@gmail.com") && cleanPass === "19072828") {
       user = INITIAL_DEFAULT_USERS[0];
+      user.email = cleanEmail;
     }
 
     if (!user) {
-      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado en el sistema." };
+      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado localmente." };
     }
 
     if (user.activo === false) {
-      return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
+      return { success: false, error: "Esta cuenta de usuario ha sido suspendida." };
     }
 
-    if (user.password !== cleanPass) {
-      return { success: false, error: "Contraseña incorrecta. Por favor intente nuevamente." };
+    if (user.password && user.password !== cleanPass) {
+      return { success: false, error: "Contraseña local incorrecta. Por favor intente nuevamente." };
     }
 
-    // Login Exitoso
+    // Login Exitoso Local
     setCurrentUser(user);
     sessionStorage.setItem("erp_active_user", JSON.stringify(user));
     await refreshCompanies(user);
@@ -202,7 +283,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   };
 
   // Cierre de Sesión
-  const logout = () => {
+  const logout = async () => {
+    try {
+      const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
+      if (isSupabaseConfigured && supabase) {
+        await supabase.auth.signOut();
+      }
+    } catch (e) {}
     setCurrentUser(null);
     setCurrentUserEmpresas([]);
     setActiveCompanyId(null);
@@ -250,11 +337,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 }
 
 const defaultFallbackContext: CompanyContextType = {
-  activeCompanyId: 'empresa-local-1',
+  activeCompanyId: '00000000-0000-0000-0000-000000000001',
   setActiveCompanyId: () => {},
   availableCompanies: [
     {
-      id: 'empresa-local-1',
+      id: '00000000-0000-0000-0000-000000000001',
       name: 'Agencia de Viajes y Turismo Halley, C.A.',
       taxId: 'J-12345678-0',
       nombre: 'Agencia de Viajes y Turismo Halley, C.A.',

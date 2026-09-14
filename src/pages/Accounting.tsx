@@ -9,6 +9,7 @@ import {
   Lock,
   Building2,
   Scale,
+  Receipt,
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
 
@@ -28,6 +29,14 @@ const accountingModules = [
     gradient: 'from-blue-600 to-indigo-600', 
     shadow: 'shadow-blue-500/20', 
     path: '/accounting/entries' 
+  },
+  { 
+    name: 'Gestión Fiscal & Retenciones', 
+    description: 'Libros IVA de compras y ventas, retenciones y TXT SENIAT', 
+    icon: Receipt, 
+    gradient: 'from-rose-600 to-red-600', 
+    shadow: 'shadow-rose-500/20', 
+    path: '/accounting/fiscal' 
   },
   { 
     name: 'Situación Financiera', 

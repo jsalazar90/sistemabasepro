@@ -44,7 +44,7 @@ export default function CompanySelector({ dbError, onLogout }: { dbError?: strin
     
     setIsLoading(true);
     try {
-      const newId = `empresa-${Date.now()}`;
+      const newId = crypto.randomUUID();
       const newCompanyObj = {
         id: newId,
         name: newCompanyName.trim(),
@@ -71,7 +71,7 @@ export default function CompanySelector({ dbError, onLogout }: { dbError?: strin
         for (const acc of sourceAccounts) {
           await dbSaveCuentaContable({
             ...acc,
-            id: `acc_${newId}_${acc.codigo.replace(/\./g, '_')}`,
+            id: crypto.randomUUID(),
             saldoActual: 0
           }, newId);
         }
@@ -83,7 +83,7 @@ export default function CompanySelector({ dbError, onLogout }: { dbError?: strin
         for (const ct of sourceContacts) {
           await dbSaveContacto({
             ...ct,
-            id: `ct_${newId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: crypto.randomUUID(),
             saldo: 0,
             saldoCxp: 0
           }, newId);

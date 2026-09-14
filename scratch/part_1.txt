@@ -1,0 +1,26 @@
+Created At: 2026-09-12T19:52:10-04:00
+Completed At: 2026-09-12T19:52:11-04:00
+
+The command exited with code 0.
+Output:
+Created At: 2026-09-12T19:13:07-04:00
+Completed At: 2026-09-12T19:13:07-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3504
+Total Bytes: 168966
+Showing lines 1 to 800
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: import React, { useState, useMemo, useEffect } from 'react';
+2: import { useNavigate } from 'react-router-dom';
+3: import { 
+4:   FileText, ArrowLeft, Search, Plus, Trash2, CheckCircle2, 
+5:   Save, AlertTriangle, User, Building2, DollarSign, Calendar, 
+6:   BookOpen, Eye, X, HelpCircle, Package, ShieldCheck, ShieldAlert, KeyRound,
+7:   CreditCard, Landmark, Check, CornerDownRight, Coins, 
+8:   Clock, ArrowRight, Sparkles, RefreshCw, Mail, Phone, Lock, Printer
+9: } from 'lucide-react';
+10: import BackButton from '../components/common/BackButton';
+11: import CuentaSelectorTrigger from '../components/common/CuentaSelectorTrigger';
+12: import CuentaContableModal from '../components/common/CuentaContableModal';
+13: import TasaCambioModal from '../components/invoicing/TasaCambioModal';
+

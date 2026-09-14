@@ -1,0 +1,64 @@
+Created At: 2026-09-12T16:58:36-04:00
+Completed At: 2026-09-12T16:58:36-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2724
+Total Bytes: 132134
+Showing lines 480 to 535
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+480:   };
+481: 
+482:   const handleProductSelect = (index: number, productId: string) => {
+483:     const prod = products.find(p => p.id === productId);
+484:     setItems(prev => {
+485:       const updated = [...prev];
+486:       if (prod) {
+487:         const qty = updated[index].cantidad || 1;
+488:         // Si la moneda es VES, convertir el precio venta en USD a VES
+489:         let price = prod.precio_venta || 0;
+490:         if (currency === 'VES' && exchangeRate > 0) {
+491:           price = price * exchangeRate;
+492:         }
+493: 
+494:         const lineSubtotal = qty * price;
+495:         const isExempt = !prod.aplica_iva;
+496:         const iva = isExempt ? 0 : lineSubtotal * 0.16;
+497: 
+498:         updated[index] = {
+499:           ...updated[index],
+500:           producto_id: prod.id,
+501:           codigo: prod.codigo,
+502:           descripcion: prod.nombre,
+503:           precio_unitario: price,
+504:           exento: isExempt,
+505:           subtotal: lineSubtotal,
+506:           iva_monto: iva,
+507:           total: lineSubtotal + iva,
+508:           cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
+509:           cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
+510:           cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
+511:         };
+512:       } else {
+513:         updated[index] = {
+514:           ...updated[index],
+515:           producto_id: '',
+516:           codigo: '',
+517:           descripcion: '',
+518:           precio_unitario: 0,
+519:           subtotal: 0,
+520:           iva_monto: 0,
+521:           total: 0
+522:         };
+523:       }
+524:       return updated;
+525:     });
+526:   };
+527: 
+528:   const handleItemFieldChange = (index: number, field: string, value: any) => {
+529:     setItems(prev => {
+530:       const updated = [...prev];
+531:       const item = { ...updated[index], [field]: value };
+532: 
+533:       const qty = Number(item.cantidad) || 0;
+534:       const price = Number(item.precio_unitario) || 0;
+535:       const lineSubtotal = qty * price;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

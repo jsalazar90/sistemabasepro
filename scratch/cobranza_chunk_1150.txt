@@ -1,0 +1,209 @@
+Created At: 2026-09-12T16:09:55-04:00
+Completed At: 2026-09-12T16:09:55-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1870
+Total Bytes: 88412
+Showing lines 1150 to 1350
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1150:                   onClick={() => handleSelectCondition('contado')}
+1151:                   className="p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 hover:border-emerald-500 cursor-pointer transition flex flex-col justify-between gap-3 group"
+1152:                 >
+1153:                   <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+1154:                     <DollarSign size={22} />
+1155:                   </div>
+1156:                   <div>
+1157:                     <h4 className="font-black text-slate-900 text-sm group-hover:text-emerald-700 transition">
+1158:                       Factura de Contado
+1159:                     </h4>
+1160:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+1161:                       El cliente cancela de inmediato. Se registrará la cobranza y el ingreso bancario.
+1162:                     </p>
+1163:                   </div>
+1164:                   <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+1165:                     <span>Cobrar ahora</span>
+1166:                     <ArrowRight size={14} />
+1167:                   </span>
+1168:                 </div>
+1169: 
+1170:                 {/* TARJETA CRÉDITO */}
+1171:                 <div 
+1172:                   onClick={() => handleSelectCondition('credito')}
+1173:                   className="p-5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 hover:border-indigo-500 cursor-pointer transition flex flex-col justify-between gap-3 group"
+1174:                 >
+1175:                   <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+1176:                     <Calendar size={22} />
+1177:                   </div>
+1178:                   <div>
+1179:                     <h4 className="font-black text-slate-900 text-sm group-hover:text-indigo-700 transition">
+1180:                       Factura a Crédito
+1181:                     </h4>
+1182:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+1183:                       Se generará una cuenta por cobrar (CxC) pendiente con fecha de vencimiento.
+1184:                     </p>
+1185:                   </div>
+1186:                   <span className="text-[11px] font-bold text-indigo-700 flex items-center gap-1">
+1187:                     <span>Asignar crédito</span>
+1188:                     <ArrowRight size={14} />
+1189:                   </span>
+1190:                 </div>
+1191:               </div>
+1192:             </div>
+1193:           </div>
+1194:         </div>
+1195:       )}
+1196: 
+1197:       {/* ========================================================================= */}
+1198:       {/* PASO 2 (SI ES CONTADO): MODAL DE COBRANZA (IDÉNTICO AL SISTEMA) */}
+1199:       {/* ========================================================================= */}
+1200:       {isCobranzaModalOpen && (
+1201:         <div className="fixed inset-0 z-[360] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+1202:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-100">
+1203:             {/* Header del Modal de Cobranza */}
+1204:             <div className="p-5 border-b border-slate-100 bg-emerald-50/70 flex justify-between items-center shrink-0">
+1205:               <div className="flex items-center gap-3">
+1206:                 <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
+1207:                   <CreditCard size={20} />
+1208:                 </div>
+1209:                 <div>
+1210:                   <h3 className="text-base font-black text-slate-900">Registro de Cobranza (Contado)</h3>
+1211:                   <p className="text-xs text-emerald-800 font-semibold">
+1212:                     Factura {invoiceNumber} • {customerName}
+1213:                   </p>
+1214:                 </div>
+1215:               </div>
+1216:               <button
+1217:                 type="button"
+1218:                 onClick={() => setIsCobranzaModalOpen(false)}
+1219:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold"
+1220:               >
+1221:                 ✕
+1222:               </button>
+1223:             </div>
+1224: 
+1225:             {/* Cuerpo del Modal de Cobranza */}
+1226:             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+1227:               
+1228:               {/* Tarjeta de Resumen del Cobro */}
+1229:               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+1230:                 <div>
+1231:                   <p className="text-[10px] font-bold uppercase text-slate-400">Total Factura a Cobrar:</p>
+1232:                   <p className="text-lg font-black text-slate-900">{formatMoney(totals.total, currency)}</p>
+1233:                   {currency === 'USD' && (
+1234:                     <p className="text-[11px] font-bold text-emerald-600">
+1235:                       Equiv: Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(totals.totalBs)}
+1236:                     </p>
+1237:                   )}
+1238:                 </div>
+1239:                 <div className="text-right">
+1240:                   <label className="text-[10px] font-bold uppercase text-slate-400 block mb-1">Fecha de Pago</label>
+1241:                   <input
+1242:                     type="date"
+1243:                     value={cobranzaForm.fecha}
+1244:                     onChange={(e) => setCobranzaForm({ ...cobranzaForm, fecha: e.target.value })}
+1245:                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+1246:                   />
+1247:                 </div>
+1248:               </div>
+1249: 
+1250:               {/* Lista de Pagos Recibidos */}
+1251:               <div className="space-y-3">
+1252:                 <div className="flex justify-between items-center">
+1253:                   <h4 className="font-bold text-slate-800 text-xs">Desglose de Formas de Pago Recibidas</h4>
+1254:                   <button
+1255:                     type="button"
+1256:                     onClick={handleAddPagoCobranza}
+1257:                     className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 transition"
+1258:                   >
+1259:                     <Plus size={13} />
+1260:                     <span>Agregar otra forma de pago</span>
+1261:                   </button>
+1262:                 </div>
+1263: 
+1264:                 {cobranzaForm.pagos.map((pago, pIdx) => {
+1265:                   const selB = bancos.find(b => b.id === pago.bancoId);
+1266:                   const isBVES = selB && (selB.moneda === 'VES' || selB.moneda === 'Bs' || selB.moneda === 'Bolivares');
+1267: 
+1268:                   return (
+1269:                     <div key={pago.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2.5">
+1270:                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+1271:                         {/* Selector de Banco / Caja */}
+1272:                         <div className="sm:col-span-2">
+1273:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+1274:                             Banco / Caja de Destino *
+1275:                           </label>
+1276:                           <select
+1277:                             value={pago.bancoId}
+1278:                             onChange={(e) => {
+1279:                               const updated = [...cobranzaForm.pagos];
+1280:                               updated[pIdx].bancoId = e.target.value;
+1281:                               setCobranzaForm({ ...cobranzaForm, pagos: updated });
+1282:                             }}
+1283:                             className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-indigo-600"
+1284:                           >
+1285:                             <option value="">Seleccione cuenta bancaria...</option>
+1286:                             {bancos.map(b => (
+1287:                               <option key={b.id} value={b.id}>
+1288:                                 {b.banco} ({b.moneda}) - {b.numero_cuenta}
+1289:                               </option>
+1290:                             ))}
+1291:                           </select>
+1292:                         </div>
+1293: 
+1294:                         {/* Método de Pago */}
+1295:                         <div>
+1296:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+1297:                             Método de Pago
+1298:                           </label>
+1299:                           <select
+1300:                             value={pago.metodoPago}
+1301:                             onChange={(e) => {
+1302:                               const updated = [...cobranzaForm.pagos];
+1303:                               updated[pIdx].metodoPago = e.target.value;
+1304:                               setCobranzaForm({ ...cobranzaForm, pagos: updated });
+1305:                             }}
+1306:                             className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+1307:                           >
+1308:                             <option value="Transferencia">Transferencia</option>
+1309:                             <option value="Pago Móvil">Pago Móvil</option>
+1310:                             <option value="Punto de Venta">Punto de Venta</option>
+1311:                             <option value="Zelle">Zelle</option>
+1312:                             <option value="Efectivo">Efectivo</option>
+1313:                             <option value="Depósito">Depósito</option>
+1314:                           </select>
+1315:                         </div>
+1316:                       </div>
+1317: 
+1318:                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 items-center">
+1319:                         {/* Referencia */}
+1320:                         <div>
+1321:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+1322:                             N° de Referencia / Comprobante
+1323:                           </label>
+1324:                           <input
+1325:                             type="text"
+1326:                             placeholder="Ej: REF-987410"
+1327:                             value={pago.referencia}
+1328:                             onChange={(e) => {
+1329:                               const updated = [...cobranzaForm.pagos];
+1330:                               updated[pIdx].referencia = e.target.value;
+1331:                               setCobranzaForm({ ...cobranzaForm, pagos: updated });
+1332:                             }}
+1333:                             className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+1334:                           />
+1335:                         </div>
+1336: 
+1337:                         {/* Monto Recibido */}
+1338:                         <div>
+1339:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+1340:                             Monto Recibido ({isBVES ? 'Bs.' : '$'}) *
+1341:                           </label>
+1342:                           {isBVES ? (
+1343:                             <div className="relative">
+1344:                               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 font-bold text-slate-400">Bs.</span>
+1345:                               <input
+1346:                                 type="number"
+1347:                                 step="0.01"
+1348:                                 placeholder="0.00"
+1349:                                 value={pago.montoBs}
+1350:                                 onChange={(e) => {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

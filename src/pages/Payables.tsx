@@ -1,3 +1,5 @@
+import { formatNumber } from '../utils/numberFormat';
+import { getTasaForDate } from '../services/exchangeRateService';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { 
@@ -6,292 +8,43 @@ import {
   CornerDownRight, Package, Trash2, ChevronDown, Eye, EyeOff, Handshake, Plane, 
   UserCheck, Percent, Clock, AlertTriangle, ShieldCheck, Mail, Phone, ExternalLink, 
   DollarSign, ArrowDownLeft, FileSpreadsheet, Send, BarChart2, Coins, RotateCcw, 
-  MessageSquare, Calendar, Printer, Lock 
-} from 'lucide-react';
+  MessageSquare, Calendar, Printer, Lock, TrendingUp, ChevronRight, MoreVertical, CreditCard } from 'lucide-react';
 import CuentaContableModal from '../components/common/CuentaContableModal';
+import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import { PrintPreview } from '../components/PrintPreview';
-import { dbResetAllTestData } from '../services/db';
+import { dbResetAllTestData, dbFetchTerminalesPos, isUUID } from '../services/db';
+import { TerminalPosModel } from '../types/database';
 import { useCompany } from '../context/CompanyContext';
 import MasterAuthModal from '../components/common/MasterAuthModal';
 import BackButton from '../components/common/BackButton';
 
-const VoucherPreviewModal = ({ 
-  isOpen, 
-  onClose, 
-  initialComprobante, 
-  cuentasContables = [], 
-  onConfirm 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  initialComprobante: any; 
-  cuentasContables: any[]; 
-  onConfirm: (finalComprobante: any) => void; 
-}) => {
-  const [comprobante, setComprobante] = useState<any>(null);
-
-  useEffect(() => {
-    if (initialComprobante) {
-      setComprobante(JSON.parse(JSON.stringify(initialComprobante))); // Deep clone
+const getCleanDocNumber = (itemOrDoc: any, fallback?: string): string => {
+  if (!itemOrDoc) {
+    if (fallback && isUUID(fallback)) {
+      return `DOC-${fallback.slice(0, 8).toUpperCase()}`;
     }
-  }, [initialComprobante]);
+    return fallback || '-';
+  }
+  const cleanFac = (itemOrDoc.factura && !isUUID(itemOrDoc.factura)) ? itemOrDoc.factura
+    : (itemOrDoc.numero && !isUUID(itemOrDoc.numero)) ? itemOrDoc.numero
+    : (itemOrDoc.factura_numero && !isUUID(itemOrDoc.factura_numero)) ? itemOrDoc.factura_numero
+    : null;
+  if (cleanFac) return cleanFac;
 
-  if (!isOpen || !comprobante) return null;
+  const desc = itemOrDoc.descripcion || itemOrDoc.concepto || '';
+  const matchFac = desc.match(/(?:Fact(?:ura)?(?:\s+de\s+Compra)?|Fact\.?|Doc\.?|Documento)\s*[:#.]?\s*([A-Za-z0-9\-_]+)/i);
+  if (matchFac && matchFac[1]) return matchFac[1];
 
-  const handleLineChange = (index: number, field: string, value: any) => {
-    const updatedLineas = [...comprobante.lineas];
-    updatedLineas[index] = { ...updatedLineas[index], [field]: value };
-    
-    // Recalculate totals
-    const totalDebe = updatedLineas.reduce((acc, curr) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc, curr) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
+  if (itemOrDoc.factura_id && !isUUID(itemOrDoc.factura_id)) return itemOrDoc.factura_id;
+  if (itemOrDoc.referencia && !isUUID(itemOrDoc.referencia)) return itemOrDoc.referencia;
 
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const handleAddLine = () => {
-    const newLine = {
-      id: `l-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-      cuentaId: '',
-      descripcion: comprobante.descripcion || 'Línea de Comprobante',
-      debe: 0,
-      haber: 0
-    };
-    setComprobante({
-      ...comprobante,
-      lineas: [...comprobante.lineas, newLine]
-    });
-  };
-
-  const handleRemoveLine = (index: number) => {
-    const updatedLineas = comprobante.lineas.filter((_: any, i: number) => i !== index);
-    const totalDebe = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
-
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const totalDebe = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-  const totalHaber = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-  const diff = totalDebe - totalHaber;
-  const isBalanced = Math.abs(diff) < 0.01;
-
-  const activeCuentas = cuentasContables
-    .filter(c => c.tipo === 'Movimiento')
-    .sort((a,b)=>(a.codigo||'').localeCompare(b.codigo||''));
-
-  const formatES = (num: number | string) => {
-    if (num === undefined || num === null || num === "") return "0,00";
-    const parsed = typeof num === 'string' ? parseFloat(num) : num;
-    if (isNaN(parsed)) return "0,00";
-    return parsed.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-        <div className="bg-gradient-to-r from-violet-700 to-indigo-700 p-6 text-white flex justify-between items-center shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">
-                Previsualización de Asiento
-              </span>
-              {!isBalanced && (
-                <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                  Descuadrado
-                </span>
-              )}
-            </div>
-            <h3 className="text-xl font-black mt-1">Revisión de Comprobante Contable</h3>
-            <p className="text-xs text-indigo-200 font-medium mt-0.5">Asigne las cuentas contables correctas para evitar errores de comprobantes.</p>
-          </div>
-          <button 
-            type="button"
-            onClick={onClose} 
-            className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 bg-slate-50/50">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/65 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Número de Comprobante</label>
-              <p className="text-sm font-bold text-slate-800 mt-1">{comprobante.numero}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Fecha de Registro</label>
-              <input
-                type="date"
-                className="w-full px-2 py-1 mt-1 bg-slate-50 border border-slate-200 rounded text-sm font-bold text-slate-700 outline-none"
-                value={comprobante.fecha}
-                onChange={e => setComprobante({ ...comprobante, fecha: e.target.value })}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Referencia Física / ID</label>
-              <p className="text-sm font-mono font-bold text-slate-700 mt-1">{comprobante.referencia}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado Comprobante</label>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold mt-1 shadow-sm ${isBalanced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                <span className={`w-2 h-2 rounded-full ${isBalanced ? 'bg-emerald-500' : 'bg-red-500 animate-ping'}`} />
-                {isBalanced ? 'Listo' : 'Por cuadrar'}
-              </span>
-            </div>
-            <div className="col-span-1 md:col-span-4 border-t border-slate-100 pt-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Descripción Principal</label>
-              <input
-                type="text"
-                className="w-full px-3 py-1.5 mt-1 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
-                value={comprobante.descripcion}
-                onChange={e => setComprobante({ ...comprobante, descripcion: e.target.value })}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalle del Asiento (Partida Doble)</span>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5"
-              >
-                <Plus size={14} />
-                Agregar Línea
-              </button>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-md overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                    <th className="py-3 px-4 w-1/3">Cuenta Contable</th>
-                    <th className="py-3 px-4 w-2/5">Descripción de Línea</th>
-                    <th className="py-3 px-4 text-right w-24">Debe ($)</th>
-                    <th className="py-3 px-4 text-right w-24">Haber ($)</th>
-                    <th className="py-3 px-4 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {comprobante.lineas.map((line: any, index: number) => (
-                    <tr key={line.id} className="hover:bg-slate-50/50 transition-colors font-medium">
-                      <td className="p-2">
-                        <select
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold focus:border-indigo-500 outline-none max-w-md"
-                          value={line.cuentaId}
-                          onChange={e => handleLineChange(index, 'cuentaId', e.target.value)}
-                        >
-                          <option value="">Seleccione cuenta...</option>
-                          {activeCuentas.map(c => (
-                            <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs focus:border-indigo-500 outline-none"
-                          value={line.descripcion}
-                          onChange={e => handleLineChange(index, 'descripcion', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none"
-                          value={line.debe || ''}
-                          onChange={e => handleLineChange(index, 'debe', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none"
-                          value={line.haber || ''}
-                          onChange={e => handleLineChange(index, 'haber', e.target.value)}
-                        />
-                      </td>
-                      <td className="p-2 text-center text-slate-400">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(index)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100/60 transition-colors"
-                          title="Eliminar línea"
-                          disabled={comprobante.lineas.length <= 1}
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="bg-slate-50 p-4 border-t border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="text-slate-500 flex flex-wrap gap-4 text-xs font-semibold">
-                  <span>Diferencia: 
-                    <span className={`ml-1.5 font-bold ${isBalanced ? 'text-emerald-600' : 'text-red-600'}`}>
-                      $ {formatES(diff)}
-                    </span>
-                  </span>
-                  <span>Líneas: <span className="text-slate-800 font-bold">{comprobante.lineas.length}</span></span>
-                </div>
-                <div className="flex gap-6 text-sm font-bold text-slate-700">
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Debe</p>
-                    <p className="text-base text-indigo-700">$ {formatES(totalDebe)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Haber</p>
-                    <p className="text-base text-violet-700">$ {formatES(totalHaber)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-200/80 transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={() => onConfirm(comprobante)}
-            disabled={!isBalanced}
-            className={`px-6 py-2.5 rounded-xl text-sm font-black text-white shadow-sm flex items-center gap-2 transition-colors ${isBalanced ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed text-slate-500'}`}
-          >
-            <CheckCircle size={16} />
-            Confirmar y Registrar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const raw = itemOrDoc.factura_id || itemOrDoc.id || fallback || '';
+  if (isUUID(raw)) {
+    return `DOC-${raw.slice(0, 8).toUpperCase()}`;
+  }
+  return raw || '-';
 };
+
 
 export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], comprobantes = [], bancos = [], movimientosBancos = [], proveedores = [], contactos = [], cuentasContables = [], configContable, onSave, showToast, workingYear }: { cxc?: any[], cxp?: any[], pagosRealizados?: any[], comprobantes?: any[], bancos?: any[], movimientosBancos?: any[], proveedores?: any[], contactos?: any[], cuentasContables?: any[], configContable?: any, onSave?: any, showToast?: any, workingYear?: string }) {
   const { activeCompanyId } = useCompany();
@@ -301,6 +54,19 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<any | null>(null);
   const [hideZeroBalances, setHideZeroBalances] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<'CON_DEUDA' | 'EN_MORA' | 'AL_DIA' | 'A_FAVOR' | 'SOLVENTES' | 'TODOS'>('CON_DEUDA');
+  const [showExtraActionsMenu, setShowExtraActionsMenu] = useState<boolean>(false);
+  const [currentTasa, setCurrentTasa] = useState<number>(() => getTasaForDate());
+  const [mainTablePage, setMainTablePage] = useState(1);
+  const MAIN_TABLE_ITEMS_PER_PAGE = 10;
+
+  useEffect(() => {
+    setCurrentTasa(getTasaForDate());
+  }, []);
+
+  useEffect(() => {
+    setMainTablePage(1);
+  }, [activeTab, searchTerm, hideZeroBalances, statusFilter]);
 
   // Reintegro modal state
   const [showReintegroModal, setShowReintegroModal] = useState(false);
@@ -338,13 +104,29 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     }
   }, [category]);
 
+  const [terminalesPos, setTerminalesPos] = useState<TerminalPosModel[]>([]);
+
+  useEffect(() => {
+    dbFetchTerminalesPos().then(setTerminalesPos).catch(console.error);
+  }, []);
+
   // Estado para el módulo de pago
   const [pagoForm, setPagoForm] = useState({
     bancoId: '',
     referencia: '',
     fecha: new Date().toISOString().split('T')[0],
+    tasa: 1,
+    tasaReferencial: '',
     proveedorId: '',
-    tasa: 1
+    pagos: [] as Array<{
+      id: string;
+      bancoId: string;
+      metodo?: string;
+      terminalId?: string;
+      referencia: string;
+      monto: string;
+      montoBs: string;
+    }>
   });
 
   // Estado para Historial de Pagos Realizados
@@ -367,19 +149,44 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     empleados: true
   });
 
-  // Estado para el modal de nuevo movimiento bancario (Cuentas por pagar no proveedores)
+  // Estado para el modal de nuevo préstamo (Cuentas por pagar accionistas / intercompañías / terceros)
   const [showNewModal, setShowNewModal] = useState(false);
   const [newMovForm, setNewMovForm] = useState({
     bancoId: '',
     fecha: new Date().toISOString().split('T')[0],
+    fechaVencimiento: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     referencia: '',
     descripcion: '',
     monto: '',
     entidad: '',
     entidad_id: '',
+    categoria: 'accionistas',
     tasa: '',
     montoBs: ''
   });
+
+  const handleOpenNewLoanModal = (categoriaDefault?: string) => {
+    const cat = (categoriaDefault === 'intercompanias' || activeTab === 'intercompanias') 
+      ? 'intercompanias' 
+      : 'accionistas';
+    const today = new Date().toISOString().split('T')[0];
+    const due = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const nowTs = Date.now().toString();
+    setNewMovForm({
+      bancoId: bancos[0]?.id || '',
+      fecha: today,
+      fechaVencimiento: due,
+      referencia: `PREST-${nowTs.slice(-4)}`,
+      descripcion: cat === 'intercompanias' ? 'Préstamo recibido de intercompañía para financiamiento' : 'Préstamo recibido de accionista para financiamiento',
+      monto: '',
+      entidad: '',
+      entidad_id: '',
+      categoria: cat,
+      tasa: (currentTasa || getTasaForDate() || 1).toString(),
+      montoBs: ''
+    });
+    setShowNewModal(true);
+  };
 
   // Estado para el modal de Anticipo
   const [showAnticipoModal, setShowAnticipoModal] = useState(false);
@@ -444,39 +251,40 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
   const [newMovSupplierSearchTerm, setNewMovSupplierSearchTerm] = useState('');
 
   const filteredNewMovEntities = useMemo(() => {
-    const term = (newMovSupplierSearchTerm || '').toLowerCase();
-    
+    const term = (newMovSupplierSearchTerm || '').toLowerCase().trim();
+    const targetCat = newMovForm.categoria || 'accionistas';
+
     return contactos.filter(c => {
       let isMatch = false;
-      switch(activeTab) {
-         case 'aerolineas':
-           isMatch = c.type === 'airline';
-           break;
-         case 'freelance':
-           isMatch = c.type === 'freelance' || c.type === 'customs_agency';
-           break;
-         case 'proveedores':
-         case 'pago':
-           isMatch = ['supplier', 'both', 'airline'].includes(c.type);
-           break;
-         case 'aliados':
-           isMatch = ['customs_agency', 'aliado', 'freelance', 'supplier', 'both'].includes(c.type);
-           break;
-         case 'empleados': 
-           isMatch = c.type === 'employee';
-           break;
-         case 'intercompanias': 
-           isMatch = c.type === 'intercompany';
-           break;
-         case 'accionistas': 
-           isMatch = c.type === 'shareholder';
-           break;
-         default: 
-           isMatch = ['supplier', 'both', 'airline', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
+      const cType = (c.type || '').toLowerCase();
+      const cCat = (c.categoria || '').toLowerCase();
+      const cCargo = ((c as any).cargo || '').toLowerCase();
+
+      if (targetCat === 'intercompanias') {
+        isMatch = cType === 'intercompany' || 
+                  cType === 'intercompanias' || 
+                  cType === 'intercompañia' || 
+                  cType === 'intercompañías' || 
+                  cCat.includes('intercompa') ||
+                  cCargo.includes('intercompa');
+      } else {
+        // accionistas por defecto
+        isMatch = cType === 'shareholder' || 
+                  cType === 'accionistas' || 
+                  cType === 'accionista' || 
+                  cCat.includes('accion') ||
+                  cCargo.includes('accion') ||
+                  cCargo.includes('socio');
       }
-      return isMatch && ((c.taxId || '').toLowerCase().includes(term) || (c.name || '').toLowerCase().includes(term));
+
+      if (!isMatch) return false;
+
+      if (!term) return true;
+      const taxId = (c.taxId || c.identificacion || '').toLowerCase();
+      const name = (c.name || c.nombre || '').toLowerCase();
+      return taxId.includes(term) || name.includes(term);
     });
-  }, [contactos, newMovSupplierSearchTerm, activeTab]);
+  }, [contactos, newMovSupplierSearchTerm, newMovForm.categoria]);
 
   const filteredProvisionEntities = useMemo(() => {
     const term = (provisionSupplierSearchTerm || '').toLowerCase();
@@ -586,9 +394,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
   });
 
   const tabs = [
-    { id: 'aerolineas', label: 'Aerolíneas', icon: Plane },
     { id: 'proveedores', label: 'Proveedores', icon: Users },
-    { id: 'freelance', label: 'Freelance', icon: UserCheck },
     { id: 'intercompanias', label: 'Intercompañías', icon: Building },
     { id: 'accionistas', label: 'Accionistas', icon: UserCircle },
     { id: 'pago', label: 'Módulo Pago', icon: PhoneCall },
@@ -610,15 +416,17 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       const cat = item.categoria || 'proveedores';
       if (activeTab === 'pago') return true;
       if (activeTab === 'aliados') return cat === 'aliados' || cat === 'aliado';
+      if (activeTab === 'proveedores') return cat === 'proveedores' || cat === 'servicios';
       return cat === activeTab;
     });
   }, [cxp, activeTab]);
 
   // Group data by supplier for the main table
-  const groupedData = useMemo(() => {
+  const allGroupedData = useMemo(() => {
     if (activeTab === 'pago') return [];
     
     const groups: Record<string, any> = {};
+    const todayTs = new Date().setHours(0, 0, 0, 0);
     
     tabData.forEach(item => {
       const contactObj = contactos.find(c => 
@@ -631,16 +439,20 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       if (!groups[key]) {
         groups[key] = {
           id: key,
-          proveedor: item.proveedor || contactObj?.name,
+          proveedor: item.proveedor || contactObj?.name || 'Proveedor sin nombre',
+          rif: contactObj?.taxId || item.proveedor_rif || item.taxId || (String(key).startsWith('J-') || String(key).startsWith('V-') || String(key).startsWith('G-') || String(key).startsWith('E-') ? key : ''),
+          telefono: contactObj?.phone || '',
           montoAdeudo: 0,
           abonosAplicados: 0,
           saldoPendiente: 0,
+          hasOverdue: false,
+          moraDays: 0,
+          status: 'AL_DIA',
           documentos: []
         };
       }
       
       const total = Number(item.total) || 0;
-      
       if (total > 0) {
         groups[key].montoAdeudo += total;
       }
@@ -652,7 +464,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       const supplierIdStr = String(g.id).trim();
       const supplierNameLower = (g.proveedor || '').toLowerCase();
       
-      // 1. Calculate active pagos (payments) from the pagosRealizados collection
+      // 1. Pagos realizados activos
       const activePagos = (pagosRealizados || []).filter((p: any) => {
         if (p.estado === 'anulado') return false;
         if (p.proveedorId && String(p.proveedorId) === supplierIdStr) return true;
@@ -662,7 +474,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       
       const totalPagadoEnPagosRealizados = activePagos.reduce((sum: number, p: any) => sum + (Number(p.monto) || 0), 0);
       
-      // 2. Calculate payments applied directly within the cxp documents (total - saldo)
+      // 2. Pagos en documentos
       const pagosEnDocs = g.documentos.reduce((sum: number, d: any) => {
         const totalDoc = Number(d.total) || 0;
         const saldoDoc = Number(d.saldo) || 0;
@@ -673,33 +485,127 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
         return sum;
       }, 0);
       
-      // 3. Also account for unused/available anticipos (anticipos in cxp have total < 0 and act as abonos while they have negative saldo)
+      // 3. Anticipos no utilizados
       const totalAnticiposUnused = g.documentos.reduce((sum: number, d: any) => {
         const t = Number(d.total) || 0;
         const s = Number(d.saldo) || 0;
         return sum + (t < 0 ? Math.abs(s) : 0);
       }, 0);
       
-      // Use the maximum of payments and document-applied payments to be 100% robust
-      const basePagado = Math.max(pagosEnDocs, totalPagadoEnPagosRealizados);
+      const remainingDebt = Math.max(0, g.montoAdeudo - pagosEnDocs);
+      g.saldoPendiente = remainingDebt - totalAnticiposUnused;
+      g.abonosAplicados = (g.montoAdeudo - remainingDebt) + totalAnticiposUnused;
       
-      g.abonosAplicados = basePagado + totalAnticiposUnused;
-      g.saldoPendiente = g.montoAdeudo - g.abonosAplicados;
+      // Detectar si tiene facturas vencidas en mora
+      let hasOverdue = false;
+      let maxMora = 0;
+      g.documentos.forEach((d: any) => {
+        const saldoVal = Number(d.saldo !== undefined ? d.saldo : d.total) || 0;
+        if (saldoVal > 0.01 && d.estado !== 'anulada' && d.tipo !== 'anticipo') {
+          const vDate = d.vencimiento ? new Date(d.vencimiento).getTime() : (d.fecha ? new Date(d.fecha).getTime() : todayTs);
+          const diffDays = Math.floor((todayTs - vDate) / (1000 * 60 * 60 * 24));
+          if (diffDays > 0) {
+            hasOverdue = true;
+            if (diffDays > maxMora) maxMora = diffDays;
+          }
+        }
+      });
+      g.hasOverdue = hasOverdue;
+      g.moraDays = maxMora;
+      
+      if (g.saldoPendiente < -0.01) {
+        g.status = 'A_FAVOR';
+      } else if (g.saldoPendiente <= 0.01) {
+        g.status = 'SOLVENTE';
+      } else if (g.hasOverdue) {
+        g.status = 'EN_MORA';
+      } else {
+        g.status = 'AL_DIA';
+      }
       
       g.documentos.sort((a: any, b: any) => new Date(b.fecha || 0).getTime() - new Date(a.fecha || 0).getTime());
     });
 
-    return Object.values(groups)
-      .filter((g: any) => {
-        const matchesSearch = (g.proveedor?.toLowerCase() || '').includes((searchTerm || '').toLowerCase());
-        if (!matchesSearch) return false;
-        if (hideZeroBalances) {
-          return Math.abs(g.saldoPendiente) > 0.009 || Math.abs(g.montoAdeudo) > 0.009;
+    return Object.values(groups);
+  }, [tabData, activeTab, contactos, pagosRealizados]);
+
+  // Executive KPI summary calculations across active tab
+  const kpiStats = useMemo(() => {
+    let totalExigible = 0;
+    let totalCobrado = 0;
+    let totalFacturado = 0;
+    let totalEnMora = 0;
+    let countConDeuda = 0;
+    let countEnMora = 0;
+    let countAFavor = 0;
+    let countAlDia = 0;
+
+    allGroupedData.forEach((g: any) => {
+      totalFacturado += g.montoAdeudo;
+      totalCobrado += g.abonosAplicados;
+      if (g.saldoPendiente > 0.01) {
+        totalExigible += g.saldoPendiente;
+        countConDeuda++;
+        if (g.hasOverdue) {
+          totalEnMora += g.saldoPendiente;
+          countEnMora++;
+        } else {
+          countAlDia++;
         }
-        return true;
-      })
-      .sort((a: any, b: any) => b.saldoPendiente - a.saldoPendiente);
-  }, [tabData, activeTab, searchTerm, hideZeroBalances, contactos, pagosRealizados]);
+      } else if (g.saldoPendiente < -0.01) {
+        countAFavor++;
+      }
+    });
+
+    const countSolventes = allGroupedData.length - countConDeuda - countAFavor;
+    return {
+      totalExigible,
+      totalCobrado,
+      totalFacturado,
+      totalEnMora,
+      countConDeuda,
+      countEnMora,
+      countAFavor,
+      countAlDia,
+      countSolventes: Math.max(0, countSolventes),
+      totalEntidades: allGroupedData.length
+    };
+  }, [allGroupedData]);
+
+  // Filtered dataset according to search and status pills
+  const groupedData = useMemo(() => {
+    let result = [...allGroupedData];
+
+    if (searchTerm.trim() !== '') {
+      const st = searchTerm.trim().toLowerCase();
+      result = result.filter((g: any) => {
+        const nameMatch = (g.proveedor?.toLowerCase() || '').includes(st);
+        const idMatch = (String(g.id)?.toLowerCase() || '').includes(st);
+        const rifMatch = (String(g.rif)?.toLowerCase() || '').includes(st);
+        return nameMatch || idMatch || rifMatch;
+      });
+    }
+
+    if (statusFilter === 'CON_DEUDA') {
+      result = result.filter((g: any) => g.saldoPendiente > 0.01);
+    } else if (statusFilter === 'EN_MORA') {
+      result = result.filter((g: any) => g.status === 'EN_MORA');
+    } else if (statusFilter === 'AL_DIA') {
+      result = result.filter((g: any) => g.status === 'AL_DIA');
+    } else if (statusFilter === 'A_FAVOR') {
+      result = result.filter((g: any) => g.status === 'A_FAVOR');
+    } else if (statusFilter === 'SOLVENTES') {
+      result = result.filter((g: any) => g.status === 'SOLVENTE');
+    }
+
+    return result.sort((a: any, b: any) => b.saldoPendiente - a.saldoPendiente);
+  }, [allGroupedData, searchTerm, statusFilter]);
+
+  const totalMainPages = Math.ceil(groupedData.length / MAIN_TABLE_ITEMS_PER_PAGE) || 1;
+  const paginatedGroupedData = useMemo(() => {
+    const start = (mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE;
+    return groupedData.slice(start, start + MAIN_TABLE_ITEMS_PER_PAGE);
+  }, [groupedData, mainTablePage]);
 
   // Calculate totals for the active tab (grouped)
   const totals = useMemo(() => {
@@ -714,8 +620,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
   // Synchronized selected supplier from the fresh groupedData list
   const currentSupplier = useMemo(() => {
     if (!selectedSupplier) return null;
-    return groupedData.find(g => g.id === selectedSupplier.id) || selectedSupplier;
-  }, [groupedData, selectedSupplier]);
+    return allGroupedData.find((g: any) => g.id === selectedSupplier.id) || selectedSupplier;
+  }, [allGroupedData, selectedSupplier]);
 
   // --- LÓGICA MÓDULO PAGO ---
   const suppliersWithDebt = useMemo(() => {
@@ -766,23 +672,144 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
   const selectedSupplierDebts = useMemo(() => {
     if (!pagoForm.proveedorId) return [];
-    const supplierNameLow = selectedSupplierObj?.nombre?.toLowerCase() || '';
+
+    const targetIdStr = String(pagoForm.proveedorId).toLowerCase().trim();
+    const supplierNameLow = (selectedSupplierObj?.nombre || '').toLowerCase().trim();
+
+    // Encontrar contacto asociado a este proveedor
+    const contactObj = contactos.find(c => {
+      const cId = String(c.id || '').toLowerCase().trim();
+      const cTax = String(c.taxId || c.identificacion || '').toLowerCase().trim();
+      const cName = String(c.name || c.nombre || '').toLowerCase().trim();
+      return (cId && cId === targetIdStr) || 
+             (cTax && cTax === targetIdStr) || 
+             (supplierNameLow && cName === supplierNameLow);
+    });
+
+    const validIds = new Set<string>();
+    validIds.add(targetIdStr);
+    if (contactObj) {
+      if (contactObj.id) validIds.add(String(contactObj.id).toLowerCase().trim());
+      if (contactObj.taxId) validIds.add(String(contactObj.taxId).toLowerCase().trim());
+      if (contactObj.identificacion) validIds.add(String(contactObj.identificacion).toLowerCase().trim());
+    }
+
+    const effectiveTargetName = (contactObj?.name || contactObj?.nombre || selectedSupplierObj?.nombre || '').toLowerCase().trim();
+
     return cxp.filter(item => {
-      const matchId = String(item.proveedor_id) === String(pagoForm.proveedorId) || String(item.proveedor) === String(pagoForm.proveedorId);
-      const matchName = supplierNameLow && item.proveedor && item.proveedor.toLowerCase() === supplierNameLow;
-      return (matchId || matchName) && Number(item.saldo) > 0;
+      const saldo = Number(item.saldo !== undefined ? item.saldo : item.total) || 0;
+      if (saldo <= 0.009) return false;
+
+      // 1. Coincidencia por ID de proveedor o RIF en el item
+      const itemProvId = String(item.proveedor_id || '').toLowerCase().trim();
+      if (itemProvId && validIds.has(itemProvId)) return true;
+
+      const itemTaxId = String(item.taxId || item.proveedor_rif || '').toLowerCase().trim();
+      if (itemTaxId && validIds.has(itemTaxId)) return true;
+
+      // 2. Coincidencia mediante búsqueda de contacto del item
+      const itemContact = contactos.find(c => {
+        const cId = String(c.id || '').toLowerCase().trim();
+        const cTax = String(c.taxId || c.identificacion || '').toLowerCase().trim();
+        const cName = String(c.name || c.nombre || '').toLowerCase().trim();
+        const itemProvStr = String(item.proveedor || item.proveedor_nombre || '').toLowerCase().trim();
+
+        return (itemProvId && (cId === itemProvId || cTax === itemProvId)) ||
+               (itemTaxId && (cId === itemTaxId || cTax === itemTaxId)) ||
+               (itemProvStr && cName === itemProvStr);
+      });
+
+      if (itemContact) {
+        const cId = String(itemContact.id || '').toLowerCase().trim();
+        const cTax = String(itemContact.taxId || itemContact.identificacion || '').toLowerCase().trim();
+        const cName = String(itemContact.name || itemContact.nombre || '').toLowerCase().trim();
+
+        if (cId && validIds.has(cId)) return true;
+        if (cTax && validIds.has(cTax)) return true;
+        if (effectiveTargetName && cName === effectiveTargetName) return true;
+      }
+
+      // 3. Coincidencia directa o parcial por nombre del proveedor
+      const itemProvName = String(item.proveedor || item.proveedor_nombre || '').toLowerCase().trim();
+      if (effectiveTargetName && itemProvName) {
+        if (itemProvName === effectiveTargetName || itemProvName.includes(effectiveTargetName) || effectiveTargetName.includes(itemProvName)) {
+          return true;
+        }
+      }
+
+      return false;
     }).sort((a, b) => new Date(a.fecha || 0).getTime() - new Date(b.fecha || 0).getTime());
-  }, [cxp, pagoForm.proveedorId, selectedSupplierObj]);
+  }, [cxp, pagoForm.proveedorId, selectedSupplierObj, contactos]);
 
   const selectedSupplierAnticipos = useMemo(() => {
     if (!pagoForm.proveedorId) return [];
-    const supplierNameLow = selectedSupplierObj?.nombre?.toLowerCase() || '';
+
+    const targetIdStr = String(pagoForm.proveedorId).toLowerCase().trim();
+    const supplierNameLow = (selectedSupplierObj?.nombre || '').toLowerCase().trim();
+
+    const contactObj = contactos.find(c => {
+      const cId = String(c.id || '').toLowerCase().trim();
+      const cTax = String(c.taxId || c.identificacion || '').toLowerCase().trim();
+      const cName = String(c.name || c.nombre || '').toLowerCase().trim();
+      return (cId && cId === targetIdStr) || 
+             (cTax && cTax === targetIdStr) || 
+             (supplierNameLow && cName === supplierNameLow);
+    });
+
+    const validIds = new Set<string>();
+    validIds.add(targetIdStr);
+    if (contactObj) {
+      if (contactObj.id) validIds.add(String(contactObj.id).toLowerCase().trim());
+      if (contactObj.taxId) validIds.add(String(contactObj.taxId).toLowerCase().trim());
+      if (contactObj.identificacion) validIds.add(String(contactObj.identificacion).toLowerCase().trim());
+    }
+
+    const effectiveTargetName = (contactObj?.name || contactObj?.nombre || selectedSupplierObj?.nombre || '').toLowerCase().trim();
+
     return cxp.filter(item => {
-      const matchId = String(item.proveedor_id) === String(pagoForm.proveedorId) || String(item.proveedor) === String(pagoForm.proveedorId);
-      const matchName = supplierNameLow && item.proveedor && item.proveedor.toLowerCase() === supplierNameLow;
-      return (matchId || matchName) && Number(item.saldo) < 0;
+      const saldo = Number(item.saldo !== undefined ? item.saldo : item.total) || 0;
+      if (saldo >= -0.009) return false;
+
+      // 1. Coincidencia por ID de proveedor o RIF en el item
+      const itemProvId = String(item.proveedor_id || '').toLowerCase().trim();
+      if (itemProvId && validIds.has(itemProvId)) return true;
+
+      const itemTaxId = String(item.taxId || item.proveedor_rif || '').toLowerCase().trim();
+      if (itemTaxId && validIds.has(itemTaxId)) return true;
+
+      // 2. Coincidencia mediante búsqueda de contacto del item
+      const itemContact = contactos.find(c => {
+        const cId = String(c.id || '').toLowerCase().trim();
+        const cTax = String(c.taxId || c.identificacion || '').toLowerCase().trim();
+        const cName = String(c.name || c.nombre || '').toLowerCase().trim();
+        const itemProvStr = String(item.proveedor || item.proveedor_nombre || '').toLowerCase().trim();
+
+        return (itemProvId && (cId === itemProvId || cTax === itemProvId)) ||
+               (itemTaxId && (cId === itemTaxId || cTax === itemTaxId)) ||
+               (itemProvStr && cName === itemProvStr);
+      });
+
+      if (itemContact) {
+        const cId = String(itemContact.id || '').toLowerCase().trim();
+        const cTax = String(itemContact.taxId || itemContact.identificacion || '').toLowerCase().trim();
+        const cName = String(itemContact.name || itemContact.nombre || '').toLowerCase().trim();
+
+        if (cId && validIds.has(cId)) return true;
+        if (cTax && validIds.has(cTax)) return true;
+        if (effectiveTargetName && cName === effectiveTargetName) return true;
+      }
+
+      // 3. Coincidencia directa o parcial por nombre del proveedor
+      const itemProvName = String(item.proveedor || item.proveedor_nombre || '').toLowerCase().trim();
+      if (effectiveTargetName && itemProvName) {
+        if (itemProvName === effectiveTargetName || itemProvName.includes(effectiveTargetName) || effectiveTargetName.includes(itemProvName)) {
+          return true;
+        }
+      }
+
+      return false;
     }).sort((a, b) => new Date(a.fecha || 0).getTime() - new Date(b.fecha || 0).getTime());
-  }, [cxp, pagoForm.proveedorId, selectedSupplierObj]);
+  }, [cxp, pagoForm.proveedorId, selectedSupplierObj, contactos]);
 
   const totalAnticiposDisponibles = useMemo(() => {
     return selectedSupplierAnticipos.reduce((acc, item) => acc + Math.abs(Number(item.saldo)), 0);
@@ -814,6 +841,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
   const totalAnticiposAplicados = Number(anticipoGlobal) || 0;
   const montoBanco = totalFacturasAplicadas - totalAnticiposAplicados;
+  const sumPagosDisplay = pagoForm.pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
 
   const handleAbonoChange = (docId: string, value: string, maxSaldo: number) => {
     let numValue = Number(value);
@@ -852,22 +880,36 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       }
     }
 
-    if (totalFacturasAplicadas <= 0 && totalAnticiposAplicados <= 0) return showToast?.('Debe aplicar al menos un monto', 'error');
+    if (totalFacturasAplicadas <= 0 && totalAnticiposAplicados <= 0) return showToast?.('Debe aplicar al menos un monto en las facturas', 'error');
     if (montoBanco < 0) return showToast?.('El total de anticipos aplicados no puede superar el total de facturas a pagar', 'error');
-    if (montoBanco > 0 && !pagoForm.bancoId) return showToast?.('Seleccione un banco para el pago', 'error');
-    if (montoBanco > 0 && !pagoForm.referencia) return showToast?.('Ingrese un número de referencia para el pago', 'error');
 
-    if (montoBanco > 0 && pagoForm.bancoId) {
-      const lockDate = getSapsLockDate(pagoForm.bancoId);
-      if (lockDate && pagoForm.fecha <= lockDate) {
-        return showToast?.(`Error: Existe un cierre SAPS en ${lockDate}. Use una fecha posterior.`, 'error');
+    const sumPagos = pagoForm.pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+
+    if (montoBanco > 0) {
+      const diffPagos = Number((sumPagos - montoBanco).toFixed(2));
+      if (Math.abs(diffPagos) > 0.01) {
+        if (diffPagos < 0) {
+          return showToast?.(`El total de los métodos de pago ($ ${formatNumber(sumPagos)}) no cubre el monto neto por pagar ($ ${formatNumber(montoBanco)}). Faltan $ ${formatNumber(Math.abs(diffPagos))}.`, 'error');
+        } else {
+          return showToast?.(`El total en métodos de pago ($ ${formatNumber(sumPagos)}) excede el neto por pagar ($ ${formatNumber(montoBanco)}) por $ ${formatNumber(diffPagos)}. Los montos deben coincidir exactamente para mantener la partida doble contable.`, 'error');
+        }
+      }
+      for (const p of pagoForm.pagos) {
+        if (!p.bancoId) return showToast?.('Seleccione un banco o caja para todos los métodos de pago', 'error');
+        if (!p.referencia) return showToast?.('Ingrese un número de referencia para todos los métodos de pago', 'error');
+        if (!p.monto || Number(p.monto) <= 0) return showToast?.('Ingrese un monto válido mayor a 0 para todos los métodos de pago', 'error');
+
+        const lockDate = getSapsLockDate(p.bancoId);
+        if (lockDate && pagoForm.fecha <= lockDate) {
+          return showToast?.(`Error: Existe un cierre SAPS en ${lockDate} para una de las cuentas seleccionadas.`, 'error');
+        }
       }
     }
 
     try {
       const nowTs = Date.now().toString();
 
-      // 0. Obtener cuentas contables correspondientes
+      // Obtener cuentas contables correspondientes
       const proveedorObj = proveedores.find(p => p.id === pagoForm.proveedorId);
       const contactObj = contactos.find(c => 
         c.id === pagoForm.proveedorId || 
@@ -885,169 +927,114 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
         cuentaEntidad = configContable?.cuentaCxp || '2.1.1';
       }
 
-      const entidadNombre = contactObj?.name || proveedorObj?.nombre || selectedSupplierObj?.nombre || 'Colaborador/Proveedor';
+      const entidadNombre = contactObj?.name || proveedorObj?.nombre || selectedSupplierObj?.nombre || 'Proveedor';
 
-      const finalRef = pagoForm.referencia || `PAG-${nowTs.slice(-4)}`;
+      const draftMovs: any[] = [];
+      const lineas: any[] = [];
 
-      // 1. Preparar borrador de movimiento bancario (egreso) si hay monto a pagar
-      const draftMov = montoBanco > 0 ? {
-        id: nowTs,
-        banco_id: pagoForm.bancoId,
-        fecha: pagoForm.fecha,
-        ref: finalRef,
-        descripcion: `Pago a ${isEmployeeOrFreelancer ? 'colaborador' : 'proveedor'} ${entidadNombre}`,
-        tipo: 'egreso' as const,
-        monto: montoBanco,
-        tasa: pagoForm.tasa || 1,
-        estado: 'activo',
-        cuenta_contable_id: cuentaEntidad
-      } : null;
-
-      // 4. Crear comprobante contable
-      const banco = bancos.find(b => b.id === pagoForm.bancoId);
-      
-      const cuentaBanco = banco?.cuenta_contable_id || '1.1.3';
-      const cuentaAnticipo = configContable?.cuentaAnticipoOtorgado || '1.1.4';
-
-      const lineas = [];
-      
+      // 1. Débito a CxP por el total de facturas aplicadas
       if (totalFacturasAplicadas > 0) {
         lineas.push({
           id: `l1-${nowTs}`,
           cuentaId: cuentaEntidad,
-          descripcion: `Pago a ${isEmployeeOrFreelancer ? 'colaborador' : 'proveedor'} ${entidadNombre} - CxP`,
+          descripcion: `Pago de facturas a ${entidadNombre} - CxP`,
           debe: totalFacturasAplicadas,
           haber: 0
         });
       }
 
-      if (montoBanco > 0) {
-        lineas.push({
-          id: `l2-${nowTs}`,
-          cuentaId: cuentaBanco,
-          descripcion: `Transf. Banco ${banco?.banco || ''} - Pago a ${isEmployeeOrFreelancer ? 'colaborador' : 'proveedor'} ${entidadNombre}`,
-          debe: 0,
-          haber: montoBanco
-        });
-      }
-      
+      // 2. Crédito a Anticipos si se usaron
+      const cuentaAnticipo = configContable?.cuentaAnticipoOtorgado || '1.1.4';
       if (totalAnticiposAplicados > 0) {
         lineas.push({
-          id: `l3-${nowTs}`,
+          id: `l-ant-${nowTs}`,
           cuentaId: cuentaAnticipo,
-          descripcion: `Aplicación de anticipo - ${isEmployeeOrFreelancer ? 'Colaborador' : 'Proveedor'} ${entidadNombre}`,
+          descripcion: `Aplicación de anticipo a favor - ${entidadNombre}`,
           debe: 0,
           haber: totalAnticiposAplicados
         });
       }
+
+      // 3. Crear movimientos bancarios (egresos) y líneas contables por CADA método de pago
+      const compId = crypto.randomUUID();
+      for (const p of pagoForm.pagos) {
+        const banco = bancos.find(b => b.id === p.bancoId);
+        const cuentaBanco = banco?.cuenta_contable_id || '1.1.3';
+        const montoNum = Number(p.monto);
+
+        draftMovs.push({
+          id: crypto.randomUUID(),
+          banco_id: p.bancoId,
+          fecha: pagoForm.fecha,
+          ref: p.referencia,
+          descripcion: `Pago a ${entidadNombre} (${banco?.banco || 'Banco'})`,
+          tipo: 'egreso' as const,
+          monto: montoNum,
+          montoBs: p.montoBs ? Number(p.montoBs) : Number((montoNum * (pagoForm.tasa || 1)).toFixed(2)),
+          tasa: pagoForm.tasa || 1,
+          estado: 'activo',
+          comprobante_id: compId,
+          cuenta_contable_id: cuentaEntidad
+        });
+
+        lineas.push({
+          id: `l-banco-${nowTs}-${Math.random().toString(36).substring(2, 7)}`,
+          cuentaId: cuentaBanco,
+          descripcion: `Egreso Banco ${banco?.banco || ''} - Ref: ${p.referencia}`,
+          debe: 0,
+          haber: montoNum
+        });
+      }
+
+      const mainRef = pagoForm.pagos.map(p => p.referencia).filter(Boolean).join(', ') || `PAG-${nowTs.slice(-4)}`;
 
       let newComprobante: any = null;
       if (lineas.length > 0) {
         const isBalanced = Math.abs(lineas.reduce((s,l)=>s+(Number(l.debe)||0),0) - lineas.reduce((s,l)=>s+(Number(l.haber)||0),0)) < 0.01;
         const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
         newComprobante = {
-          id: `comp-pago-${nowTs}`,
+          id: compId,
           fecha: pagoForm.fecha,
           numero: `CMP-${nowTs.slice(-6)}`,
           tipo: 'Diario',
-          descripcion: `Pago de facturas - ${isEmployeeOrFreelancer ? 'Colaborador' : 'Proveedor'} ${entidadNombre}`,
-          referencia: finalRef,
+          descripcion: `Pago de facturas a ${entidadNombre}`,
+          referencia: mainRef,
           total: totalFacturasAplicadas,
           estado: isDescuadrado ? 'Descuadrado' : 'Contabilizado',
           lineas
         };
       }
 
-      if (newComprobante) {
-        setPendingVoucher({
-          comprobante: newComprobante,
-          movimiento: draftMov,
-          onConfirm: async (finalComprobante: any) => {
-            if (onSave) {
-              if (draftMov) {
-                onSave('movimientosBancos', draftMov);
-              }
-
-              // 2. Actualizar saldos de las facturas en cxp
-              Object.entries(abonos).forEach(([docId, montoAbonado]) => {
-                const montoNum = Number(montoAbonado);
-                if (montoNum > 0) {
-                  const doc = cxp.find(d => d.id === docId);
-                  if (doc) {
-                    const newSaldo = doc.saldo - montoNum;
-                    const newEstado = newSaldo <= 0.01 ? 'pagada' : (doc.estado || 'activo');
-                    onSave('cxp', { ...doc, saldo: newSaldo, estado: newEstado });
-                  }
-                }
-              });
-
-              // 3. Actualizar saldos de los anticipos en cxp usando FIFO
-              let remainingAnticipoToApply = totalAnticiposAplicados;
-              for (const anticipoDoc of selectedSupplierAnticipos) {
-                if (remainingAnticipoToApply <= 0) break;
-                
-                const saldoAbs = Math.abs(Number(anticipoDoc.saldo) || 0);
-                if (saldoAbs > 0) {
-                  const amountToApplyToThisDoc = Math.min(saldoAbs, remainingAnticipoToApply);
-                  
-                  onSave('cxp', { 
-                    ...anticipoDoc, 
-                    saldo: anticipoDoc.saldo + amountToApplyToThisDoc
-                  });
-                  
-                  remainingAnticipoToApply -= amountToApplyToThisDoc;
-                }
-              }
-
-              onSave('comprobantes', finalComprobante);
-
-              // 4. Registrar historial de pago realizado
-              const newPagoRealizado = {
-                id: `pago-${nowTs}`,
-                fecha: pagoForm.fecha,
-                proveedorNombre: entidadNombre,
-                proveedorId: String(pagoForm.proveedorId),
-                monto: totalFacturasAplicadas,
-                referencia: pagoForm.referencia || `PAG-${nowTs.slice(-4)}`,
-                comprobanteId: finalComprobante.id,
-                movimientoBancoId: draftMov?.id || null,
-                estado: 'activo',
-                abonos: abonos, // mapping of docId to amount paid
-                anticiposAplicados: totalAnticiposAplicados,
-                bancoId: pagoForm.bancoId,
-                tasa: pagoForm.tasa || 1,
-              };
-              onSave('pagos-realizados', newPagoRealizado);
-            }
-
-            showToast?.('Pago procesado exitosamente', 'success');
-            setPendingVoucher(null);
-            setPagoForm({ ...pagoForm, referencia: '', proveedorId: '' });
-            setAbonos({});
-            setAnticipoGlobal('');
-
-            if (draftMov) {
-              navigate('/reports/comprobante-movimiento-banco', { state: { movimiento: draftMov } });
-            }
-          }
-        });
-      } else {
-        // No accounting entry necessary, execute directly
+      const executeSave = async (finalComprobante: any) => {
         if (onSave) {
-          // 2. Actualizar saldos de las facturas en cxp
+          const effectiveComp = finalComprobante || newComprobante;
+          const effectiveCompId = effectiveComp?.id || compId;
+
+          // Guardar primero el comprobante para que su ID exista en Supabase y no falle la FK en movimientos_bancos
+          if (effectiveComp) {
+            onSave('comprobantes', effectiveComp);
+          }
+
+          // Guardar cada movimiento bancario generado
+          for (const mov of draftMovs) {
+            onSave('movimientosBancos', { ...mov, comprobante_id: effectiveCompId });
+          }
+
+          // Actualizar saldos de las facturas en cxp
           Object.entries(abonos).forEach(([docId, montoAbonado]) => {
             const montoNum = Number(montoAbonado);
             if (montoNum > 0) {
               const doc = cxp.find(d => d.id === docId);
               if (doc) {
-                const newSaldo = doc.saldo - montoNum;
+                const currentSaldo = Number(doc.saldo !== undefined ? doc.saldo : doc.total) || 0;
+                const newSaldo = Math.max(0, currentSaldo - montoNum);
                 const newEstado = newSaldo <= 0.01 ? 'pagada' : (doc.estado || 'activo');
                 onSave('cxp', { ...doc, saldo: newSaldo, estado: newEstado });
               }
             }
           });
 
-          // 3. Actualizar saldos de los anticipos en cxp usando FIFO
+          // Actualizar saldos de los anticipos en cxp usando FIFO
           let remainingAnticipoToApply = totalAnticiposAplicados;
           for (const anticipoDoc of selectedSupplierAnticipos) {
             if (remainingAnticipoToApply <= 0) break;
@@ -1064,14 +1051,61 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
               remainingAnticipoToApply -= amountToApplyToThisDoc;
             }
           }
+
+
+          // Registrar historial de pago realizado con array de pagos
+          const newPagoRealizado = {
+            id: crypto.randomUUID(),
+            fecha: pagoForm.fecha,
+            proveedorNombre: entidadNombre,
+            proveedorId: String(pagoForm.proveedorId),
+            monto: totalFacturasAplicadas,
+            referencia: mainRef,
+            comprobanteId: effectiveCompId,
+            movimientosBancos: draftMovs.map(m => ({ ...m, comprobante_id: effectiveCompId })),
+            movimientoBancoId: draftMovs[0]?.id || null,
+            estado: 'activo',
+            abonos: abonos,
+            anticiposAplicados: totalAnticiposAplicados,
+            pagos: pagoForm.pagos,
+            bancoId: pagoForm.pagos[0]?.bancoId || '',
+            tasa: pagoForm.tasa || 1,
+          };
+          onSave('pagos-realizados', newPagoRealizado);
         }
 
         showToast?.('Pago procesado exitosamente', 'success');
-        setPagoForm({ ...pagoForm, referencia: '', proveedorId: '' });
+        setPendingVoucher(null);
+        setPagoForm({
+          bancoId: '',
+          referencia: '',
+          fecha: new Date().toISOString().split('T')[0],
+          tasa: 1,
+          tasaReferencial: '',
+          proveedorId: '',
+          pagos: []
+        });
         setAbonos({});
         setAnticipoGlobal('');
+
+        if (draftMovs.length > 0) {
+          navigate('/reports/comprobante-movimiento-banco', { state: { movimiento: draftMovs[0] } });
+        }
+      };
+
+      if (newComprobante) {
+        setPendingVoucher({
+          comprobante: newComprobante,
+          movimiento: draftMovs[0] || null,
+          onConfirm: async (finalComprobante: any) => {
+            await executeSave(finalComprobante);
+          }
+        });
+      } else {
+        executeSave(null);
       }
     } catch (error) {
+      console.error(error);
       showToast?.('Error al procesar el pago', 'error');
     }
   };
@@ -1085,8 +1119,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       }
     }
 
-    if (!newMovForm.bancoId || !newMovForm.entidad || !newMovForm.monto || !newMovForm.descripcion) {
-      showToast?.('Por favor complete todos los campos requeridos', 'error');
+    if (!newMovForm.bancoId || !newMovForm.entidad || !newMovForm.monto) {
+      showToast?.('Por favor complete los campos requeridos: Banco, Entidad prestamista y Monto', 'error');
       return;
     }
 
@@ -1110,43 +1144,68 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     }
 
     const nowTs = Date.now().toString();
+    const effectiveCategory = newMovForm.categoria || (activeTab !== 'proveedores' && activeTab !== 'pago' ? activeTab : 'accionistas');
+    const docRef = newMovForm.referencia ? newMovForm.referencia.trim() : `PREST-${nowTs.slice(-4)}`;
+    const concepto = newMovForm.descripcion ? newMovForm.descripcion.trim() : `Préstamo recibido de ${newMovForm.entidad} para financiamiento`;
 
-    // 1. Crear movimiento bancario (ingreso)
+    const movId = crypto.randomUUID();
+    const cxpId = crypto.randomUUID();
+    const compId = crypto.randomUUID();
+
+    // 1. Crear movimiento bancario (ingreso a cuenta bancaria)
     const newMov = {
-      id: nowTs,
+      id: movId,
       banco_id: newMovForm.bancoId,
       fecha: newMovForm.fecha,
-      ref: newMovForm.referencia || `REF-${nowTs.slice(-4)}`,
-      descripcion: newMovForm.descripcion,
+      ref: docRef,
+      descripcion: concepto,
       tipo: 'ingreso' as const,
       monto: montoNum,
       tasa: isNewMovVES ? Number(newMovForm.tasa) : (banco.tasa || 1),
+      comprobante_id: compId,
       estado: 'activo'
     };
 
-    // 2. Crear registro en CXP
+    // 2. Crear registro en CXP (Cuenta por Pagar)
     const newCxp = {
-      id: nowTs + '-cxp',
-      categoria: activeTab,
+      id: cxpId,
+      categoria: effectiveCategory,
       proveedor: newMovForm.entidad,
-      proveedor_id: newMovForm.entidad_id || `ENT-${nowTs.slice(-4)}`,
-      factura_id: `MOV-${nowTs.slice(-4)}`,
+      proveedor_id: newMovForm.entidad_id || null,
+      factura_id: docRef,
+      factura: docRef,
+      numero: docRef,
+      factura_numero: docRef,
       fecha: newMovForm.fecha,
-      vencimiento: newMovForm.fecha,
-      descripcion: newMovForm.descripcion,
+      fecha_emision: newMovForm.fecha,
+      vencimiento: newMovForm.fechaVencimiento || newMovForm.fecha,
+      fecha_vencimiento: newMovForm.fechaVencimiento || newMovForm.fecha,
+      descripcion: concepto,
       tipo: 'prestamo',
       total: montoNum,
-      saldo: montoNum
+      monto: montoNum,
+      monto_total: montoNum,
+      saldo: montoNum,
+      saldo_pendiente: montoNum,
+      moneda: banco.moneda || 'USD',
+      tasa: isNewMovVES ? Number(newMovForm.tasa) : (banco.tasa || 1),
+      estado: 'pendiente'
     };
 
     // 3. Crear comprobante contable
     let cuentaEntidad = configContable?.cuentaCxp || '2.1.1';
-    if (activeTab === 'intercompanias' || activeTab === 'accionistas' || activeTab === 'aliados') {
-      const contact = contactos.find(c => c.id === newMovForm.entidad_id);
-      if (contact) {
-        cuentaEntidad = contact.creditAccount || contact.expenseAccount || cuentaEntidad;
-        newCxp.proveedor = contact.name;
-        newCxp.proveedor_id = contact.taxId || contact.id;
+    const contact = contactos.find(c => c.id === newMovForm.entidad_id || c.taxId === newMovForm.entidad_id);
+    if (contact) {
+      cuentaEntidad = contact.creditAccount || contact.expenseAccount || cuentaEntidad;
+      newCxp.proveedor = contact.name || newCxp.proveedor;
+      newCxp.proveedor_id = contact.id || null;
+    } else {
+      if (effectiveCategory === 'accionistas') {
+        const accCuenta = cuentasContables.find(c => c.codigo?.startsWith('2.1.3') || c.nombre?.toLowerCase().includes('accionista') || c.nombre?.toLowerCase().includes('socio'));
+        if (accCuenta) cuentaEntidad = accCuenta.id || accCuenta.codigo;
+      } else if (effectiveCategory === 'intercompanias') {
+        const interCuenta = cuentasContables.find(c => c.codigo?.startsWith('2.1.4') || c.nombre?.toLowerCase().includes('intercompañ') || c.nombre?.toLowerCase().includes('relacionad'));
+        if (interCuenta) cuentaEntidad = interCuenta.id || interCuenta.codigo;
       }
     }
 
@@ -1154,14 +1213,14 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       {
         id: `l1-${nowTs}`,
         cuentaId: banco.cuenta_contable_id || '1.1.3',
-        descripcion: `Ingreso a Banco ${banco.banco}`,
+        descripcion: `Ingreso a Banco ${banco.banco} (Préstamo Recibido)`,
         debe: montoNum,
         haber: 0
       },
       {
         id: `l2-${nowTs}`,
         cuentaId: cuentaEntidad,
-        descripcion: `CxP ${newCxp.proveedor}`,
+        descripcion: `Préstamo por pagar a ${newCxp.proveedor}`,
         debe: 0,
         haber: montoNum
       }
@@ -1171,12 +1230,12 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
     const newComprobante = {
-      id: `comp-${nowTs}`,
+      id: compId,
       fecha: newMovForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
-      descripcion: `Préstamo/Anticipo de ${newCxp.proveedor}`,
-      referencia: newMov.ref || newCxp.factura_id,
+      descripcion: concepto,
+      referencia: docRef,
       total: montoNum,
       estado: isDescuadrado ? 'Descuadrado' : 'Contabilizado',
       lineas: lineas
@@ -1187,26 +1246,31 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       movimiento: newMov,
       onConfirm: async (finalComprobante: any) => {
         if (onSave) {
-          onSave('movimientosBancos', newMov);
+          const compToSave = finalComprobante || newComprobante;
+          onSave('movimientosBancos', { ...newMov, comprobante_id: compToSave.id });
           onSave('cxp', newCxp);
-          onSave('comprobantes', finalComprobante);
+          onSave('comprobantes', compToSave);
         }
 
-        showToast?.('Movimiento y cuenta por pagar registrados exitosamente', 'success');
+        showToast?.('Préstamo y cuenta por pagar registrados exitosamente', 'success');
         setPendingVoucher(null);
         setShowNewModal(false);
         setNewMovForm({
           bancoId: '',
           fecha: new Date().toISOString().split('T')[0],
+          fechaVencimiento: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
           referencia: '',
           descripcion: '',
           monto: '',
           entidad: '',
           entidad_id: '',
+          categoria: 'accionistas',
           tasa: '',
           montoBs: ''
         });
-        navigate('/reports/comprobante-movimiento-banco', { state: { movimiento: newMov } });
+        if (effectiveCategory && effectiveCategory !== activeTab && activeTab !== 'proveedores') {
+          setActiveTab(effectiveCategory);
+        }
       }
     });
   };
@@ -1281,7 +1345,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
     const newComprobante = {
-      id: `comp-${nowTs}`,
+      id: crypto.randomUUID(),
       fecha: provisionForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1403,7 +1467,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
     const newComprobante = {
-      id: `comp-${nowTs}`,
+      id: crypto.randomUUID(),
       fecha: anticipoForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1512,7 +1576,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
 
       const newComprobante = {
-        id: `comp-${nowTs}`,
+        id: crypto.randomUUID(),
         fecha: saldoInicialForm.fecha,
         numero: `CMP-${nowTs.slice(-6)}`,
         tipo: 'Diario',
@@ -1585,11 +1649,34 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     // 2. Abonos (Pagos realizados a través del módulo de Pagos)
     const supplierIdStr = String(currentSupplier?.id || currentSupplier?.proveedor_id || '').trim();
+    const contactObj = contactos.find(c => 
+      c.id === supplierIdStr || 
+      c.taxId === supplierIdStr || 
+      (currentSupplier?.rif && c.taxId?.toLowerCase() === currentSupplier.rif.toLowerCase()) ||
+      (currentSupplier?.proveedor && c.name?.toLowerCase() === currentSupplier.proveedor.toLowerCase())
+    );
+    const supplierDocIds = new Set((currentSupplier.documentos || []).map((d: any) => String(d.id || d.factura_id || d.factura || '')));
+    
     const pagos = (pagosRealizados || []).filter((p: any) => {
       if (p.estado === 'anulado') return false;
       // Filtrar pagos por ID de proveedor, o nombre como fallback
       if (p.proveedorId && String(p.proveedorId) === supplierIdStr) return true;
+      if (contactObj && p.proveedorId && (String(p.proveedorId) === contactObj.id || String(p.proveedorId) === contactObj.taxId)) return true;
       if (p.proveedorNombre && currentSupplier?.proveedor && p.proveedorNombre.toLowerCase() === currentSupplier.proveedor.toLowerCase()) return true;
+      
+      // Filter by document ID references in abonos/detalles
+      if (p.detalles) {
+        if (Array.isArray(p.detalles) && p.detalles.some((d: any) => supplierDocIds.has(String(d.docId || d.id || '')))) return true;
+        if (typeof p.detalles === 'object') {
+          if (Array.isArray(p.detalles.items) && p.detalles.items.some((d: any) => supplierDocIds.has(String(d.docId || d.id || '')))) return true;
+          if (Object.keys(p.detalles).some(k => supplierDocIds.has(String(k)))) return true;
+        }
+      }
+      if (p.abonos) {
+        if (Array.isArray(p.abonos) && p.abonos.some((a: any) => supplierDocIds.has(String(a.docId || a.id || '')))) return true;
+        if (typeof p.abonos === 'object' && Object.keys(p.abonos).some(k => supplierDocIds.has(String(k)))) return true;
+      }
+      
       return false;
     }).map((p: any) => ({
       ...p,
@@ -1599,7 +1686,59 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       totalAnticiposAplicados: Number(p.anticiposAplicados) || 0
     }));
 
-    const allMovs = [...docs, ...pagos].sort((a, b) => a._fecha - b._fecha);
+    // Generate virtual abonos for fully/partially paid docs that have no corresponding pago
+    const pagoDocIds = new Set<string>();
+    pagos.forEach((p: any) => {
+      if (Array.isArray(p.detalles)) {
+        p.detalles.forEach((d: any) => {
+          const id = d.docId || d.id || d.facturaId;
+          if (id) pagoDocIds.add(String(id));
+        });
+      } else if (p.detalles && typeof p.detalles === 'object') {
+        if (Array.isArray(p.detalles.items)) {
+          p.detalles.items.forEach((d: any) => {
+            const id = d.docId || d.id || d.facturaId;
+            if (id) pagoDocIds.add(String(id));
+          });
+        }
+        Object.keys(p.detalles).forEach(k => {
+          if (k !== 'proveedor_nombre' && k !== 'items') pagoDocIds.add(String(k));
+        });
+      }
+
+      if (Array.isArray(p.abonos)) {
+        p.abonos.forEach((a: any) => {
+          const id = a.docId || a.id || a.facturaId;
+          if (id) pagoDocIds.add(String(id));
+        });
+      } else if (p.abonos && typeof p.abonos === 'object') {
+        Object.keys(p.abonos).forEach(k => pagoDocIds.add(String(k)));
+      }
+    });
+
+    const virtualAbonos: any[] = [];
+    docs.forEach(d => {
+       const dId = String(d.id || d.factura_id || d.factura || '');
+       if (dId && !pagoDocIds.has(dId) && (d.tipo !== 'anticipo' && d.tipo !== 'nota_credito')) {
+         const totalDoc = Math.abs(Number(d.total) || Number(d.monto) || 0);
+         const saldoDoc = d.saldo !== undefined ? Number(d.saldo) : totalDoc;
+         const paid = totalDoc - saldoDoc;
+         if (paid > 0.01 && d.estado !== 'anulada') {
+            virtualAbonos.push({
+               id: `pago-virtual-${dId}`,
+               _tipo: 'pago',
+               _fecha: d._fecha + 1000, // right after doc
+               fechaStr: d.fechaStr,
+               monto: paid,
+               descripcion: `Pago / Amortización de Factura ${d.factura || d.factura_id || ''}`,
+               referencia: d.factura || d.factura_id || '',
+               estado: 'procesado'
+            });
+         }
+       }
+    });
+
+    const allMovs = [...docs, ...pagos, ...virtualAbonos].sort((a, b) => a._fecha - b._fecha);
 
     let fIni: string | null = null; 
     let fFin: string | null = null;
@@ -1623,10 +1762,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
       if (item._tipo === 'pago') {
         // En cuentas por pagar, un pago es un abono (reduce la deuda)
-        // Pero para evitar la duplicidad con los anticipos que ya fueron registrados
-        // como abonos independientes al momento de su creación, restamos el monto de anticipos aplicados.
-        const appliedAnt = Number(item.totalAnticiposAplicados) || Number(item.anticiposAplicados) || 0;
-        abono = Math.max(0, (Number(item.monto) || 0) - appliedAnt);
+        abono = Math.max(0, (Number(item.monto) || Number(item.montoTotal) || Number(item.monto_total) || 0));
       } else {
         // Un documento
         const isAnticipo = Number(item.total) < 0;
@@ -1964,7 +2100,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
       // 4. Asiento Contable Automático (Debe 1.1.3 Bancos / Haber 1.1.4 Anticipo a Proveedores)
       const cuentaAnticipos = configContable?.cuentaAnticipoOtorgado || '1.1.4';
-      const compId = `comp-reint-${Date.now()}`;
+      const compId = crypto.randomUUID();
       onSave?.('comprobantes', {
         id: compId,
         numero: `CMP-${Date.now().toString().slice(-6)}`,
@@ -2189,198 +2325,501 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     const getEntityLabel = () => {
       const tab = tabs.find(t => t.id === activeTab);
-      return tab ? tab.label.slice(0, -1) : 'Entidad'; // e.g. "Proveedor", "Accionista"
+      return tab ? tab.label.slice(0, -1) : 'Entidad';
     };
 
     return (
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
-        <div className="p-4 border-b border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-1">
-            <div className="relative flex-1 min-w-[240px] max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+      <div className="space-y-5 animate-in fade-in duration-300">
+        {/* 1. CUADROS DE RESUMEN EJECUTIVO COMPACTOS (ALTA DENSIDAD) */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* KPI 1: Total Cuentas por Pagar */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-rose-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total por Pagar</span>
+              <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalExigible)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalExigible * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-rose-50 text-rose-600 rounded-lg shrink-0">
+              <DollarSign size={16} />
+            </div>
+          </div>
+
+          {/* KPI 2: Pagos Realizados */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-emerald-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Pagos Realizados</span>
+              <div className="text-lg font-black text-emerald-600 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalCobrado)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalCobrado * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg shrink-0">
+              <CheckCircle size={16} />
+            </div>
+          </div>
+
+          {/* KPI 3: Deuda Vencida */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-amber-300 transition-all flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deuda Vencida</span>
+                {kpiStats.countEnMora > 0 && (
+                  <span className="text-[9px] bg-amber-100 text-amber-800 font-bold px-1 rounded">
+                    {kpiStats.countEnMora}
+                  </span>
+                )}
+              </div>
+              <div className="text-lg font-black text-amber-600 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalEnMora)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalEnMora * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-amber-50 text-amber-600 rounded-lg shrink-0">
+              <AlertTriangle size={16} />
+            </div>
+          </div>
+
+          {/* KPI 4: Total Causado */}
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-all flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Total Causado</span>
+              <div className="text-lg font-black text-slate-900 tracking-tight leading-tight">
+                $ {formatNumber(kpiStats.totalFacturado)}
+              </div>
+              <div className="text-[11px] font-medium text-slate-400 leading-tight">
+                Bs. {formatNumber(kpiStats.totalFacturado * currentTasa)}
+              </div>
+            </div>
+            <div className="p-2 bg-slate-100 text-slate-700 rounded-lg shrink-0">
+              <Briefcase size={16} />
+            </div>
+          </div>
+        </div>
+
+        {/* 2. BARRA DE HERRAMIENTAS Y PÍLDORAS INTELIGENTES (DEUDAS POR DEFECTO) */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-xs p-3.5 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3">
+          {/* Búsqueda y Filtros de Estado */}
+          <div className="flex flex-wrap items-center gap-2.5 flex-1">
+            <div className="relative min-w-[220px] max-w-sm flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
               <input 
                 type="text" 
                 placeholder={`Buscar ${getEntityLabel().toLowerCase()} por nombre o RIF...`}
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                className="w-full pl-8 pr-4 py-1.5 text-xs bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all"
               />
               {searchTerm && (
                 <button 
                   onClick={() => setSearchTerm('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
-                  <X size={14} />
+                  <X size={13} />
                 </button>
               )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => setHideZeroBalances(!hideZeroBalances)}
-              className={`px-3 py-2 border rounded-lg text-sm font-medium flex items-center gap-2 transition-all shadow-sm ${
-                hideZeroBalances 
-                  ? 'bg-indigo-50 border-indigo-200 text-indigo-700 font-bold' 
-                  : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-              }`}
-              title={hideZeroBalances ? 'Mostrando solo entidades con saldo pendiente o a favor. Haz clic para ver saldos $0' : 'Mostrando todas las entidades incluyendo saldo $0'}
-            >
-              <EyeOff size={16} className={hideZeroBalances ? 'text-indigo-600' : 'text-slate-400'} />
-              <span className="hidden md:inline">{hideZeroBalances ? 'Ocultando Saldos $0' : 'Mostrando Todos ($0)'}</span>
-            </button>
+            {/* Smart Status Filter Pills con Proveedores con deuda prioritarios */}
+            <div className="flex items-center gap-1 p-1 bg-slate-100/80 rounded-xl overflow-x-auto text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setStatusFilter('CON_DEUDA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'CON_DEUDA'
+                    ? 'bg-rose-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-rose-600'
+                }`}
+                title="Mostrar solo proveedores con saldo pendiente por pagar"
+              >
+                <span>Con Deuda</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'CON_DEUDA' ? 'bg-rose-700 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                  {kpiStats.countConDeuda}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('EN_MORA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'EN_MORA'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'text-amber-600 hover:text-amber-700'
+                }`}
+                title="Proveedores con facturas vencidas en mora"
+              >
+                <span>En Mora</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'EN_MORA' ? 'bg-amber-700 text-white' : 'bg-amber-100 text-amber-700'}`}>
+                  {kpiStats.countEnMora}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('AL_DIA')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'AL_DIA'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-emerald-700'
+                }`}
+                title="Proveedores con saldo corriente no vencido"
+              >
+                <span>Al Día</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'AL_DIA' ? 'bg-emerald-700 text-white' : 'bg-emerald-50 text-emerald-700'}`}>
+                  {kpiStats.countAlDia}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('A_FAVOR')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'A_FAVOR'
+                    ? 'bg-teal-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-teal-700'
+                }`}
+                title="Proveedores con saldo a nuestro favor"
+              >
+                <span>A Favor</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'A_FAVOR' ? 'bg-teal-700 text-white' : 'bg-teal-50 text-teal-700'}`}>
+                  {kpiStats.countAFavor}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('SOLVENTES')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                  statusFilter === 'SOLVENTES'
+                    ? 'bg-slate-700 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title="Proveedores solventes con saldo $0"
+              >
+                <span>Solventes ($0)</span>
+                <span className={`text-[10px] px-1 rounded ${statusFilter === 'SOLVENTES' ? 'bg-slate-800 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                  {kpiStats.countSolventes}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStatusFilter('TODOS')}
+                className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap text-slate-500 hover:text-slate-800 ${
+                  statusFilter === 'TODOS' ? 'bg-white text-slate-900 shadow-xs' : ''
+                }`}
+                title="Ver lista completa de proveedores"
+              >
+                Todos ({allGroupedData.length})
+              </button>
+            </div>
           </div>
 
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+          {/* Botones de Acción */}
+          <div className="flex items-center gap-2 relative">
             <button 
               onClick={() => {
-                if (window.confirm('¿Desea restablecer todos los ejemplos de prueba del sistema? Esto cargará un nuevo conjunto limpio de cuentas por pagar, compras y pagos para pruebas.')) {
-                  dbResetAllTestData(activeCompanyId);
-                  window.location.reload();
-                }
+                setPagoForm({
+                  ...pagoForm,
+                  proveedorId: ''
+                });
+                setActiveTab('pago');
               }}
-              title="Restablecer datos de prueba limpios"
-              className="flex-1 sm:flex-none px-3 py-2 bg-slate-100 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-200 text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
-              <RotateCcw size={15} className="text-slate-500" />
-              <span>Resetear Pruebas</span>
+              <DollarSign size={14} />
+              <span>+ Registrar Pago</span>
             </button>
 
-            <button className="flex-1 sm:flex-none px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium flex items-center justify-center gap-2">
-              <Download size={16} /> Exportar
-            </button>
-            <button 
-              onClick={() => setShowAnticipoModal(true)}
-              className="flex-1 sm:flex-none px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm"
-            >
-              <Plus size={16} /> Generar Anticipo
-            </button>
-            {activeTab === 'proveedores' && (
-              <button 
-                onClick={() => navigate('/purchases/new')}
-                className="flex-1 sm:flex-none px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium flex items-center justify-center gap-2 shadow-sm"
-              >
-                <ShoppingCart size={16} /> Nueva Factura de Compra / Gasto
-              </button>
-            )}
-            {activeTab !== 'proveedores' && (
-              <>
-                {activeTab === 'accionistas' && (
-                  <button 
-                    onClick={() => setShowProvisionModal(true)}
-                    className="flex-1 sm:flex-none px-3 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 text-sm font-medium flex items-center justify-center gap-2"
-                  >
-                    <Plus size={16} /> Nueva Provisión
-                  </button>
-                )}
-                {activeTab === 'aliados' && (
-                  <>
-                    <button 
-                      onClick={() => navigate('/billing/transport')}
-                      className="flex-1 sm:flex-none px-3 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700 text-sm font-medium flex items-center justify-center gap-2"
-                    >
-                      <FileText size={16} /> Facturación Transporte
-                    </button>
-                    <button 
-                      onClick={() => setShowAnticipoModal(true)}
-                      className="flex-1 sm:flex-none px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium flex items-center justify-center gap-2"
-                    >
-                      <Plus size={16} /> Anticipo
-                    </button>
-                  </>
-                )}
+            {activeTab === 'proveedores' ? (
+              <div className="flex items-center gap-2">
                 <button 
-                  onClick={() => setShowNewModal(true)}
-                  className="flex-1 sm:flex-none px-3 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium flex items-center justify-center gap-2"
+                  onClick={() => navigate('/purchases/new')}
+                  className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
-                  <Plus size={16} /> Nuevo
+                  <ShoppingCart size={14} />
+                  <span>+ Compra / Gasto</span>
                 </button>
-              </>
-            )}
-            {activeTab !== 'pago' && (
+                <button 
+                  onClick={() => handleOpenNewLoanModal('accionistas')}
+                  className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <Plus size={14} />
+                  <span>+ Nuevo Préstamo</span>
+                </button>
+              </div>
+            ) : (
               <button 
-                onClick={() => {
-                  setSaldoInicialForm({
-                    contacto: '',
-                    contacto_id: '',
-                    factura_id: `SI-${Date.now().toString().slice(-4)}`,
-                    fecha: new Date().toISOString().split('T')[0],
-                    vencimiento: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-                    descripcion: 'Saldo Inicial de CxP',
-                    monto: '',
-                    moneda: 'Dólares (USD)',
-                    tasa: '1.00',
-                    cuentaContrapartida: ''
-                  });
-                  setShowSaldoInicialModal(true);
-                }}
-                className="flex-1 sm:flex-none px-3 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium flex items-center justify-center gap-2"
+                onClick={() => handleOpenNewLoanModal(activeTab)}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
               >
-                <Plus size={16} /> Saldo Inicial
+                <Plus size={14} />
+                <span>+ Nuevo Préstamo</span>
               </button>
             )}
+
+            {/* Menu Dropdown de Más Opciones */}
+            <div className="relative">
+              <button
+                onClick={() => setShowExtraActionsMenu(!showExtraActionsMenu)}
+                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl transition-colors border border-slate-200 cursor-pointer"
+                title="Más opciones"
+              >
+                <MoreVertical size={15} />
+              </button>
+
+              {showExtraActionsMenu && (
+                <div 
+                  className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl py-2 z-50 text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-150"
+                  onMouseLeave={() => setShowExtraActionsMenu(false)}
+                >
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      handleOpenNewLoanModal();
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Plus size={14} className="text-indigo-600" /> + Nuevo Préstamo
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      setShowAnticipoModal(true);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Plus size={14} className="text-emerald-600" /> + Generar Anticipo
+                  </button>
+
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      setSaldoInicialForm({
+                        contacto: '',
+                        contacto_id: '',
+                        factura_id: `SI-${Date.now().toString().slice(-4)}`,
+                        fecha: new Date().toISOString().split('T')[0],
+                        vencimiento: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                        descripcion: 'Saldo Inicial de CxP',
+                        monto: '',
+                        moneda: 'Dólares (USD)',
+                        tasa: '1.00',
+                        cuentaContrapartida: ''
+                      });
+                      setShowSaldoInicialModal(true);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Plus size={14} className="text-violet-600" /> Saldo Inicial Histórico
+                  </button>
+
+                  <div className="border-t border-slate-100 my-1"></div>
+
+                  <button 
+                    onClick={() => {
+                      setShowExtraActionsMenu(false);
+                      window.print();
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-slate-50 flex items-center gap-2 text-slate-700"
+                  >
+                    <Download size={14} className="text-slate-500" /> Exportar / Imprimir
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/90 border-b border-slate-200/80 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider select-none">
-              <tr>
-                <th className="px-4 py-3 w-12 text-center">N°</th>
-                <th className="px-4 py-3">{getEntityLabel()}</th>
-                <th className="px-4 py-3 text-right">Monto Adeudo</th>
-                <th className="px-4 py-3 text-right">Abonos Aplicados</th>
-                <th className="px-4 py-3 text-right">Saldo Pendiente</th>
-                <th className="px-4 py-3 text-center w-28 whitespace-nowrap">Acciones</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 bg-white">
-              {groupedData.map((item, i) => (
-                <tr 
-                  key={item.id} 
-                  onClick={() => setSelectedSupplier(item)}
-                  className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                >
-                  <td className="px-4 py-2.5 text-slate-400 font-medium text-center text-xs">{i + 1}</td>
-                  <td className="px-4 py-2.5 font-bold text-rose-600 group-hover:text-rose-700">{item.proveedor}</td>
-                  <td className="px-4 py-2.5 text-right text-slate-600 font-medium">${formatoES(item.montoAdeudo)}</td>
-                  <td className="px-4 py-2.5 text-right text-emerald-600 font-medium">${formatoES(item.abonosAplicados)}</td>
-                  <td className={`px-4 py-2.5 text-right font-black ${item.saldoPendiente < 0 ? 'text-emerald-600' : 'text-slate-800'}`}>
-                    {item.saldoPendiente < 0 ? `A Favor: $${formatoES(Math.abs(item.saldoPendiente))}` : `$${formatoES(item.saldoPendiente)}`}
-                  </td>
-                  <td className="px-4 py-2.5 text-center">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedSupplier(item);
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50/80 hover:bg-rose-600 text-rose-700 hover:text-white rounded-md text-xs font-semibold transition-all border border-rose-200/70 hover:border-rose-600 shadow-xs whitespace-nowrap"
-                      title="Ver detalle de facturas y pagos"
+
+        {/* 3. TABLA EJECUTIVA PRINCIPAL DE CUENTAS POR PAGAR */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50/90 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-center w-12">#</th>
+                  <th className="px-4 py-3">{getEntityLabel()} / RAZÓN SOCIAL & RIF</th>
+                  <th className="px-4 py-3 text-center">ESTADO</th>
+                  <th className="px-4 py-3 text-right">TOTAL FACTURADO</th>
+                  <th className="px-4 py-3 text-right">PAGOS APLICADOS</th>
+                  <th className="px-4 py-3 text-right">SALDO POR PAGAR</th>
+                  <th className="px-4 py-3 text-center w-44">ACCIONES</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 text-slate-700">
+                {paginatedGroupedData.map((item, index) => {
+                  const globalIndex = (mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + index + 1;
+                  const isNegative = item.saldoPendiente < -0.01;
+                  const isZero = Math.abs(item.saldoPendiente) <= 0.01;
+
+                  return (
+                    <tr 
+                      key={item.id || index}
+                      onClick={() => setSelectedSupplier(item)}
+                      className="hover:bg-rose-50/30 transition-colors cursor-pointer group"
                     >
-                      <Eye size={12} className="shrink-0" />
-                      <span>Ver Detalle</span>
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {groupedData.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-slate-400 font-medium">
-                    No hay registros en esta categoría.
-                  </td>
-                </tr>
+                      <td className="px-4 py-3 text-slate-400 font-semibold text-center">{globalIndex}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-700 flex items-center justify-center font-black text-xs shrink-0 group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                            {item.proveedor?.charAt(0)?.toUpperCase() || 'P'}
+                          </div>
+                          <div>
+                            <span className="font-bold text-slate-900 group-hover:text-rose-600 transition-colors block text-sm leading-tight">
+                              {item.proveedor}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-slate-400">
+                              <span className="font-mono bg-slate-100 text-slate-600 px-1.5 py-0.2 rounded font-semibold">
+                                {item.rif || item.id}
+                              </span>
+                              {item.telefono && (
+                                <span className="hidden sm:inline text-slate-400">• {item.telefono}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {item.status === 'A_FAVOR' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-50 text-teal-700 border border-teal-200">
+                            <Coins size={11} /> Saldo a Favor
+                          </span>
+                        ) : item.status === 'EN_MORA' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                            <AlertTriangle size={11} /> En Mora ({item.moraDays}d)
+                          </span>
+                        ) : item.status === 'AL_DIA' ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <CheckCircle size={11} /> Al Día
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600">
+                            Solvente
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-semibold text-slate-700">$ {formatNumber(item.montoAdeudo)}</div>
+                        <div className="text-[10px] text-slate-400">Bs. {formatNumber(item.montoAdeudo * currentTasa)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="font-semibold text-emerald-600">$ {formatNumber(item.abonosAplicados)}</div>
+                        <div className="text-[10px] text-slate-400">Bs. {formatNumber(item.abonosAplicados * currentTasa)}</div>
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className={`font-black text-sm ${
+                          isNegative ? 'text-teal-600' : isZero ? 'text-slate-400' : 'text-slate-900'
+                        }`}>
+                          {isNegative ? `A Favor: $ ${formatNumber(Math.abs(item.saldoPendiente))}` : `$ ${formatNumber(item.saldoPendiente)}`}
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Bs. {formatNumber(Math.abs(item.saldoPendiente) * currentTasa)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <div className="flex items-center justify-center gap-1.5" onClick={e => e.stopPropagation()}>
+                          <button
+                            onClick={() => {
+                              setPagoForm({
+                                ...pagoForm,
+                                proveedorId: item.id
+                              });
+                              setActiveTab('pago');
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 hover:bg-rose-600 text-rose-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-rose-200 hover:border-rose-600 shadow-2xs whitespace-nowrap cursor-pointer"
+                            title="Registrar pago a este proveedor"
+                          >
+                            <DollarSign size={12} />
+                            <span>Pagar</span>
+                          </button>
+                          
+                          <button
+                            onClick={() => setSelectedSupplier(item)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 hover:bg-slate-800 text-slate-700 hover:text-white rounded-lg text-xs font-bold transition-all border border-slate-200 hover:border-slate-800 shadow-2xs whitespace-nowrap cursor-pointer"
+                            title="Ver Estado de Cuenta y Facturas de Compra"
+                          >
+                            <Eye size={12} />
+                            <span>Ver Detalle</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {paginatedGroupedData.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-14 text-center text-slate-400">
+                      <div className="max-w-xs mx-auto space-y-2">
+                        <Briefcase size={32} className="mx-auto text-slate-300" />
+                        <p className="font-semibold text-slate-600 text-sm">No se encontraron proveedores</p>
+                        <p className="text-xs text-slate-400">
+                          {searchTerm ? `Ningún proveedor coincide con "${searchTerm}".` : 'No hay registros en la categoría seleccionada.'}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {groupedData.length > 0 && (
+                <tfoot className="bg-slate-50/90 border-t border-slate-200 font-bold text-slate-800 text-xs">
+                  <tr>
+                    <td colSpan={3} className="px-4 py-3 text-right uppercase tracking-wider text-[11px] text-slate-600">
+                      TOTALES GENERALES ({groupedData.length} registros):
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="font-bold text-slate-900">$ {formatNumber(totals.montoAdeudo)}</div>
+                      <div className="text-[10px] text-slate-400">Bs. {formatNumber(totals.montoAdeudo * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-emerald-600">
+                      <div className="font-bold text-emerald-700">$ {formatNumber(totals.abonosAplicados)}</div>
+                      <div className="text-[10px] text-emerald-500">Bs. {formatNumber(totals.abonosAplicados * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-rose-700">
+                      <div className="font-black text-sm text-rose-900">$ {formatNumber(totals.saldoPendiente)}</div>
+                      <div className="text-[10px] text-rose-500">Bs. {formatNumber(totals.saldoPendiente * currentTasa)}</div>
+                    </td>
+                    <td className="px-4 py-3"></td>
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-            {groupedData.length > 0 && (
-              <tfoot className="bg-slate-50 border-t border-slate-200 font-bold text-slate-800">
-                <tr>
-                  <td colSpan={2} className="px-4 py-3 text-right">TOTALES GENERALES:</td>
-                  <td className="px-4 py-3 text-right">${formatoES(totals.montoAdeudo)}</td>
-                  <td className="px-4 py-3 text-right text-emerald-600">${formatoES(totals.abonosAplicados)}</td>
-                  <td className="px-4 py-3 text-right text-rose-700">${formatoES(totals.saldoPendiente)}</td>
-                  <td className="px-4 py-3"></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
+            </table>
+          </div>
+
+          {/* Paginación */}
+          {groupedData.length > 0 && (
+            <div className="px-6 py-3.5 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-600">
+              <div>
+                Mostrando <span className="font-bold text-slate-800">{(mainTablePage - 1) * MAIN_TABLE_ITEMS_PER_PAGE + 1}</span> a <span className="font-bold text-slate-800">{Math.min(mainTablePage * MAIN_TABLE_ITEMS_PER_PAGE, groupedData.length)}</span> de <span className="font-bold text-slate-800">{groupedData.length}</span> {getEntityLabel().toLowerCase()}s
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setMainTablePage(p => Math.max(1, p - 1))}
+                  disabled={mainTablePage === 1}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
+                >
+                  Anterior
+                </button>
+                <span className="text-xs font-bold px-2 text-slate-700">
+                  Página {mainTablePage} de {totalMainPages}
+                </span>
+                <button
+                  onClick={() => setMainTablePage(p => Math.min(totalMainPages, p + 1))}
+                  disabled={mainTablePage >= totalMainPages}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -2451,300 +2890,269 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     return (
       <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
-        {/* 1. CABECERA DE PERFIL (HEADER) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-6 flex flex-col gap-6">
-          {/* Top Bar: Botón volver + Badges de estado + Acciones rápidas */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-3">
-              <BackButton onClick={() => setSelectedSupplier(null)} label="Volver al Listado" />
+        {/* CABECERA COMPACTA EJECUTIVA DE ESTADO DE CUENTA PROVEEDOR */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-4 flex flex-col gap-3">
+          {/* Fila 1: Entidad, RIF, Estado y Acciones Directas */}
+          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 border-b border-slate-100 pb-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <BackButton onClick={() => setSelectedSupplier(null)} label="Volver" />
+              
+              <div className="h-5 w-px bg-slate-200 hidden sm:block" />
+
+              <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                {currentSupplier.proveedor}
+              </h2>
+
+              <span className="font-mono bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded text-xs">
+                {contactObj?.taxId || currentSupplier.id}
+              </span>
 
               {/* Status Badge */}
-              {currentSupplier.saldoPendiente < 0 ? (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-xs font-black uppercase tracking-wider">
-                  <Coins size={13} /> Saldo a Favor
+              {currentSupplier.saldoPendiente < -0.01 ? (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-teal-50 text-teal-700 border border-teal-200 rounded-full text-[11px] font-bold">
+                  <Coins size={11} /> Saldo a Favor
                 </span>
               ) : hasOverdueInvoices ? (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-black uppercase tracking-wider animate-pulse">
-                  <AlertTriangle size={13} /> En Mora
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[11px] font-bold">
+                  <AlertTriangle size={11} /> En Mora
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-black uppercase tracking-wider">
-                  <CheckCircle size={13} /> Al Día
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-bold">
+                  <CheckCircle size={11} /> Al Día
                 </span>
               )}
 
-              <span className="text-[11px] font-bold px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-lg capitalize">
-                {getEntityLabel()}
-              </span>
+              {contactObj?.phone && (
+                <span className="hidden xl:flex items-center gap-1 text-[11px] text-slate-500">
+                  <Phone size={12} className="text-slate-400" /> {contactObj.phone}
+                </span>
+              )}
+              {contactObj?.email && (
+                <span className="hidden 2xl:flex items-center gap-1 text-[11px] text-slate-500">
+                  <Mail size={12} className="text-slate-400" /> {contactObj.email}
+                </span>
+              )}
             </div>
 
-            {/* Quick Actions Header: Imprimir PDF & WhatsApp */}
-            <div className="flex items-center gap-2">
+            {/* Acciones Rápidas */}
+            <div className="flex items-center gap-2 w-full lg:w-auto justify-end flex-wrap">
+              <button 
+                onClick={() => {
+                  setPagoForm(prev => ({ ...prev, proveedorId: currentSupplier.id }));
+                  setActiveTab('pago');
+                }}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <DollarSign size={14} />
+                <span>Registrar Pago</span>
+              </button>
+
+              <button 
+                onClick={() => {
+                  setAnticipoForm(prev => ({
+                    ...prev,
+                    proveedor: currentSupplier.proveedor,
+                    proveedor_id: currentSupplier.id
+                  }));
+                  setShowAnticipoModal(true);
+                }}
+                className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus size={13} />
+                <span>Anticipo</span>
+              </button>
+
+              {(() => {
+                const maxReintegro = currentSupplier.saldoPendiente < -0.009 ? Math.abs(currentSupplier.saldoPendiente) : 0;
+                if (maxReintegro > 0.009) {
+                  return (
+                    <button 
+                      onClick={() => {
+                        setReintegroForm({
+                          monto: maxReintegro.toFixed(2),
+                          bancoId: bancos[0]?.id || '',
+                          referencia: `REINT-${Date.now().toString().slice(-4)}`,
+                          fecha: new Date().toISOString().split('T')[0],
+                          notas: `Reintegro de saldo a favor de ${currentSupplier.proveedor}`
+                        });
+                        setShowReintegroModal(true);
+                      }}
+                      className="px-2.5 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-semibold transition-all shadow-xs flex items-center gap-1"
+                    >
+                      <RotateCcw size={13} />
+                      <span>Reintegrar ($ {formatNumber(maxReintegro)})</span>
+                    </button>
+                  );
+                }
+                return null;
+              })()}
+
               <a 
                 href={waUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold transition-all shadow-xs"
-                title="Enviar resumen del estado de cuenta por WhatsApp"
+                className="p-1.5 px-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
+                title="WhatsApp"
               >
-                <MessageSquare size={14} className="text-emerald-600" />
-                <span>Enviar por WhatsApp</span>
+                <MessageSquare size={13} className="text-emerald-600" />
+                <span className="hidden sm:inline">WhatsApp</span>
               </a>
 
               <button 
-                onClick={() => {
-                  window.print();
-                }}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
-                title="Imprimir Estado de Cuenta"
+                onClick={() => window.print()}
+                className="p-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-200 flex items-center gap-1 cursor-pointer"
+                title="Imprimir"
               >
-                <Printer size={14} />
-                <span>Imprimir PDF</span>
+                <Printer size={13} />
+                <span className="hidden sm:inline">PDF</span>
               </button>
             </div>
           </div>
 
-          {/* Supplier Profile Info Grid */}
-          <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
-            <div className="space-y-1.5">
-              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                {currentSupplier.proveedor}
-              </h2>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-slate-500 font-medium">
-                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold">
-                  {contactObj?.taxId || currentSupplier.id}
+          {/* Fila 2: Tira Compacta de Indicadores Financieros y Antigüedad */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 p-2.5 px-3.5 rounded-xl border border-slate-100 text-xs">
+            {/* Indicadores Financieros Clave */}
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Facturado / Causado</span>
+                <span className="font-bold text-slate-800 font-mono text-sm">$ {formatNumber(currentSupplier.montoAdeudo)}</span>
+              </div>
+
+              <div className="h-6 w-px bg-slate-200" />
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">Pagos Aplicados</span>
+                <span className="font-bold text-emerald-600 font-mono text-sm">$ {formatNumber(currentSupplier.abonosAplicados)}</span>
+              </div>
+
+              <div className="h-6 w-px bg-slate-200" />
+
+              <div>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                  {currentSupplier.saldoPendiente < -0.01 ? "Saldo a Favor" : "Saldo por Pagar"}
                 </span>
-                {contactObj?.codigoIata && (
-                  <span className="bg-sky-100 text-sky-800 font-mono font-bold px-2 py-0.5 rounded">
-                    IATA: {contactObj.codigoIata} ({contactObj.codigoDosLetras || ''})
-                  </span>
-                )}
-                {contactObj?.phone && (
-                  <span className="flex items-center gap-1 text-slate-600">
-                    <Phone size={13} className="text-slate-400" /> {contactObj.phone}
-                  </span>
-                )}
-                {contactObj?.email && (
-                  <span className="flex items-center gap-1 text-slate-600">
-                    <Mail size={13} className="text-slate-400" /> {contactObj.email}
-                  </span>
-                )}
+                <span className={`font-black font-mono text-sm ${
+                  currentSupplier.saldoPendiente < -0.01 ? "text-teal-600" : currentSupplier.saldoPendiente <= 0.01 ? "text-slate-400" : "text-rose-700"
+                }`}>
+                  $ {formatNumber(Math.abs(currentSupplier.saldoPendiente))}
+                </span>
+                <span className="text-[10px] text-slate-400 ml-1.5">
+                  (Bs. {formatNumber(Math.abs(currentSupplier.saldoPendiente) * currentTasa)})
+                </span>
               </div>
+
+              {totalAnticiposDisponibles > 0 && (
+                <>
+                  <div className="h-6 w-px bg-slate-200" />
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Anticipos Disp.</span>
+                    <span className="font-bold text-teal-600 font-mono text-sm">$ {formatNumber(totalAnticiposDisponibles)}</span>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Saldo Global Exigible Highlight */}
-            <div className="bg-slate-50/80 p-4 px-6 rounded-2xl border border-slate-200 text-left lg:text-right shrink-0">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                {currentSupplier.saldoPendiente < 0 ? 'Saldo a Favor Disponible' : 'Saldo Pendiente por Pagar'}
-              </p>
-              <p className={`text-2xl sm:text-3xl font-black ${currentSupplier.saldoPendiente < 0 ? 'text-teal-600' : 'text-rose-600'}`}>
-                ${formatoES(Math.abs(currentSupplier.saldoPendiente))}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 2. TARJETAS DE INDICADORES FINANCIEROS (KPI CARDS) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs relative overflow-hidden">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Monto Adeudo Total</span>
-              <div className="p-2 bg-slate-50 text-slate-600 rounded-xl">
-                <FileSpreadsheet size={16} />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-slate-800">${formatoES(currentSupplier.montoAdeudo)}</p>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Facturación histórica total</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs relative overflow-hidden">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pagos Aplicados</span>
-              <div className="p-2 bg-emerald-50 text-emerald-600 rounded-xl">
-                <ArrowDownLeft size={16} />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-emerald-600">${formatoES(currentSupplier.abonosAplicados)}</p>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Pagos y abonos ejecutados</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs relative overflow-hidden">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Saldo Pendiente</span>
-              <div className="p-2 bg-rose-50 text-rose-600 rounded-xl">
-                <DollarSign size={16} />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-rose-600">${formatoES(Math.max(0, currentSupplier.saldoPendiente))}</p>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Deuda actual exigible</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs relative overflow-hidden">
-            <div className="flex justify-between items-start mb-2">
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Anticipos a Favor</span>
-              <div className="p-2 bg-teal-50 text-teal-600 rounded-xl">
-                <Coins size={16} />
-              </div>
-            </div>
-            <p className="text-2xl font-black text-teal-600">
-              ${formatoES(currentSupplier.saldoPendiente < 0 ? Math.abs(currentSupplier.saldoPendiente) : totalAnticiposDisponibles)}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-1 font-medium">Saldos prepagados a favor</p>
-          </div>
-        </div>
-
-        {/* 3. ANÁLISIS DE ANTIGÜEDAD DE DEUDAS (AGING MATRIX) */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <BarChart2 className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Análisis de Antigüedad de Deuda</h3>
-            </div>
-            {hasOverdueInvoices ? (
-              <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-lg">
-                ⚠️ Facturas vencidas pendientes
+            {/* Antigüedad de Saldos Compacta */}
+            <div className="flex items-center gap-1.5 overflow-x-auto text-[11px]">
+              <span className="text-[10px] uppercase font-bold text-slate-400 mr-1 hidden md:inline">Vencimiento:</span>
+              <span className="px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200/60 text-emerald-800 font-medium">
+                Por Vencer: <b className="font-mono">${formatNumber(porVencer)}</b>
               </span>
-            ) : (
-              <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
-                ✅ Sin facturas vencidas
-              </span>
-            )}
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Por Vencer</p>
-              <p className="text-lg font-black text-slate-800">${formatoES(porVencer)}</p>
-            </div>
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">1 - 30 Días</p>
-              <p className={`text-lg font-black ${dias0a30 > 0 ? 'text-amber-600' : 'text-slate-800'}`}>${formatoES(dias0a30)}</p>
-            </div>
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">31 - 60 Días</p>
-              <p className={`text-lg font-black ${dias31a60 > 0 ? 'text-orange-600' : 'text-slate-800'}`}>${formatoES(dias31a60)}</p>
-            </div>
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">61 - 90 Días</p>
-              <p className={`text-lg font-black ${dias61a90 > 0 ? 'text-rose-500' : 'text-slate-800'}`}>${formatoES(dias61a90)}</p>
-            </div>
-            <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/60">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">+90 Días</p>
-              <p className={`text-lg font-black ${diasMas90 > 0 ? 'text-rose-700' : 'text-slate-800'}`}>${formatoES(diasMas90)}</p>
+              {dias0a30 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200/60 text-amber-800 font-medium">
+                  1-30d: <b className="font-mono">${formatNumber(dias0a30)}</b>
+                </span>
+              )}
+              {dias31a60 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-orange-50 border border-orange-200/60 text-orange-800 font-medium">
+                  31-60d: <b className="font-mono">${formatNumber(dias31a60)}</b>
+                </span>
+              )}
+              {dias61a90 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-rose-50 border border-rose-200/60 text-rose-800 font-medium">
+                  61-90d: <b className="font-mono">${formatNumber(dias61a90)}</b>
+                </span>
+              )}
+              {diasMas90 > 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-red-100 border border-red-200 text-red-900 font-bold">
+                  +90d: <b className="font-mono">${formatNumber(diasMas90)}</b>
+                </span>
+              )}
+              {!hasOverdueInvoices && porVencer === 0 && (
+                <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-medium text-[10px]">
+                  Sin facturas por pagar
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* 4. BARRA DE ACCIONES OPERATIVAS Y FILTROS */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs p-5 flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
-          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
-            {/* Botón Registrar Pago */}
-            <button 
-              onClick={() => {
-                setPagoForm(prev => ({ ...prev, proveedorId: currentSupplier.id }));
-                setActiveTab('pago');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition-all shadow-xs cursor-pointer"
-            >
-              <Plus size={13} />
-              <span>Registrar Pago</span>
-            </button>
-
-            {/* Botón Generar Anticipo */}
-            <button 
-              onClick={() => {
-                setAnticipoForm(prev => ({
-                  ...prev,
-                  proveedor: currentSupplier.proveedor,
-                  proveedor_id: currentSupplier.id
-                }));
-                setShowAnticipoModal(true);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-xs cursor-pointer"
-            >
-              <Coins size={13} />
-              <span>Generar Anticipo</span>
-            </button>
-
-            {/* Botón Reintegrar Saldo (Sólo si tiene saldo a favor neto) */}
-            {currentSupplier.saldoPendiente < -0.009 && (
-              <button 
-                onClick={() => {
-                  setReintegroForm({
-                    bancoId: bancos[0]?.id || '',
-                    fecha: new Date().toISOString().split('T')[0],
-                    referencia: `REINT-${Date.now().toString().slice(-4)}`,
-                    monto: String(Math.abs(currentSupplier.saldoPendiente).toFixed(2)),
-                    notas: `Reintegro de saldo a favor de ${currentSupplier.proveedor}`
-                  });
-                  setShowReintegroModal(true);
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-semibold transition-all shadow-xs cursor-pointer animate-in fade-in"
-                title="Recibir y registrar el reintegro del saldo a favor hacia nuestra cuenta bancaria"
-              >
-                <RotateCcw size={13} />
-                <span>Reintegrar Saldo (${formatoES(Math.abs(currentSupplier.saldoPendiente))})</span>
-              </button>
-            )}
-          </div>
-
-          {/* Filtros de período */}
-          <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+        {/* TABLA DE DETALLES Y MOVIMIENTOS */}
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden">
+          {/* Header & Filter Bar de la Tabla */}
+          <div className="p-4 border-b border-slate-200 bg-slate-50/70 flex flex-col md:flex-row justify-between items-start md:items-center gap-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Período:</span>
-              <select 
-                className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500" 
-                value={filtrosHistorial.tipo} 
-                onChange={e=>setFiltrosHistorial({...filtrosHistorial, tipo: e.target.value})}
-              >
-                <option value="todo">Historial Completo</option>
-                <option value="mes">Por Mes</option>
-                <option value="ano">Por Año</option>
-                <option value="rango">Rango de Fechas</option>
-              </select>
+              <FileText size={16} className="text-rose-600" />
+              <h3 className="text-sm font-black text-slate-800">
+                Historial de Documentos & Pagos
+              </h3>
             </div>
 
-            {filtrosHistorial.tipo==='mes' && (
-              <div className="flex items-center gap-2">
+            {/* Filtros de período */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-500 uppercase">Período:</span>
                 <select 
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none" 
-                  value={filtrosHistorial.mes} 
-                  onChange={e=>setFiltrosHistorial({...filtrosHistorial, mes: e.target.value})}
+                  className="px-2.5 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:border-indigo-600 outline-none" 
+                  value={filtrosHistorial.tipo} 
+                  onChange={e=>setFiltrosHistorial({...filtrosHistorial, tipo: e.target.value})}
                 >
-                  {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"].map((m,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
-                </select>
-                <select 
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none" 
-                  value={filtrosHistorial.ano} 
-                  onChange={e=>setFiltrosHistorial({...filtrosHistorial, ano: e.target.value})}
-                >
-                  {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                  <option value="todo">Historial Completo</option>
+                  <option value="mes">Por Mes</option>
+                  <option value="ano">Por Año</option>
+                  <option value="rango">Rango de Fechas</option>
                 </select>
               </div>
-            )}
 
-            {filtrosHistorial.tipo==='rango' && (
-              <div className="flex items-center gap-2">
-                <input 
-                  type="date" 
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none" 
-                  value={filtrosHistorial.desde} 
-                  onChange={e=>setFiltrosHistorial({...filtrosHistorial, desde: e.target.value})}
-                />
-                <span className="text-xs text-slate-400">a</span>
-                <input 
-                  type="date" 
-                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none" 
-                  value={filtrosHistorial.hasta} 
-                  onChange={e=>setFiltrosHistorial({...filtrosHistorial, hasta: e.target.value})}
-                />
-              </div>
-            )}
+              {filtrosHistorial.tipo==='mes' && (
+                <div className="flex items-center gap-1.5">
+                  <select 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.mes} 
+                    onChange={e=>setFiltrosHistorial({...filtrosHistorial, mes: e.target.value})}
+                  >
+                    {["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"].map((m,i)=><option key={i} value={String(i+1).padStart(2,'0')}>{m}</option>)}
+                  </select>
+                  <select 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.ano} 
+                    onChange={e=>setFiltrosHistorial({...filtrosHistorial, ano: e.target.value})}
+                  >
+                    {[2024,2025,2026,2027].map(y=><option key={y} value={y}>{y}</option>)}
+                  </select>
+                </div>
+              )}
+
+              {filtrosHistorial.tipo==='rango' && (
+                <div className="flex items-center gap-1.5">
+                  <input 
+                    type="date" 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.desde} 
+                    onChange={e=>setFiltrosHistorial({...filtrosHistorial, desde: e.target.value})}
+                  />
+                  <span className="text-xs text-slate-400">a</span>
+                  <input 
+                    type="date" 
+                    className="px-2 py-1 bg-white border border-slate-200 rounded-xl text-xs font-semibold outline-none" 
+                    value={filtrosHistorial.hasta} 
+                    onChange={e=>setFiltrosHistorial({...filtrosHistorial, hasta: e.target.value})}
+                  />
+                </div>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* 5. TABLA DE DETALLES Y MOVIMIENTOS */}
-        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-xs overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 text-[11px] font-extrabold uppercase tracking-wider select-none">
@@ -2783,7 +3191,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                   const isAnticipo = item.tipo === 'anticipo' || Number(item.total) < 0;
 
                   if (isPago) {
-                    docId = item.referencia || item.id;
+                    docId = item.referencia || item.comprobantePago || (isUUID(item.id) ? `REC-${item.id.slice(0, 8).toUpperCase()}` : item.id);
                     const appliedAnt = Number(item.totalAnticiposAplicados) || Number(item.anticiposAplicados) || 0;
                     if (appliedAnt > 0) {
                       descripcion = `Pago a proveedor ${item.proveedorNombre || ''} (Anticipo aplicado: $${formatoES(appliedAnt)})`;
@@ -2791,7 +3199,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                       descripcion = item.descripcion || `Pago a proveedor ${item.proveedorNombre || ''}`;
                     }
                   } else {
-                    docId = item.factura_id || item.id;
+                    docId = getCleanDocNumber(item);
                     descripcion = item.descripcion || (isAnticipo ? 'Anticipo Otorgado' : 'Factura / Cargo');
                   }
 
@@ -2894,7 +3302,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                                   isOpen: true,
                                   title: 'Autorización Master Requerida',
                                   actionName: 'Eliminar Cuenta por Pagar',
-                                  actionDetails: `Documento ${item.factura_id || item.id} - Monto: $${formatoES(item.total || item.monto)} (${currentSupplier?.proveedor || ''})`,
+                                  actionDetails: `Documento ${getCleanDocNumber(item)} - Monto: $${formatoES(item.total || item.monto)} (${currentSupplier?.proveedor || ''})`,
                                   onSuccess: async () => {
                                     onSave?.('cxp', { id: item.id, _delete: true });
 
@@ -2956,81 +3364,56 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
   };
 
   const renderPago = () => {
+    const hasVESBank = pagoForm.pagos.some(p => {
+      const selB = bancos.find(b => b.id === p.bancoId);
+      return selB && (selB.moneda === 'VES' || selB.moneda === 'Bs' || selB.moneda === 'Bs.' || selB.moneda === 'Bolivares');
+    });
+
     return (
       <div className="flex flex-col lg:flex-row gap-6 animate-in fade-in duration-300">
-        {/* Columna Izquierda: Formulario */}
+        {/* Columna Izquierda: Formulario de Pago y Métodos */}
         <div className="w-full lg:w-1/3 flex flex-col gap-6">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex-1">
             <h3 className="text-lg font-black text-slate-800 mb-6 flex items-center gap-2">
-              <Landmark className="w-5 h-5 text-indigo-600" />
+              <Landmark className="w-5 h-5 text-rose-600" />
               Detalles del Pago
             </h3>
             
             <div className="space-y-5">
-              <div className="flex flex-col">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Banco a Afectar</label>
-                <select 
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-medium text-slate-700"
-                  value={pagoForm.bancoId}
-                  onChange={e => setPagoForm({ ...pagoForm, bancoId: e.target.value })}
-                >
-                  <option value="">Seleccione un banco...</option>
-                  {bancos.map(b => (
-                    <option key={b.id} value={b.id}>{b.banco} ({b.moneda})</option>
-                  ))}
-                </select>
-              </div>
-              
-              <div className="flex flex-col">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">N° Referencia</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-medium text-slate-700"
-                  placeholder="Ej. TRF-00123"
-                  value={pagoForm.referencia}
-                  onChange={e => setPagoForm({ ...pagoForm, referencia: e.target.value })}
-                />
-              </div>
-
+              {/* Fecha de Pago */}
               <div className="flex flex-col">
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha de Pago</label>
                 <input 
                   type="date" 
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-medium text-slate-700"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-rose-500 focus:ring-2 focus:ring-rose-200 outline-none transition-all font-medium text-slate-700"
                   value={pagoForm.fecha}
                   onChange={e => setPagoForm({ ...pagoForm, fecha: e.target.value })}
                 />
               </div>
 
+              {/* Selector de Proveedor */}
               <div className="flex flex-col pt-2 border-t border-slate-100">
                 <div className="flex justify-between items-center mb-3">
                   <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Proveedor / Entidad</label>
                   <div className="flex gap-1 bg-slate-100 p-1 rounded-lg">
                     <button 
+                      type="button"
                       onClick={() => setEntityFilters(prev => ({...prev, proveedores: !prev.proveedores}))}
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-md transition-colors ${entityFilters.proveedores ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-colors ${entityFilters.proveedores ? 'bg-rose-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       title="Proveedores"
-                    >P</button>
+                    >Proveedores</button>
                     <button 
-                      onClick={() => setEntityFilters(prev => ({...prev, aliados: !prev.aliados}))}
-                      className={`px-1.5 h-6 flex items-center justify-center text-[10px] font-bold rounded-md transition-colors ${entityFilters.aliados ? 'bg-sky-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Aliados"
-                    >Al</button>
-                    <button 
+                      type="button"
                       onClick={() => setEntityFilters(prev => ({...prev, intercompanias: !prev.intercompanias}))}
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-md transition-colors ${entityFilters.intercompanias ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-colors ${entityFilters.intercompanias ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       title="Intercompañías"
-                    >I</button>
+                    >Intercomp.</button>
                     <button 
+                      type="button"
                       onClick={() => setEntityFilters(prev => ({...prev, accionistas: !prev.accionistas}))}
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-md transition-colors ${entityFilters.accionistas ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+                      className={`px-1.5 py-0.5 text-[10px] font-bold rounded-md transition-colors ${entityFilters.accionistas ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                       title="Accionistas"
-                    >A</button>
-                    <button 
-                      onClick={() => setEntityFilters(prev => ({...prev, empleados: !prev.empleados}))}
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-md transition-colors ${entityFilters.empleados ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                      title="Empleados"
-                    >E</button>
+                    >Accionistas</button>
                   </div>
                 </div>
                 <div className="relative">
@@ -3045,23 +3428,298 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                   <button 
                     type="button"
                     onClick={() => setIsPagoSupplierModalOpen(true)}
-                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-650 transition-colors"
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-600 transition-colors"
                   >
                     <Search size={16} />
                   </button>
                 </div>
               </div>
 
-              {isVES && (
-                <div className="flex flex-col animate-in fade-in zoom-in-95 duration-200 pt-2 border-t border-slate-100">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tasa de Pago (Bs./$)</label>
+              {/* SECCIÓN MÉTODOS DE PAGO MULTIPLES */}
+              <div className="pt-4 border-t border-slate-100 mt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                    <Building className="w-4 h-4 text-rose-500" />
+                    Métodos de Pago
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const currentSum = pagoForm.pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
+                      const pending = Math.max(0, Number((montoBanco - currentSum).toFixed(2)));
+                      const newPago = {
+                        id: 'pago-' + Date.now(),
+                        bancoId: '',
+                        metodo: 'Transferencia',
+                        terminalId: '',
+                        referencia: '',
+                        monto: pending > 0 ? pending.toString() : '',
+                        montoBs: ''
+                      };
+                      setPagoForm({ ...pagoForm, pagos: [...pagoForm.pagos, newPago] });
+                    }}
+                    className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-md hover:bg-rose-100 transition-colors cursor-pointer"
+                  >
+                    + Agregar Pago
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {pagoForm.pagos.map((pago, idx) => {
+                    const selB = bancos.find(b => b.id === pago.bancoId);
+                    const isCaja = !!(selB?.es_caja || (selB?.tipo || '').toLowerCase().includes('caja') || (selB?.banco || '').toLowerCase().includes('caja'));
+                    const isUSD = !isCaja && (selB?.moneda === 'USD' || selB?.moneda === 'Dolares');
+                    const isBVES = !isCaja && (selB?.moneda === 'VES' || selB?.moneda === 'Bs' || selB?.moneda === 'Bs.' || selB?.moneda === 'Bolivares' || selB?.moneda === 'Bolívares');
+
+                    // Available methods based on account type
+                    let availableMethods = ['Transferencia', 'Depósito', 'Punto de Venta', 'Pago Móvil', 'Efectivo', 'Zelle', 'Binance'];
+                    if (isCaja) {
+                      availableMethods = ['Efectivo'];
+                    } else if (isUSD) {
+                      availableMethods = ['Transferencia', 'Depósito', 'Zelle', 'Binance', 'Punto de Venta'];
+                    } else if (isBVES) {
+                      availableMethods = ['Transferencia', 'Depósito', 'Pago Móvil', 'Punto de Venta'];
+                    }
+
+                    const isPos = pago.metodo === 'Punto de Venta';
+                    const activeTerminals = terminalesPos.filter(t => t.activo !== false);
+                    const selectedTerm = isPos
+                      ? (terminalesPos.find(t => t.id === pago.terminalId) || activeTerminals[0] || terminalesPos[0])
+                      : null;
+                    const isTermUSD = selectedTerm ? (selectedTerm.tipo_cuenta === 'internacional' || selectedTerm.moneda === 'USD') : false;
+                    const isEffectiveVES = isPos ? !isTermUSD : isBVES;
+
+                    return (
+                      <div key={pago.id} className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl relative group space-y-2.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newPagos = [...pagoForm.pagos];
+                            newPagos.splice(idx, 1);
+                            setPagoForm({ ...pagoForm, pagos: newPagos });
+                          }}
+                          className="absolute -top-2 -right-2 bg-red-100 text-red-600 rounded-full p-1 opacity-80 hover:opacity-100 transition-opacity shadow-sm z-10"
+                          title="Eliminar método de pago"
+                        >
+                          <X size={12} />
+                        </button>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Cuenta o Caja */}
+                          <div>
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-black text-slate-500 uppercase">Cuenta / Caja</label>
+                              {isCaja && <span className="text-[9px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.2 rounded">Caja</span>}
+                            </div>
+                            <select 
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-rose-500"
+                              value={pago.bancoId}
+                              onChange={e => {
+                                const newBankId = e.target.value;
+                                const newB = bancos.find(b => b.id === newBankId);
+                                const newIsCaja = !!(newB?.es_caja || (newB?.tipo || '').toLowerCase().includes('caja') || (newB?.banco || '').toLowerCase().includes('caja'));
+                                const newIsUSD = !newIsCaja && (newB?.moneda === 'USD' || newB?.moneda === 'Dolares');
+                                const newIsVES = !newIsCaja && (newB?.moneda === 'VES' || newB?.moneda === 'Bs' || newB?.moneda === 'Bs.' || newB?.moneda === 'Bolivares');
+
+                                let newMetodo = pago.metodo;
+                                if (newIsCaja) {
+                                  newMetodo = 'Efectivo';
+                                } else if (newIsUSD && !['Transferencia', 'Depósito', 'Zelle', 'Binance', 'Punto de Venta'].includes(newMetodo || '')) {
+                                  newMetodo = 'Transferencia';
+                                } else if (newIsVES && !['Transferencia', 'Depósito', 'Pago Móvil', 'Punto de Venta'].includes(newMetodo || '')) {
+                                  newMetodo = 'Transferencia';
+                                }
+
+                                const newPagos = [...pagoForm.pagos];
+                                newPagos[idx].bancoId = newBankId;
+                                newPagos[idx].metodo = newMetodo;
+                                setPagoForm({ ...pagoForm, pagos: newPagos });
+                              }}
+                            >
+                              <option value="">Seleccione banco o caja...</option>
+                              {bancos.map(b => {
+                                const isBox = !!(b.es_caja || (b.tipo || '').toLowerCase().includes('caja') || (b.banco || '').toLowerCase().includes('caja'));
+                                return (
+                                  <option key={b.id} value={b.id}>
+                                    {isBox ? '💵 [Caja]' : '🏦 [Banco]'} {b.banco} ({b.moneda})
+                                  </option>
+                                );
+                              })}
+                            </select>
+                          </div>
+
+                          {/* Método de Pago */}
+                          <div>
+                            <label className="text-[10px] font-black text-slate-500 uppercase block mb-1">Método de Pago</label>
+                            <select
+                              value={pago.metodo || availableMethods[0]}
+                              onChange={e => {
+                                const val = e.target.value;
+                                const newPagos = [...pagoForm.pagos];
+                                newPagos[idx].metodo = val;
+                                if (val === 'Punto de Venta' && activeTerminals.length > 0 && !newPagos[idx].terminalId) {
+                                  newPagos[idx].terminalId = activeTerminals[0].id;
+                                  if (activeTerminals[0].banco_id) {
+                                    newPagos[idx].bancoId = activeTerminals[0].banco_id;
+                                  }
+                                }
+                                setPagoForm({ ...pagoForm, pagos: newPagos });
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-rose-500"
+                            >
+                              {availableMethods.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Si es Punto de Venta: Selector de Terminal Configurado */}
+                        {isPos && (
+                          <div className="bg-amber-50/80 border border-amber-200/80 rounded-lg p-2.5">
+                            <div className="flex items-center justify-between mb-1">
+                              <label className="text-[10px] font-bold text-amber-800 uppercase flex items-center gap-1">
+                                <CreditCard size={12} />
+                                <span>Terminal Configurado (Punto de Venta) *</span>
+                              </label>
+                              {isTermUSD ? (
+                                <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.5 rounded">
+                                  Internacional USD (Sin Tasa)
+                                </span>
+                              ) : (
+                                <span className="text-[9px] bg-blue-100 text-blue-800 font-bold px-1.5 py-0.5 rounded">
+                                  Nacional VES (Tasa BCV)
+                                </span>
+                              )}
+                            </div>
+                            <select
+                              value={pago.terminalId || (activeTerminals[0]?.id || '')}
+                              onChange={e => {
+                                const termId = e.target.value;
+                                const term = terminalesPos.find(t => t.id === termId);
+                                const newPagos = [...pagoForm.pagos];
+                                newPagos[idx].terminalId = termId;
+                                if (term?.banco_id) newPagos[idx].bancoId = term.banco_id;
+                                if (term?.tipo_cuenta === 'internacional' || term?.moneda === 'USD') {
+                                  newPagos[idx].montoBs = '';
+                                }
+                                setPagoForm({ ...pagoForm, pagos: newPagos });
+                              }}
+                              className="w-full px-2.5 py-1.5 bg-white border border-amber-300 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-amber-500"
+                            >
+                              {activeTerminals.length === 0 ? (
+                                <option value="">No hay terminales configurados</option>
+                              ) : (
+                                activeTerminals.map(t => {
+                                  const isInt = t.tipo_cuenta === 'internacional' || t.moneda === 'USD';
+                                  return (
+                                    <option key={t.id} value={t.id}>
+                                      {t.nombre} ({t.codigo}) - {isInt ? 'Internacional USD (Directo)' : 'Nacional VES (Tasa BCV)'}
+                                    </option>
+                                  );
+                                })
+                              )}
+                            </select>
+                          </div>
+                        )}
+
+                        {/* Referencia y Monto */}
+                        <div className="grid grid-cols-2 gap-2">
+                          <input 
+                            type="text" 
+                            placeholder="Referencia"
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 outline-none focus:border-rose-500"
+                            value={pago.referencia}
+                            onChange={e => {
+                              const newPagos = [...pagoForm.pagos];
+                              newPagos[idx].referencia = e.target.value;
+                              setPagoForm({ ...pagoForm, pagos: newPagos });
+                            }}
+                          />
+                          {isEffectiveVES ? (
+                            <div className="flex flex-col gap-0.5">
+                              <div className="relative">
+                                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">Bs.</span>
+                                <input 
+                                  type="number" 
+                                  step="0.01"
+                                  placeholder="Monto Bs"
+                                  className="w-full pl-8 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
+                                  value={pago.montoBs || ''}
+                                  onChange={e => {
+                                    const newPagos = [...pagoForm.pagos];
+                                    const valBs = e.target.value;
+                                    newPagos[idx].montoBs = valBs;
+                                    const t = Number(pagoForm.tasa) || currentTasa || 1;
+                                    if (t > 0 && valBs) {
+                                      newPagos[idx].monto = (Number(valBs) / t).toFixed(2);
+                                    } else {
+                                      newPagos[idx].monto = '';
+                                    }
+                                    setPagoForm({ ...pagoForm, pagos: newPagos });
+                                  }}
+                                />
+                              </div>
+                              {Number(pago.monto) > 0 && (
+                                <div className="text-[10px] text-slate-500 font-bold ml-1">
+                                  Eqv: $ {formatNumber(pago.monto)}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="relative">
+                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">$</span>
+                              <input 
+                                type="number" 
+                                step="0.01"
+                                placeholder="Monto USD"
+                                className="w-full pl-6 pr-2 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
+                                value={pago.monto}
+                                onChange={e => {
+                                  const newPagos = [...pagoForm.pagos];
+                                  newPagos[idx].monto = e.target.value;
+                                  newPagos[idx].montoBs = '';
+                                  setPagoForm({ ...pagoForm, pagos: newPagos });
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {pagoForm.pagos.length === 0 && (
+                    <div className="text-center py-4 text-xs font-medium text-slate-400 border border-dashed border-slate-200 rounded-xl">
+                      No hay métodos de pago agregados. Haga clic en "+ Agregar Pago".
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tasa General si aplica (visible si algún banco es VES) */}
+              {hasVESBank && (
+                <div className="flex flex-col pt-2 border-t border-slate-100">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tasa BCV (Bs./$)</label>
+                    <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded">Oficial</span>
+                  </div>
                   <input 
                     type="number" 
                     step="0.01"
                     min="0.01"
-                    className="w-full px-4 py-2.5 bg-indigo-50/50 border border-indigo-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-indigo-700"
-                    value={pagoForm.tasa || ''}
-                    onChange={e => setPagoForm({ ...pagoForm, tasa: Number(e.target.value) })}
+                    className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
+                    value={pagoForm.tasa || currentTasa}
+                    onChange={e => {
+                      const newTasa = Number(e.target.value);
+                      const updatedPagos = pagoForm.pagos.map(p => {
+                        if (p.montoBs && newTasa > 0) {
+                          return { ...p, monto: (Number(p.montoBs) / newTasa).toFixed(2) };
+                        }
+                        return p;
+                      });
+                      setPagoForm({ ...pagoForm, tasa: newTasa, pagos: updatedPagos });
+                    }}
                   />
                 </div>
               )}
@@ -3069,41 +3727,37 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
           </div>
         </div>
 
-        {/* Columna Derecha: Cuentas y Resumen */}
+        {/* Columna Derecha: Facturas a Pagar y Resumen */}
         <div className="w-full lg:w-2/3 flex flex-col gap-6">
           {pagoForm.proveedorId ? (
             <>
               {/* Resumen a Pagar */}
-              <div className="bg-gradient-to-br from-indigo-600 to-indigo-800 rounded-2xl shadow-lg p-6 text-white flex flex-col sm:flex-row justify-between items-center gap-6 relative overflow-hidden">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl shadow-lg p-6 text-white flex flex-col sm:flex-row justify-between items-center gap-6 relative overflow-hidden">
                 <div className="relative z-10 w-full sm:w-auto text-center sm:text-left flex flex-col gap-2">
-                  <div className="flex justify-between items-center gap-8 text-indigo-200 text-sm">
-                    <span>Total Facturas:</span>
-                    <span className="font-bold text-white">${formatoES(totalFacturasAplicadas)}</span>
+                  <div className="flex justify-between items-center gap-8 text-slate-300 text-sm">
+                    <span>Total Facturas Seleccionadas:</span>
+                    <span className="font-bold text-white">$ {formatNumber(totalFacturasAplicadas)}</span>
                   </div>
                   
                   {totalAnticiposDisponibles > 0 && (
-                    <div className="flex justify-between items-center gap-8 text-emerald-300 text-sm mt-2 pt-2 border-t border-indigo-500/30">
-                      <div className="flex flex-col">
-                        <span>Anticipo Disponible:</span>
-                        <span className="text-xs text-emerald-400/70">Monto máximo a usar</span>
-                      </div>
-                      <span className="font-bold">${formatoES(totalAnticiposDisponibles)}</span>
+                    <div className="flex justify-between items-center gap-8 text-emerald-300 text-sm mt-1 pt-1 border-t border-slate-700">
+                      <span>Anticipos Disponibles:</span>
+                      <span className="font-bold text-emerald-400">$ {formatNumber(totalAnticiposDisponibles)}</span>
                     </div>
                   )}
-                  
+
                   {totalAnticiposDisponibles > 0 && (
-                    <div className="flex justify-between items-center gap-8 text-emerald-200 text-sm mt-2">
-                      <span className="whitespace-nowrap">Anticipo a Usar:</span>
+                    <div className="flex justify-between items-center gap-8 text-emerald-200 text-sm mt-1">
+                      <span>Anticipo a Aplicar:</span>
                       <div className="relative w-32">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-600 font-bold">$</span>
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-emerald-600 font-bold">$</span>
                         <input 
                           type="number" 
                           step="0.01"
                           min="0"
                           max={Math.min(totalFacturasAplicadas, totalAnticiposDisponibles)}
-                          className="w-full pl-7 pr-3 py-1.5 text-sm border-none rounded-lg focus:ring-2 focus:ring-emerald-400 outline-none font-bold text-emerald-800 bg-emerald-50 shadow-inner text-right transition-all"
-                          placeholder="0.00"
+                          className="w-full pl-6 pr-2 py-1 text-xs border-none rounded-lg focus:ring-2 focus:ring-emerald-400 outline-none font-bold text-emerald-900 bg-emerald-50 shadow-inner text-right"
+                          placeholder="0,00"
                           value={anticipoGlobal}
                           onChange={(e) => {
                             let val = Number(e.target.value);
@@ -3117,99 +3771,114 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                     </div>
                   )}
 
-                  <div className="h-px w-full bg-indigo-500/50 my-2" />
+                  <div className="h-px w-full bg-slate-700 my-1" />
+                  
                   <div className="flex justify-between items-end gap-8 mt-1">
-                    <span className="text-indigo-200 font-medium text-sm uppercase tracking-wider mb-1">Total Efectivo/Banco</span>
+                    <span className="text-slate-300 font-medium text-xs uppercase tracking-wider mb-1">Total Neto por Pagar</span>
                     <div className="flex items-baseline gap-3">
-                      <p className="text-3xl sm:text-4xl font-black tracking-tight">${formatoES(montoBanco)}</p>
-                      {isVES && montoBanco > 0 && (
-                        <p className="text-base font-medium text-indigo-300">
-                          ≈ Bs. {formatoES(montoBanco * (pagoForm.tasa || 1))}
-                        </p>
-                      )}
+                      <p className="text-2xl sm:text-3xl font-black tracking-tight text-white">$ {formatNumber(montoBanco)}</p>
                     </div>
                   </div>
-                </div>
-                <button 
-                  onClick={handleProcesarPago}
-                  disabled={totalFacturasAplicadas <= 0}
-                  className="relative z-10 w-full sm:w-auto bg-white text-indigo-600 hover:bg-indigo-50 text-lg font-bold px-8 py-4 rounded-xl shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
-                >
-                  <CheckCircle className="w-6 h-6" /> 
-                  Procesar Pago
-                </button>
-              </div>
 
-              {/* Tabla de Cuentas por Pagar del Proveedor */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1 flex flex-col">
-                <div className="p-5 border-b border-slate-200 bg-slate-50/80 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h4 className="font-bold text-slate-800">Facturas Pendientes</h4>
-                      <p className="text-xs text-slate-500 font-medium">Seleccione los montos a abonar por cada documento</p>
-                    </div>
+                  {/* Estado de Cobertura con Métodos de Pago */}
+                  <div className="flex justify-between items-center gap-8 text-xs pt-1">
+                    <span className="text-slate-400">Total en Métodos de Pago:</span>
+                    <span className={`font-black text-sm ${Math.abs(sumPagosDisplay - montoBanco) <= 0.01 && montoBanco > 0 ? 'text-emerald-400' : sumPagosDisplay > montoBanco ? 'text-amber-400' : 'text-rose-400'}`}>
+                      $ {formatNumber(sumPagosDisplay)}
+                    </span>
                   </div>
-                  {totalAnticiposDisponibles > 0 && (
-                    <div className="bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg text-sm font-bold border border-emerald-200 flex items-center gap-2">
-                      <Landmark className="w-4 h-4" />
-                      Anticipo Disponible: ${formatoES(totalAnticiposDisponibles)}
+
+                  {montoBanco > 0 && (
+                    <div className="mt-1">
+                      {sumPagosDisplay < montoBanco - 0.01 ? (
+                        <div className="text-xs bg-rose-500/20 text-rose-300 px-2.5 py-1 rounded-lg border border-rose-500/30 flex items-center gap-1.5 font-semibold">
+                          <AlertTriangle size={13} /> Faltan $ {formatNumber(montoBanco - sumPagosDisplay)} por cubrir
+                        </div>
+                      ) : sumPagosDisplay > montoBanco + 0.01 ? (
+                        <div className="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-500/30 flex items-center gap-1.5 font-semibold">
+                          <AlertTriangle size={13} /> Excedente de $ {formatNumber(sumPagosDisplay - montoBanco)} (el pago supera las facturas seleccionadas)
+                        </div>
+                      ) : (
+                        <div className="text-xs bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-lg border border-emerald-500/30 flex items-center gap-1.5 font-semibold">
+                          <CheckCircle size={13} /> Monto cubierto y cuadrado en su totalidad ($ {formatNumber(montoBanco)})
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-                
-                <div className="overflow-x-auto flex-1">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-white border-b border-slate-200 text-slate-500 text-xs uppercase tracking-wider">
+
+                <button 
+                  onClick={handleProcesarPago}
+                  disabled={totalFacturasAplicadas <= 0 || (montoBanco > 0 && Math.abs(sumPagosDisplay - montoBanco) > 0.01)}
+                  className="w-full sm:w-auto px-8 py-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 disabled:hover:bg-emerald-500 text-slate-950 font-black rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:cursor-not-allowed text-sm whitespace-nowrap"
+                >
+                  <CheckCircle size={18} />
+                  <span>Procesar Pago</span>
+                </button>
+              </div>
+
+              {/* Lista de Facturas Pendientes */}
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex-1">
+                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-rose-600" />
+                    <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider">
+                      Facturas Pendientes por Pagar ({selectedSupplierDebts.length})
+                    </h4>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 text-[10px] font-bold uppercase tracking-wider border-b border-slate-200">
                       <tr>
-                        <th className="px-6 py-4 font-bold">Documento</th>
-                        <th className="px-6 py-4 font-bold text-right">Saldo Pendiente</th>
-                        <th className="px-6 py-4 font-bold text-right w-48">Abono a Aplicar</th>
+                        <th className="py-2.5 px-4 w-10">Pagar</th>
+                        <th className="py-2.5 px-4">Fecha</th>
+                        <th className="py-2.5 px-4">N° Factura</th>
+                        <th className="py-2.5 px-4">Detalle</th>
+                        <th className="py-2.5 px-4 text-right">Total</th>
+                        <th className="py-2.5 px-4 text-right">Saldo</th>
+                        <th className="py-2.5 px-4 text-right w-36">Monto a Pagar ($)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {selectedSupplierDebts.map((item, i) => {
-                        const saldoNum = Number(item.saldo) || 0;
-                        const abonoVal = Number(abonos[item.id]) || 0;
-                        
+                      {selectedSupplierDebts.map((item) => {
+                        const total = Math.abs(Number(item.total) || 0);
+                        const saldo = Math.abs(Number(item.saldo !== undefined ? item.saldo : item.total) || 0);
+                        const isApplied = abonos[item.id] !== undefined && abonos[item.id] !== '';
+
                         return (
-                          <tr key={item.id || i} className="hover:bg-slate-50/50 transition-colors group">
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col">
-                                <span className="font-mono text-indigo-600 font-bold">{item.factura_id}</span>
-                                <span className="text-slate-500 text-xs mt-0.5">{(item.fecha || (item.createdAt ? new Date(item.createdAt).toISOString().split('T')[0] : '')).split('T')[0].split('-').reverse().join('/')}</span>
-                                <span className="text-slate-600 text-xs mt-1 line-clamp-1" title={item.descripcion}>{item.descripcion || 'Factura / Cargo'}</span>
-                              </div>
+                          <tr key={item.id} className={`hover:bg-slate-50/80 transition-colors ${isApplied ? 'bg-rose-50/20' : ''}`}>
+                            <td className="py-3 px-4">
+                              <input 
+                                type="checkbox"
+                                checked={isApplied}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    handlePagarTotal(item.id, saldo);
+                                  } else {
+                                    handleAbonoChange(item.id, '', saldo);
+                                  }
+                                }}
+                                className="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500 cursor-pointer"
+                              />
                             </td>
-                            <td className="px-6 py-4 text-right">
-                              <div className="flex flex-col items-end">
-                                <span className="font-black text-slate-800 text-base">${formatoES(saldoNum)}</span>
-                                <span className="text-slate-400 text-xs mt-0.5">Orig: ${formatoES(item.total)}</span>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col gap-2">
-                                <div className="relative">
-                                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                                  <input 
-                                    type="number" 
-                                    step="0.01"
-                                    min="0"
-                                    max={saldoNum}
-                                    className="w-full pl-7 pr-3 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-bold text-indigo-700 bg-white shadow-sm transition-all"
-                                    placeholder="0.00"
-                                    value={abonos[item.id] || ''}
-                                    onChange={(e) => handleAbonoChange(item.id, e.target.value, saldoNum)}
-                                  />
-                                </div>
-                                <button 
-                                  onClick={() => handlePagarTotal(item.id, saldoNum)}
-                                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 transition-colors text-right w-full"
-                                >
-                                  Aplicar total
-                                </button>
+                            <td className="py-3 px-4 font-medium text-slate-600">{item.fecha}</td>
+                            <td className="py-3 px-4 font-bold text-slate-900">{getCleanDocNumber(item)}</td>
+                            <td className="py-3 px-4 text-slate-500 max-w-[180px] truncate">{item.descripcion || item.concepto || '-'}</td>
+                            <td className="py-3 px-4 text-right font-semibold text-slate-600">$ {formatNumber(total)}</td>
+                            <td className="py-3 px-4 text-right font-black text-rose-600">$ {formatNumber(saldo)}</td>
+                            <td className="py-3 px-4 text-right">
+                              <div className="flex items-center gap-1 justify-end">
+                                <span className="text-slate-400 font-bold">$</span>
+                                <input 
+                                  type="number"
+                                  step="0.01"
+                                  placeholder="0,00"
+                                  className="w-24 px-2 py-1 text-right bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
+                                  value={abonos[item.id] !== undefined ? abonos[item.id] : ''}
+                                  onChange={(e) => handleAbonoChange(item.id, e.target.value, saldo)}
+                                />
                               </div>
                             </td>
                           </tr>
@@ -3217,11 +3886,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                       })}
                       {selectedSupplierDebts.length === 0 && (
                         <tr>
-                          <td colSpan={3} className="px-6 py-16 text-center">
-                            <div className="flex flex-col items-center justify-center text-slate-400">
-                              <CheckCircle className="w-12 h-12 mb-3 text-emerald-400" strokeWidth={1.5} />
-                              <p className="font-medium text-slate-600">Esta entidad no tiene facturas pendientes.</p>
-                            </div>
+                          <td colSpan={7} className="text-center py-10 text-slate-400 font-medium">
+                            No hay facturas pendientes para este proveedor.
                           </td>
                         </tr>
                       )}
@@ -3231,14 +3897,10 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
               </div>
             </>
           ) : (
-            <div className="bg-white rounded-2xl border border-slate-200 border-dashed shadow-sm p-12 flex flex-col items-center justify-center text-center h-full min-h-[400px]">
-              <div className="w-20 h-20 bg-slate-50 rounded-full flex items-center justify-center mb-6">
-                <Users className="w-10 h-10 text-slate-300" strokeWidth={1.5} />
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 mb-2">Seleccione una entidad</h3>
-              <p className="text-slate-500 max-w-md">
-                Elija una entidad en el panel de detalles para ver sus cuentas pendientes y registrar un nuevo pago.
-              </p>
+            <div className="h-full bg-slate-50 border border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-12 text-slate-400">
+              <Landmark className="w-12 h-12 stroke-[1.5] mb-3 text-slate-300" />
+              <p className="font-bold text-slate-600 mb-1">Ninguna entidad seleccionada</p>
+              <p className="text-xs">Seleccione un proveedor para visualizar sus facturas y registrar métodos de pago.</p>
             </div>
           )}
         </div>
@@ -3256,11 +3918,11 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
             <BackButton to="/" label="Volver al Inicio" />
           )}
           <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
-            <Users className="w-6 h-6 text-indigo-600" />
+            <Users className="w-6 h-6 text-rose-600" />
             {category ? tabs.find(t => t.id === category)?.label : 'Cuentas por Pagar'}
           </h2>
         </div>
-        <p className="text-sm text-slate-500 font-medium mt-1">Gestión de obligaciones, pagos a proveedores y antigüedad de saldos</p>
+        <p className="text-sm text-slate-500 font-medium mt-1">Gestión de obligaciones, pagos a proveedores y pasivos</p>
       </div>
 
       {/* Tabs */}
@@ -3278,11 +3940,11 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                 }}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-bold transition-all whitespace-nowrap ${
                   isActive 
-                    ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200/50' 
+                    ? 'bg-white text-rose-700 shadow-sm ring-1 ring-slate-200/50' 
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/80'
                 }`}
               >
-                <Icon size={16} className={isActive ? 'text-indigo-600' : 'text-slate-400'} />
+                <Icon size={16} className={isActive ? 'text-rose-600' : 'text-slate-400'} />
                 {tab.label}
               </button>
             );
@@ -3299,76 +3961,99 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
         renderTable()
       )}
 
-      {/* Modal Nuevo Movimiento */}
+      {/* Modal Nuevo Préstamo */}
       {showNewModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-indigo-100 flex items-center justify-center text-indigo-600">
-                  <Landmark size={20} />
+                  <Handshake size={20} />
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-800">Nuevo Movimiento Bancario</h3>
+                  <h3 className="text-lg font-black text-slate-800">Registrar Nuevo Préstamo</h3>
                   <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">
-                    {activeTab === 'intercompanias' ? 'Préstamo Intercompañía' : 
-                     activeTab === 'accionistas' ? 'Aporte/Préstamo Accionista' : 
-                     activeTab === 'aliados' ? 'Cuenta por Pagar a Aliado' :
-                     'Registro de Cuenta por Pagar'}
+                    Financiamiento recibido (Accionistas o Intercompañías) y Cuenta por Pagar
                   </p>
                 </div>
               </div>
               <button 
                 onClick={() => setShowNewModal(false)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 <X size={20} />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="flex flex-col">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tipo / Origen del Préstamo</label>
+                  <select
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
+                    value={newMovForm.categoria || 'accionistas'}
+                    onChange={e => {
+                      const cat = e.target.value;
+                      setNewMovForm({
+                        ...newMovForm,
+                        categoria: cat,
+                        entidad: '',
+                        entidad_id: '',
+                        descripcion: cat === 'intercompanias' ? 'Préstamo recibido de intercompañía para financiamiento' : 'Préstamo recibido de accionista para financiamiento'
+                      });
+                    }}
+                  >
+                    <option value="accionistas">Accionista / Socio</option>
+                    <option value="intercompanias">Intercompañía</option>
+                  </select>
+                </div>
+
                 <div className="flex flex-col relative">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Entidad / Nombre</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    {newMovForm.categoria === 'intercompanias' ? 'Intercompañía Prestamista' : 'Accionista / Socio Prestamista'}
+                  </label>
                   <div 
                     className="w-full px-4 py-2.5 bg-slate-50 border border-indigo-500 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700 cursor-pointer flex justify-between items-center"
                     onClick={() => setIsNewMovSupplierModalOpen(true)}
                   >
                     <span className={newMovForm.entidad ? 'text-slate-800' : 'text-slate-400 font-normal'}>
-                      {newMovForm.entidad || 'Seleccionar entidad...'}
+                      {newMovForm.entidad || (newMovForm.categoria === 'intercompanias' ? 'Seleccionar intercompañía...' : 'Seleccionar accionista...')}
                     </span>
                     <Search className="w-4 h-4 text-indigo-500" />
                   </div>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div className="flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cuenta Bancaria (Destino)</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Cuenta Bancaria (Ingreso a Banco)</label>
                   <select 
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
                     value={newMovForm.bancoId}
                     onChange={e => setNewMovForm({...newMovForm, bancoId: e.target.value})}
                   >
-                    <option value="">Seleccione un banco...</option>
+                    <option value="">Seleccione cuenta bancaria destino...</option>
                     {bancos.map(b => (
-                      <option key={b.id} value={b.id}>{b.banco} - {b.moneda}</option>
+                      <option key={b.id} value={b.id}>{b.banco} - {b.moneda} ({b.numeroCuenta || 'Principal'})</option>
                     ))}
                   </select>
                 </div>
-              </div>
 
-              <div className="flex flex-col">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Concepto</label>
-                <input 
-                  type="text" 
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
-                  placeholder="Ej. Préstamo para capital de trabajo..."
-                  value={newMovForm.descripcion}
-                  onChange={e => setNewMovForm({...newMovForm, descripcion: e.target.value})}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Concepto / Motivo</label>
+                  <input 
+                    type="text" 
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
+                    placeholder="Ej. Préstamo de accionista para financiamiento de operación..."
+                    value={newMovForm.descripcion}
+                    onChange={e => setNewMovForm({...newMovForm, descripcion: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                <div className="flex flex-col">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha Ingreso</label>
                   <input 
                     type="date" 
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
@@ -3377,22 +4062,34 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Referencia</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Fecha Vencimiento / Pago</label>
+                  <input 
+                    type="date" 
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-slate-700"
+                    value={newMovForm.fechaVencimiento || newMovForm.fecha}
+                    onChange={e => setNewMovForm({...newMovForm, fechaVencimiento: e.target.value})}
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">N° Documento / Referencia</label>
                   <input 
                     type="text" 
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-mono font-bold text-slate-700"
-                    placeholder="Opcional"
+                    placeholder="Ej. PREST-001"
                     value={newMovForm.referencia}
                     onChange={e => setNewMovForm({...newMovForm, referencia: e.target.value})}
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-5">
                 <div className="flex flex-col">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto</label>
+                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Monto del Préstamo (USD)</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
                     <input 
                       type="number" 
-                      step="0.01"
+                      step="0.01" 
                       min="0"
                       className="w-full pl-7 pr-4 py-2.5 bg-indigo-50/50 border border-indigo-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-black text-indigo-700"
                       placeholder="0.00"
@@ -3413,12 +4110,12 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
               </div>
 
               {isNewMovVES && (
-                <div className="flex flex-col animate-in fade-in zoom-in-95 duration-200 pt-6 border-t border-slate-100 gap-4 mt-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-3 border-t border-slate-100 animate-in fade-in zoom-in-95 duration-200">
                   <div className="flex flex-col">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Tasa de Operación (Bs./$)</label>
                     <input 
                       type="number" 
-                      step="0.01"
+                      step="0.01" 
                       min="0.01"
                       className="w-full px-4 py-2.5 bg-indigo-50/50 border border-indigo-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-indigo-700"
                       placeholder="Ej. 36.50"
@@ -3452,7 +4149,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                       <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">Bs.</span>
                       <input 
                         type="number" 
-                        step="0.01"
+                        step="0.01" 
                         className="w-full pl-10 pr-4 py-2.5 bg-indigo-50/50 border border-indigo-200 rounded-xl text-sm focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all font-bold text-indigo-700"
                         placeholder="0.00"
                         value={newMovForm.montoBs || ''}
@@ -3476,16 +4173,16 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
             <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
               <button 
                 onClick={() => setShowNewModal(false)}
-                className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors"
+                className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button 
                 onClick={handleSaveNewMov}
-                className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-2"
+                className="px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-2 cursor-pointer shadow-xs"
               >
                 <Save size={16} />
-                Registrar Movimiento
+                Registrar Préstamo
               </button>
             </div>
           </div>
@@ -3878,7 +4575,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
               <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 <Search size={20} className="text-indigo-600"/>
-                Buscar Entidad / Nombre
+                {newMovForm.categoria === 'intercompanias' ? 'Buscar Intercompañía' : 'Buscar Accionista / Socio'}
               </h3>
               <button 
                 onClick={() => setIsNewMovSupplierModalOpen(false)}
@@ -3893,7 +4590,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
                 <input 
                   type="text" 
-                  placeholder="Buscar por nombre o identificación..."
+                  placeholder={newMovForm.categoria === 'intercompanias' ? "Buscar intercompañía por nombre o RIF..." : "Buscar accionista por nombre o cédula/RIF..."}
                   value={newMovSupplierSearchTerm}
                   onChange={(e) => setNewMovSupplierSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm transition-all"
@@ -3934,8 +4631,32 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                   <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
                     <Search className="w-8 h-8 text-slate-300" />
                   </div>
-                  <p className="font-medium text-slate-700">No se encontraron entidades</p>
-                  <p className="text-sm mt-1">Verifique los términos de búsqueda o registre una nueva entidad en el módulo de Contactos.</p>
+                  <p className="font-medium text-slate-700">
+                    {newMovForm.categoria === 'intercompanias' ? 'No se encontraron intercompañías registradas' : 'No se encontraron accionistas registrados'}
+                  </p>
+                  <p className="text-sm mt-1">
+                    {newMovForm.categoria === 'intercompanias'
+                      ? 'Verifique los contactos de tipo Intercompañía en el Directorio de Contactos o ingrese el nombre directamente.'
+                      : 'Verifique los contactos de tipo Accionista en el Directorio de Contactos o ingrese el nombre directamente.'}
+                  </p>
+                  {newMovSupplierSearchTerm.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewMovForm({
+                          ...newMovForm,
+                          entidad_id: `ENT-${Date.now().toString().slice(-4)}`,
+                          entidad: newMovSupplierSearchTerm.trim()
+                        });
+                        setIsNewMovSupplierModalOpen(false);
+                        setNewMovSupplierSearchTerm('');
+                      }}
+                      className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus size={14} />
+                      <span>Usar "{newMovSupplierSearchTerm.trim()}" directamente</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -4413,7 +5134,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                         <div key={docId} className="px-4 py-2.5 flex items-center justify-between text-sm hover:bg-slate-50/30">
                           <div>
                             <span className="font-bold text-slate-700">Factura / Pago:</span>{' '}
-                            <span className="font-mono text-xs text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{originalInvoice?.factura_id || docId}</span>
+                            <span className="font-mono text-xs text-slate-500 font-bold bg-slate-100 px-1.5 py-0.5 rounded">{getCleanDocNumber(originalInvoice, docId)}</span>
                             {originalInvoice?.descripcion && <span className="text-xs text-slate-400 block mt-0.5">{originalInvoice.descripcion}</span>}
                           </div>
                           <span className="font-bold text-slate-800">${formatoES(amount)}</span>
@@ -4426,64 +5147,115 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
               {/* Accounting entry visual (Asiento Contable) */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Asiento Contable Generado</h4>
-                  {selectedPago.comprobanteId && (
-                    <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-mono font-bold px-2 py-0.5 rounded-full">
-                      Voucher: {selectedPago.comprobanteId}
-                    </span>
-                  )}
-                </div>
+                {(() => {
+                  const targetRef = String(selectedPago.referencia || selectedPago.comprobantePago || '').trim();
+                  const matchedComp = comprobantes.find((c: any) => 
+                    (selectedPago.comprobanteId && (String(c.id) === String(selectedPago.comprobanteId))) ||
+                    (targetRef && (
+                      String(c.referencia || '').trim() === targetRef ||
+                      String(c.numero || '').trim() === targetRef ||
+                      (c.referencia && String(c.referencia).toLowerCase().includes(targetRef.toLowerCase())) ||
+                      (targetRef && String(c.referencia || '').toLowerCase().includes(targetRef.toLowerCase()))
+                    )) ||
+                    (c.total && Math.abs(Number(c.total) - Number(selectedPago.montoTotal || selectedPago.monto)) < 0.01 && c.fecha === selectedPago.fecha)
+                  ) || (selectedPago?.lineas ? selectedPago : null);
 
-                <div className="overflow-hidden border border-slate-150 rounded-2xl">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 border-b border-indigo-100/50 text-slate-500 uppercase font-black">
-                      <tr>
-                        <th className="px-4 py-3">Código</th>
-                        <th className="px-4 py-3">Cuenta</th>
-                        <th className="px-4 py-3 text-right">Debe</th>
-                        <th className="px-4 py-3 text-right">Haber</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {(() => {
-                        // Locate lines of this comprobante
-                        const matchedComp = comprobantes.find(c => c.id === selectedPago.comprobanteId) || selectedPago;
-                        const linesObj = matchedComp?.lineas || [];
+                  let linesObj = matchedComp?.lineas || [];
 
-                        if (linesObj.length === 0) {
-                          return (
-                            <tr>
-                              <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
-                                No se encontraron registros de líneas contables
-                              </td>
-                            </tr>
-                          );
+                  // Fallback dinámico si no hay líneas para que el comprobante nunca salga en blanco
+                  if (!linesObj || linesObj.length === 0) {
+                    const montoTotal = Number(selectedPago.montoTotal || selectedPago.monto) || 0;
+                    if (montoTotal > 0) {
+                      const ctaCxpCode = configContable?.cuentaCxp || '2.1.01.001';
+                      const ctaCxpObj = cuentasContables.find(c => String(c.codigo) === String(ctaCxpCode) || String(c.id) === String(ctaCxpCode));
+
+                      const selBanco = bancos.find(b => b.id === selectedPago.bancoId) || bancos.find(b => b.es_caja || (b.tipo || '').toLowerCase().includes('caja')) || bancos[0];
+                      const ctaBancoCode = selBanco?.cuenta_contable_id || '1.1.01.001';
+                      const ctaBancoObj = cuentasContables.find(c => String(c.codigo) === String(ctaBancoCode) || String(c.id) === String(ctaBancoCode));
+
+                      linesObj = [
+                        {
+                          id: 'syn-debe',
+                          cuentaId: ctaCxpObj?.id || ctaCxpCode,
+                          codigo: ctaCxpObj?.codigo || ctaCxpCode,
+                          descripcion: `Pago Facturas - ${selectedPago.proveedorNombre || 'Proveedor'}`,
+                          debe: montoTotal,
+                          haber: 0
+                        },
+                        {
+                          id: 'syn-haber',
+                          cuentaId: ctaBancoObj?.id || ctaBancoCode,
+                          codigo: ctaBancoObj?.codigo || ctaBancoCode,
+                          descripcion: `Egreso ${selBanco?.banco || 'Caja Principal'} - Ref: ${targetRef || 'Efectivo'}`,
+                          debe: 0,
+                          haber: montoTotal
                         }
+                      ];
+                    }
+                  }
 
-                        let totalDebe = 0;
-                        let totalHaber = 0;
+                  const voucherNumero = matchedComp?.numero || (selectedPago.comprobanteId ? (selectedPago.comprobanteId.startsWith('CMP-') ? selectedPago.comprobanteId : `CMP-${selectedPago.comprobanteId.slice(0, 8)}`) : (targetRef ? `CMP-${targetRef}` : 'CMP-ASIENTO'));
 
-                        return (
-                          <>
-                            {linesObj.map((l: any, i: number) => {
-                              const cuenta = cuentasContables.find(c => c.codigo === l.cuentaId || c.id === l.cuentaId);
-                              const debe = Number(l.debe) || 0;
-                              const haber = Number(l.haber) || 0;
-                              totalDebe += debe;
-                              totalHaber += haber;
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Asiento Contable Generado</h4>
+                        <span className="text-[10px] bg-slate-100 border border-slate-200 text-slate-500 font-mono font-bold px-2 py-0.5 rounded-full">
+                          Voucher: {voucherNumero}
+                        </span>
+                      </div>
+
+                      <div className="overflow-hidden border border-slate-150 rounded-2xl">
+                        <table className="w-full text-left text-xs">
+                          <thead className="bg-slate-50 border-b border-indigo-100/50 text-slate-500 uppercase font-black">
+                            <tr>
+                              <th className="px-4 py-3">Código</th>
+                              <th className="px-4 py-3">Cuenta</th>
+                              <th className="px-4 py-3 text-right">Debe</th>
+                              <th className="px-4 py-3 text-right">Haber</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {(() => {
+                              if (linesObj.length === 0) {
+                                return (
+                                  <tr>
+                                    <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
+                                      No se encontraron registros de líneas contables
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              let totalDebe = 0;
+                              let totalHaber = 0;
 
                               return (
-                                <tr key={l.id || i} className="hover:bg-slate-50/50">
-                                  <td className="px-4 py-2.5 font-mono text-indigo-600 font-bold">{l.cuentaId}</td>
-                                  <td className="px-4 py-2.5 text-slate-700 max-w-[200px] truncate" title={cuenta?.nombre || l.descripcion}>
-                                    {cuenta?.nombre || l.descripcion || 'Cuenta Contable'}
-                                  </td>
-                                  <td className="px-4 py-2.5 text-right font-bold text-slate-800">{debe > 0 ? `$${formatoES(debe)}` : '-'}</td>
-                                  <td className="px-4 py-2.5 text-right font-bold text-slate-800">{haber > 0 ? `$${formatoES(haber)}` : '-'}</td>
-                                </tr>
-                              );
-                            })}
+                                <>
+                                  {linesObj.map((l: any, i: number) => {
+                                    const cuenta = cuentasContables.find(c => 
+                                      String(c.codigo) === String(l.cuentaId) || 
+                                      String(c.id) === String(l.cuentaId) || 
+                                      String(c.id) === String(l.cuenta_id) || 
+                                      String(c.codigo) === String(l.codigo)
+                                    );
+                                    const codigoCuenta = cuenta?.codigo || l.cuentaCodigo || l.codigo || (l.cuentaId && !l.cuentaId.includes('-') ? l.cuentaId : '---');
+                                    const debe = Number(l.debe) || 0;
+                                    const haber = Number(l.haber) || 0;
+                                    totalDebe += debe;
+                                    totalHaber += haber;
+
+                                    return (
+                                      <tr key={l.id || i} className="hover:bg-slate-50/50">
+                                        <td className="px-4 py-2.5 font-mono text-indigo-600 font-bold">{codigoCuenta}</td>
+                                        <td className="px-4 py-2.5 text-slate-700 max-w-[200px] truncate" title={cuenta?.nombre || l.descripcion}>
+                                          {cuenta?.nombre || l.descripcion || 'Cuenta Contable'}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">{debe > 0 ? `$${formatoES(debe)}` : '-'}</td>
+                                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">{haber > 0 ? `$${formatoES(haber)}` : '-'}</td>
+                                      </tr>
+                                    );
+                                  })}
                             <tr className="bg-slate-50/40 font-bold text-slate-800">
                               <td colSpan={2} className="px-4 py-2.5 text-right uppercase tracking-wider text-[10px]">Totales:</td>
                               <td className="px-4 py-2.5 text-right border-t border-slate-200 text-slate-800 font-bold">${formatoES(totalDebe)}</td>
@@ -4495,8 +5267,11 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                     </tbody>
                   </table>
                 </div>
-              </div>
-            </div>
+              </>
+            );
+          })()}
+        </div>
+      </div>
 
             {/* Footer buttons */}
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-3xl">

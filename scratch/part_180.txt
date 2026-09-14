@@ -1,0 +1,49 @@
+Created At: 2026-09-12T16:03:51-04:00
+Completed At: 2026-09-12T16:03:51-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1620
+Total Bytes: 74924
+Showing lines 180 to 220
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+180:     setCustomerName(cust.name || cust.nombre || '');
+181:     setCustomerRif(cust.taxId || cust.rif || '');
+182:     setCustomerAddress(cust.address || cust.direccion || '');
+183:     setCustomerPhone(cust.phone || cust.telefono || '');
+184:     setCustomerEmail(cust.email || '');
+185:     setIsCustomerModalOpen(false);
+186:   };
+187: 
+188:   const handleSaveQuickCustomer = () => {
+189:     if (!newCustName.trim() || !newCustRif.trim()) {
+190:       showToast?.('Nombre y RIF son requeridos para el cliente', 'error');
+191:       return;
+192:     }
+193: 
+194:     const newCust = {
+195:       id: `ct_${Date.now()}`,
+196:       name: newCustName.trim(),
+197:       taxId: newCustRif.trim(),
+198:       type: 'customer',
+199:       address: newCustAddress.trim(),
+200:       phone: newCustPhone.trim(),
+201:       isCompany: true
+202:     };
+203: 
+204:     onSave?.('contactos', newCust);
+205:     handleSelectCustomer(newCust);
+206:     setIsNewCustomerModalOpen(false);
+207:     showToast?.('Cliente registrado y seleccionado', 'success');
+208:   };
+209: 
+210:   // Manejo de Items
+211:   const handleAddItem = () => {
+212:     setItems(prev => [
+213:       ...prev,
+214:       {
+215:         id: `item_${Date.now()}_${prev.length + 1}`,
+216:         producto_id: '',
+217:         codigo: '',
+218:         descripcion: '',
+219:         cantidad: 1,
+220:         precio_unitario: 0,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

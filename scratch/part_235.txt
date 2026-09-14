@@ -1,0 +1,34 @@
+Created At: 2026-09-12T18:42:28-04:00
+Completed At: 2026-09-12T18:42:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3381
+Total Bytes: 163385
+Showing lines 235 to 260
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+235:     setControlNumber(`00-${Math.floor(100000 + Math.random() * 900000)}`);
+236:   }, [configContable, docType]);
+237: 
+238:   // Recalcular vencimiento al cambiar días de crédito o fecha de emisión
+239:   useEffect(() => {
+240:     const base = new Date(issueDate);
+241:     base.setDate(base.getDate() + Number(creditDays || 0));
+242:     setCalculatedDueDate(base.toISOString().split('T')[0]);
+243:   }, [issueDate, creditDays]);
+244: 
+245:   // Lista filtrada de clientes
+246:   const customersList = useMemo(() => {
+247:     const term = customerSearchTerm.toLowerCase();
+248:     return contactos.filter(c => {
+249:       const isCust = c.type === 'customer' || c.type === 'both';
+250:       const match = !term || 
+251:         (c.name || '').toLowerCase().includes(term) ||
+252:         (c.taxId || '').toLowerCase().includes(term);
+253:       return isCust && match;
+254:     });
+255:   }, [contactos, customerSearchTerm]);
+256: 
+257:   // Totales calculados en tiempo real (con Retenciones e IGTF de acuerdo a leyes venezolanas)
+258:   const totals = useMemo(() => {
+259:     let subtotal = 0;
+260:     let montoExento = 0;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

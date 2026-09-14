@@ -1,0 +1,39 @@
+Created At: 2026-09-12T17:20:09-04:00
+Completed At: 2026-09-12T17:20:09-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2893
+Total Bytes: 139045
+Showing lines 245 to 275
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+245: 
+246:     return { 
+247:       subtotal, 
+248:       montoExento, 
+249:       baseImponible, 
+250:       ivaMonto, 
+251:       igtfMonto,
+252:       total: totalFactura, 
+253:       totalUSD, 
+254:       totalBs,
+255:       retIvaMonto,
+256:       retIslrMonto,
+257:       netoCobrar,
+258:       netoCobrarUSD,
+259:       netoCobrarBs
+260:     };
+261:   }, [items, currency, exchangeRate, applyRetIva, retIvaPercent, applyRetIslr, retIslrPercent, applyIgtf, igtfPercent]);
+262: 
+263:   // Formateador de moneda
+264:   const formatMoney = (amount: number, curr = currency) => {
+265:     return new Intl.NumberFormat('es-VE', { 
+266:       style: 'currency', 
+267:       currency: curr === 'VES' ? 'VES' : 'USD',
+268:       minimumFractionDigits: 2 
+269:     }).format(amount || 0).replace('USD', '$').replace('VES', 'Bs.');
+270:   };
+271: 
+272:   // Manejo de Cliente
+273:   const handleSelectCustomer = (cust: any) => {
+274:     setSelectedCustomerId(cust.id);
+275:     setCustomerName(cust.name || cust.nombre || '');
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

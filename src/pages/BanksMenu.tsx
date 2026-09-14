@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { 
-  Landmark 
+  Landmark, CreditCard
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
 
@@ -15,6 +15,15 @@ const bankModules = [
     shadow: 'shadow-sky-500/20', 
     path: '/banks/cuentas',
     tag: 'Bancos'
+  },
+  { 
+    name: 'Puntos de Venta (POS) & Lotes', 
+    description: 'Control de lotes diarios de puntos de venta, cierre con ticket y conciliación bancaria', 
+    icon: CreditCard, 
+    gradient: 'from-amber-500 to-orange-600', 
+    shadow: 'shadow-amber-500/20', 
+    path: '/banks/pos-lotes',
+    tag: 'POS & Tarjetas'
   },
 ];
 
@@ -83,7 +92,7 @@ export default function BanksMenu() {
         variants={container as any}
         initial="hidden"
         animate="show"
-        className="z-10 max-w-xl w-full px-2 sm:px-6 grid grid-cols-1 gap-4 justify-items-center mt-1.5 mb-3"
+        className="z-10 max-w-3xl w-full px-2 sm:px-6 grid grid-cols-1 sm:grid-cols-2 gap-4 justify-items-center mt-1.5 mb-3"
       >
         {bankModules.map((app) => {
           const Icon = app.icon;

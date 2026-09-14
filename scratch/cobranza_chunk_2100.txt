@@ -1,0 +1,309 @@
+Created At: 2026-09-12T19:17:22-04:00
+Completed At: 2026-09-12T19:17:23-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3276
+Total Bytes: 156671
+Showing lines 2100 to 2400
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2100:             {/* ALERTA DE STOCK 0 REQUERIDA */}
+2101:             {zeroStockItems.length > 0 && (
+2102:               !isZeroStockAuthorized ? (
+2103:                 <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-start gap-2">
+2104:                   <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+2105:                   <div className="flex-1">
+2106:                     <p className="font-black text-rose-900 text-[11px]">
+2107:                       {zeroStockItems.length} Producto(s) sin Stock Disponible
+2108:                     </p>
+2109:                     <button
+2110:                       type="button"
+2111:                       onClick={() => setIsMasterAuthModalOpen(true)}
+2112:                       className="mt-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] shadow-xs cursor-pointer flex items-center gap-1"
+2113:                     >
+2114:                       <KeyRound size={11} />
+2115:                       <span>Ingresar Clave Especial Master</span>
+2116:                     </button>
+2117:                   </div>
+2118:                 </div>
+2119:               ) : (
+2120:                 <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-800 flex items-center gap-1.5 font-bold">
+2121:                   <ShieldCheck size={14} className="text-emerald-600" />
+2122:                   <span>Stock 0 Autorizado con Clave de Operaciones</span>
+2123:                 </div>
+2124:               )
+2125:             )}
+2126: 
+2127:             {/* BOTÓN PRINCIPAL DE EMISIÓN */}
+2128:             <button
+2129:               type="submit"
+2130:               className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm transition shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+2131:             >
+2132:               <Save size={16} />
+2133:               <span>Emitir Factura ({selectedCondition.toUpperCase()}) [F2]</span>
+2134:             </button>
+2135: 
+2136:           </div>
+2137: 
+2138:         </div>
+2139: 
+2140:       </form>
+2141: 
+2142:       {/* ========================================================================= */}
+2143:       {/* PASO 1: MODAL SOLICITUD DE CONDICIÓN (CONTADO VS CRÉDITO) */}
+2144:       {/* ========================================================================= */}
+2145:       {isConditionModalOpen && (
+2146:         <div className="fixed inset-0 z-[350] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+2147:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 animate-in zoom-in-95 duration-200">
+2148:             <div className="p-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+2149:               <div>
+2150:                 <h3 className="text-base font-black text-slate-900">Condición de la Factura</h3>
+2151:                 <p className="text-xs text-slate-400 font-semibold">
+2152:                   Seleccione si la venta es de contado (cobro inmediato) o a crédito
+2153:                 </p>
+2154:               </div>
+2155:               <button
+2156:                 type="button"
+2157:                 onClick={() => setIsConditionModalOpen(false)}
+2158:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-500 flex items-center justify-center font-bold"
+2159:               >
+2160:                 ✕
+2161:               </button>
+2162:             </div>
+2163: 
+2164:             <div className="p-6 space-y-4 text-xs">
+2165:               <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-100 flex justify-between items-center">
+2166:                 <div>
+2167:                   <p className="text-[10px] font-bold uppercase text-indigo-500">Cliente:</p>
+2168:                   <p className="font-bold text-slate-900 text-sm">{customerName}</p>
+2169:                 </div>
+2170:                 <div className="text-right">
+2171:                   <p className="text-[10px] font-bold uppercase text-indigo-500">Total Documento:</p>
+2172:                   <p className="font-black text-indigo-600 text-base">{formatMoney(totals.total, currency)}</p>
+2173:                 </div>
+2174:               </div>
+2175: 
+2176:               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+2177:                 {/* TARJETA CONTADO */}
+2178:                 <div 
+2179:                   onClick={() => handleSelectCondition('contado')}
+2180:                   className="p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50/40 hover:bg-emerald-50 hover:border-emerald-500 cursor-pointer transition flex flex-col justify-between gap-3 group"
+2181:                 >
+2182:                   <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+2183:                     <DollarSign size={22} />
+2184:                   </div>
+2185:                   <div>
+2186:                     <h4 className="font-black text-slate-900 text-sm group-hover:text-emerald-700 transition">
+2187:                       Factura de Contado
+2188:                     </h4>
+2189:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+2190:                       El cliente cancela de inmediato. Se registrará la cobranza y el ingreso bancario.
+2191:                     </p>
+2192:                   </div>
+2193:                   <span className="text-[11px] font-bold text-emerald-700 flex items-center gap-1">
+2194:                     <span>Cobrar ahora</span>
+2195:                     <ArrowRight size={14} />
+2196:                   </span>
+2197:                 </div>
+2198: 
+2199:                 {/* TARJETA CRÉDITO */}
+2200:                 <div 
+2201:                   className="p-5 rounded-2xl border-2 border-indigo-200 bg-indigo-50/40 hover:bg-indigo-50 transition flex flex-col justify-between gap-3 group"
+2202:                 >
+2203:                   <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+2204:                     <Calendar size={22} />
+2205:                   </div>
+2206:                   <div>
+2207:                     <h4 className="font-black text-slate-900 text-sm">
+2208:                       Factura a Crédito
+2209:                     </h4>
+2210:                     <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+2211:                       Se generará una cuenta por cobrar (CxC) pendiente con fecha de vencimiento.
+2212:                     </p>
+2213: 
+2214:                     <div className="mt-3 p-2.5 bg-white rounded-xl border border-indigo-100 space-y-1.5" onClick={(e) => e.stopPropagation()}>
+2215:                       <div className="flex items-center justify-between">
+2216:                         <span className="text-[11px] font-bold text-slate-600">Plazo:</span>
+2217:                         <div className="flex items-center gap-1">
+2218:                           {[7, 15, 30, 45].map((days) => (
+2219:                             <button
+2220:                               key={days}
+2221:                               type="button"
+2222:                               onClick={() => setCreditDays(days)}
+2223:                               className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+2224:                                 creditDays === days
+2225:                                   ? 'bg-indigo-600 text-white'
+2226:                                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+2227:                               }`}
+2228:                             >
+2229:                               {days}d
+2230:                             </button>
+2231:                           ))}
+2232:                         </div>
+2233:                       </div>
+2234:                       <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-100">
+2235:                         <span className="text-slate-500 font-semibold">Vencimiento:</span>
+2236:                         <span className="font-black text-indigo-700 font-mono">
+2237:                           {formatDate(calculatedDueDate)}
+2238:                         </span>
+2239:                       </div>
+2240:                     </div>
+2241:                   </div>
+2242:                   <button
+2243:                     type="button"
+2244:                     onClick={() => handleSelectCondition('credito')}
+2245:                     className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-xs cursor-pointer"
+2246:                   >
+2247:                     <span>Asignar crédito ({creditDays} días)</span>
+2248:                     <ArrowRight size={14} />
+2249:                   </button>
+2250:                 </div>
+2251:               </div>
+2252:             </div>
+2253:           </div>
+2254:         </div>
+2255:       )}
+2256: 
+2257:       {/* ========================================================================= */}
+2258:       {/* PASO 2 (SI ES CONTADO): MODAL DE COBRANZA (IDÉNTICO AL SISTEMA) */}
+2259:       {/* ========================================================================= */}
+2260:       {isCobranzaModalOpen && (
+2261:         <div className="fixed inset-0 z-[360] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+2262:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col border border-slate-100">
+2263:             {/* Header del Modal de Cobranza */}
+2264:             <div className="p-5 border-b border-slate-100 bg-emerald-50/70 flex justify-between items-center shrink-0">
+2265:               <div className="flex items-center gap-3">
+2266:                 <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-500/20">
+2267:                   <CreditCard size={20} />
+2268:                 </div>
+2269:                 <div>
+2270:                   <h3 className="text-base font-black text-slate-900">Registro de Cobranza (Contado)</h3>
+2271:                   <p className="text-xs text-emerald-800 font-semibold">
+2272:                     Factura {invoiceNumber} • {customerName}
+2273:                   </p>
+2274:                 </div>
+2275:               </div>
+2276:               <button
+2277:                 type="button"
+2278:                 onClick={() => setIsCobranzaModalOpen(false)}
+2279:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold"
+2280:               >
+2281:                 ✕
+2282:               </button>
+2283:             </div>
+2284: 
+2285:             {/* Cuerpo del Modal de Cobranza */}
+2286:             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+2287:               
+2288:               {/* Tarjeta de Resumen del Cobro */}
+2289:               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+2290:                 <div>
+2291:                   <p className="text-[10px] font-bold uppercase text-slate-400">Total Factura a Cobrar:</p>
+2292:                   <p className="text-lg font-black text-slate-900">{formatMoney(totals.total, currency)}</p>
+2293:                   {currency === 'USD' && (
+2294:                     <p className="text-[11px] font-bold text-emerald-600">
+2295:                       Equiv: Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(totals.totalBs)}
+2296:                     </p>
+2297:                   )}
+2298:                 </div>
+2299:                 <div className="text-right">
+2300:                   <div className="flex items-center justify-end gap-1.5 mb-1">
+2301:                     <label className="text-[10px] font-bold uppercase text-slate-400 block">Fecha de Pago</label>
+2302:                     <span className="text-[10px] font-bold text-emerald-600 font-mono">({formatDate(cobranzaForm.fecha)})</span>
+2303:                   </div>
+2304:                   <input
+2305:                     type="date"
+2306:                     value={cobranzaForm.fecha}
+2307:                     onChange={(e) => setCobranzaForm({ ...cobranzaForm, fecha: e.target.value })}
+2308:                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+2309:                   />
+2310:                 </div>
+2311:               </div>
+2312: 
+2313:               {/* Lista de Pagos Recibidos */}
+2314:               <div className="space-y-3">
+2315:                 <div className="flex justify-between items-center">
+2316:                   <h4 className="font-bold text-slate-800 text-xs">Desglose de Formas de Pago Recibidas</h4>
+2317:                   <button
+2318:                     type="button"
+2319:                     onClick={handleAddPagoCobranza}
+2320:                     className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-xs flex items-center gap-1 transition"
+2321:                   >
+2322:                     <Plus size={13} />
+2323:                     <span>Agregar otra forma de pago</span>
+2324:                   </button>
+2325:                 </div>
+2326: 
+2327:                 {cobranzaForm.pagos.map((pago, pIdx) => {
+2328:                   const selB = bancos.find(b => b.id === pago.bancoId);
+2329:                   const isBVES = selB && (selB.moneda === 'VES' || selB.moneda === 'Bs' || selB.moneda === 'Bolivares');
+2330: 
+2331:                   return (
+2332:                     <div key={pago.id} className="p-3.5 bg-slate-50/80 border border-slate-200 rounded-2xl space-y-2.5">
+2333:                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+2334:                         {/* Selector de Banco / Caja o Terminal POS */}
+2335:                         <div className="sm:col-span-2">
+2336:                           {pago.metodoPago === 'Punto de Venta' ? (
+2337:                             <div>
+2338:                               <label className="block text-[10px] font-bold text-amber-700 mb-1 uppercase flex items-center gap-1">
+2339:                                 <CreditCard size={12} />
+2340:                                 <span>Terminal POS de Cobro *</span>
+2341:                               </label>
+2342:                               <select
+2343:                                 value={pago.terminalId || (terminalesPos.length > 0 ? terminalesPos[0].id : '')}
+2344:                                 onChange={(e) => {
+2345:                                   const updated = [...cobranzaForm.pagos];
+2346:                                   updated[pIdx].terminalId = e.target.value;
+2347:                                   const term = terminalesPos.find(t => t.id === e.target.value);
+2348:                                   if (term && term.banco_id) updated[pIdx].bancoId = term.banco_id;
+2349:                                   setCobranzaForm({ ...cobranzaForm, pagos: updated });
+2350:                                 }}
+2351:                                 className="w-full px-3 py-1.5 bg-amber-50/50 border border-amber-300 rounded-xl font-bold text-slate-900 outline-none focus:border-amber-500"
+2352:                               >
+2353:                                 {terminalesPos.length === 0 ? (
+2354:                                   <option value="pos_term_1">Punto Banesco Caja Principal</option>
+2355:                                 ) : (
+2356:                                   terminalesPos.map(t => (
+2357:                                     <option key={t.id} value={t.id}>
+2358:                                       {t.nombre} ({t.codigo}) - Comis. {t.comision_estimada}%
+2359:                                     </option>
+2360:                                   ))
+2361:                                 )}
+2362:                               </select>
+2363:                             </div>
+2364:                           ) : (
+2365:                             <div>
+2366:                               <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+2367:                                 Banco / Caja de Destino *
+2368:                               </label>
+2369:                               <select
+2370:                                 value={pago.bancoId}
+2371:                                 onChange={(e) => {
+2372:                                   const updated = [...cobranzaForm.pagos];
+2373:                                   updated[pIdx].bancoId = e.target.value;
+2374:                                   setCobranzaForm({ ...cobranzaForm, pagos: updated });
+2375:                                 }}
+2376:                                 className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none focus:border-indigo-600"
+2377:                               >
+2378:                                 <option value="">Seleccione cuenta bancaria...</option>
+2379:                                 {bancos.map(b => (
+2380:                                   <option key={b.id} value={b.id}>
+2381:                                     {b.banco} ({b.moneda}) - {b.numero_cuenta}
+2382:                                   </option>
+2383:                                 ))}
+2384:                               </select>
+2385:                             </div>
+2386:                           )}
+2387:                         </div>
+2388: 
+2389:                         {/* Método de Pago */}
+2390:                         <div>
+2391:                           <label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">
+2392:                             Método de Pago
+2393:                           </label>
+2394:                           <select
+2395:                             value={pago.metodoPago}
+2396:                             onChange={(e) => {
+2397:                               const updated = [...cobranzaForm.pagos];
+2398:                               updated[pIdx].metodoPago = e.target.value;
+2399:                               if (e.target.value === 'Punto de Venta' && terminalesPos.length > 0) {
+2400:                                 updated[pIdx].terminalId = terminalesPos[0].id;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

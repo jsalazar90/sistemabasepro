@@ -1,0 +1,24 @@
+Created At: 2026-09-12T19:16:52-04:00
+Completed At: 2026-09-12T19:16:52-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3508
+Total Bytes: 169634
+Showing lines 2360 to 2375
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2360:             <button
+2361:               type="submit"
+2362:               className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm transition shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 cursor-pointer uppercase tracking-wider"
+2363:             >
+2364:               <Save size={16} />
+2365:               <span>Emitir Factura ({selectedCondition.toUpperCase()}) [F2]</span>
+2366:             </button>
+2367: 
+2368:           </div>
+2369: 
+2370:         </div>
+2371: 
+2372:       </form>
+2373: 
+2374:       {/* ========================================================================= */}
+2375:       {/* PASO 1: MODAL SOLICITUD DE CONDICIÓN (CONTADO VS CRÉDITO) */}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

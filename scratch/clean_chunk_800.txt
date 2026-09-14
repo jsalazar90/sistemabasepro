@@ -1,0 +1,810 @@
+
+Created At: 2026-09-12T19:13:15-04:00
+Completed At: 2026-09-12T19:13:15-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3504
+Total Bytes: 168966
+Showing lines 800 to 1599
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+800:   const handleResetForm = () => {
+801:     if (window.confirm('¿Está seguro de reiniciar y vaciar los datos de la factura actual?')) {
+802:       handleClearCustomer();
+803:       setItems([{
+804:         id: `item_${Date.now()}_1`,
+805:         producto_id: '',
+806:         codigo: '',
+807:         descripcion: '',
+808:         cantidad: 1,
+809:         precio_unitario: 0,
+810:         exento: false,
+811:         subtotal: 0,
+812:         iva_monto: 0,
+813:         total: 0,
+814:         cuenta_ingreso_id: '4.1.01.001',
+815:         cuenta_costo_id: '5.1.01.001',
+816:         cuenta_inventario_id: '1.1.04.001'
+817:       }]);
+818:       setNotes('');
+819:       setApplyRetIva(false);
+820:       setApplyRetIslr(false);
+821:       setApplyIgtf(false);
+822:       setSelectedCondition('contado');
+823:       showToast?.('Formulario reiniciado', 'info');
+824:     }
+825:   };
+826: 
+827:   // =========================================================================
+828:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+829:   // =========================================================================
+830:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+831:     setSelectedCondition(cond);
+832:     setIsConditionModalOpen(false);
+833: 
+834:     if (cond === 'credito') {
+835:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+836:       buildAndShowVoucher('credito');
+837:     } else {
+838:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+839:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+840:       
+841:       const pagoInicial = {
+842:         id: `pg_${Date.now()}`,
+843:         bancoId: defaultBanco ? defaultBanco.id : '',
+844:         metodoPago: 'Transferencia',
+845:         referencia: '',
+846:         monto: currency === 'USD' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarUSD.toFixed(2),
+847:         montoBs: currency === 'VES' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarBs.toFixed(2)
+848:       };
+849: 
+850:       setCobranzaForm({
+851:         fecha: issueDate,
+852:         tasa: exchangeRate,
+853:         pagos: [pagoInicial]
+854:       });
+855:       setIsCobranzaModalOpen(true);
+856:     }
+857:   };
+858: 
+859:   // Manejo de pagos en el Modal de Cobranza
+860:   const handleAddPagoCobranza = () => {
+861:     const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+862:     setCobranzaForm(prev => ({
+863:       ...prev,
+864:       pagos: [
+865:         ...prev.pagos,
+866:         {
+867:           id: `pg_${Date.now()}_${prev.pagos.length + 1}`,
+868:           bancoId: defaultBanco ? defaultBanco.id : '',
+869:           metodoPago: 'Transferencia',
+870:           referencia: '',
+871:           monto: '0.00',
+872:           montoBs: '0.00'
+873:         }
+874:       ]
+875:     }));
+876:   };
+877: 
+878:   const handleRemovePagoCobranza = (index: number) => {
+879:     if (cobranzaForm.pagos.length === 1) return;
+880:     setCobranzaForm(prev => ({
+881:       ...prev,
+882:       pagos: prev.pagos.filter((_, i) => i !== index)
+883:     }));
+884:   };
+885: 
+886:   // Proceder desde Cobranza al Asiento Contable
+887:   const handleConfirmCobranzaToVoucher = () => {
+888:     const totalPagado = cobranzaForm.pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+889:     if (cobranzaForm.pagos.length === 0 || totalPagado <= 0) {
+890:       showToast?.('Ingrese al menos un pago con monto válido en la cobranza', 'error');
+891:       return;
+892:     }
+893: 
+894:     setIsCobranzaModalOpen(false);
+895:     buildAndShowVoucher('contado');
+896:   };
+897: 
+898:   // =========================================================================
+899:   // PASO 3: Construir Asiento Contable y Mostrar Previsualización
+900:   // =========================================================================
+901:   const buildAndShowVoucher = (condition: 'contado' | 'credito') => {
+902:     const mainCustomerAccount = configContable?.cuentaCxc || '1.1.02.001';
+903:     const mainSalesAccount = configContable?.cuentaVentas || '4.1.01.001';
+904:     const mainTaxAccount = configContable?.cuentaDebitoFiscal || '2.1.02.001';
+905: 
+906:     const linesVoucher: any[] = [];
+907:     const totalAmount = totals.totalUSD;
+908:     const netoAmount = totals.netoCobrarUSD;
+909: 
+910:     if (condition === 'credito') {
+911:       // Debe: CxC Clientes (por el monto neto a percibir de la factura en USD)
+912:       linesVoucher.push({
+913:         id: `vl_cxc`,
+914:         cuentaId: mainCustomerAccount,
+915:         nombreCuenta: `Cuentas por Cobrar Clientes (${customerName})`,
+916:         descripcion: `Factura a crédito ${invoiceNumber} - Venc. ${formatDate(calculatedDueDate)}`,
+917:         debe: netoAmount,
+918:         haber: 0
+919:       });
+920:     } else {
+921:       // Debe: Banco(s) o Cuenta Puente POS según pagos registrados en el modal de cobranza
+922:       cobranzaForm.pagos.forEach((pago, pIdx) => {
+923:         const isPos = pago.metodoPago === 'Punto de Venta';
+924:         const bank = bancos.find(b => b.id === pago.bancoId);
+925:         const term = terminalesPos.find(t => t.id === pago.terminalId);
+926:         
+927:         const accountId = isPos
+928:           ? (term?.cuenta_transitoria_id || '1.1.01.03')
+929:           : (bank?.cuenta_contable_id || configContable?.cuentaBancos || '1.1.01.004');
+930: 
+931:         const accountName = isPos
+932:           ? `Puntos de Venta por Liquidar (${term?.nombre || 'Tarjetas'})`
+933:           : (bank ? `${bank.banco} (${bank.moneda})` : 'Efectivo en Bancos');
+934: 
+935:         const pagoMonto = parseFloat(pago.monto) || (netoAmount / cobranzaForm.pagos.length);
+936: 
+937:         linesVoucher.push({
+938:           id: `vl_bnk_${pIdx}`,
+939:           cuentaId: accountId,
+940:           nombreCuenta: accountName,
+941:           descripcion: isPos 
+942:             ? `Cobro POS ${term?.nombre || 'Punto'} Fac ${invoiceNumber} - Voucher: ${pago.referencia || 'S/R'}`
+943:             : `Cobro contado Fac ${invoiceNumber} - Ref: ${pago.referencia || 'S/R'}`,
+944:           debe: pagoMonto,
+945:           haber: 0
+946:         });
+947:       });
+948:     }
+949: 
+950:     // Debe: Anticipo Retención de IVA si aplica (Providencia SNAT/2015/0049) en USD
+951:     if (applyRetIva && totals.retIvaMontoUSD > 0) {
+952:       linesVoucher.push({
+953:         id: `vl_ret_iva`,
+954:         cuentaId: configContable?.cuentaRetencionIvaVentas || '1.1.02.003',
+955:         nombreCuenta: `Anticipo IVA Retenido por Clientes (${retIvaPercent}%)`,
+956:         descripcion: `Retención IVA Providencia 0049 Fac ${invoiceNumber}`,
+957:         debe: totals.retIvaMontoUSD,
+958:         haber: 0
+959:       });
+960:     }
+961: 
+962:     // Debe: Anticipo Retención de ISLR si aplica (Decreto 1808) en USD
+963:     if (applyRetIslr && totals.retIslrMontoUSD > 0) {
+964:       linesVoucher.push({
+965:         id: `vl_ret_islr`,
+966:         cuentaId: configContable?.cuentaRetencionIslrVentas || '1.1.02.004',
+967:         nombreCuenta: `Anticipo ISLR Retenido por Clientes (${retIslrPercent}%)`,
+968:         descripcion: `Retención ISLR Dto 1808 Fac ${invoiceNumber}`,
+969:         debe: totals.retIslrMontoUSD,
+970:         haber: 0
+971:       });
+972:     }
+973: 
+974:     // Haber: Ventas por el subtotal neto en USD
+975:     linesVoucher.push({
+976:       id: `vl_vta`,
+977:       cuentaId: mainSalesAccount,
+978:       nombreCuenta: 'Ventas de Mercancías',
+979:       descripcion: `Ingreso por venta Factura ${invoiceNumber}`,
+980:       debe: 0,
+981:       haber: totals.subtotalUSD
+982:     });
+983: 
+984:     // Haber: IVA Débito Fiscal si aplica en USD
+985:     if (totals.ivaMontoUSD > 0) {
+986:       linesVoucher.push({
+987:         id: `vl_iva`,
+988:         cuentaId: mainTaxAccount,
+989:         nombreCuenta: 'IVA Débito Fiscal (16%)',
+990:         descripcion: `IVA 16% Factura ${invoiceNumber}`,
+991:         debe: 0,
+992:         haber: totals.ivaMontoUSD
+993:       });
+994:     }
+995: 
+996:     // Haber: IGTF Percibido por Pagar si aplica (Ley IGTF 2022) en USD
+997:     if (applyIgtf && totals.igtfMontoUSD > 0) {
+998:       linesVoucher.push({
+999:         id: `vl_igtf`,
+1000:         cuentaId: configContable?.cuentaIgtfPorPagar || '2.1.03.002',
+1001:         nombreCuenta: 'IGTF Percibido por Pagar (3%)',
+1002:         descripcion: `IGTF 3% Ley Pagos Divisas Fac ${invoiceNumber}`,
+1003:         debe: 0,
+1004:         haber: totals.igtfMontoUSD
+1005:       });
+1006:     }
+1007: 
+1008:     const voucher = {
+1009:       id: `comp_${Date.now()}`,
+1010:       numero: `AS-FAC-${invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+1011:       fecha: issueDate,
+1012:       concepto: `Registro de Factura de Venta ${invoiceNumber} a ${customerName} (${condition.toUpperCase()})`,
+1013:       total: totalAmount,
+1014:       lineas: linesVoucher,
+1015:       estado: 'Contabilizado',
+1016:       modulo: 'facturacion'
+1017:     };
+1018: 
+1019:     setPendingVoucher(voucher);
+1020:     setIsVoucherModalOpen(true);
+1021:   };
+1022: 
+1023:   // =========================================================================
+1024:   // PASO 4: Confirmación Final y Guardado Transaccional
+1025:   // =========================================================================
+1026:   const handleFinalSaveInvoice = async () => {
+1027:     try {
+1028:       const factId = `fac_${Date.now()}`;
+1029:       const cxcDocId = `cxc_${Date.now()}`;
+1030:       const voucherId = pendingVoucher ? pendingVoucher.id : `comp_${Date.now()}`;
+1031: 
+1032:       let effectiveCustomerId = selectedCustomerId;
+1033:       let existingContact = contactos.find(c => 
+1034:         (selectedCustomerId && c.id === selectedCustomerId) ||
+1035:         (customerRif && c.taxId?.trim().toLowerCase() === customerRif.trim().toLowerCase()) ||
+1036:         (customerName && c.name?.trim().toLowerCase() === customerName.trim().toLowerCase())
+1037:       );
+1038: 
+1039:       // Si el cliente no existe aún en la lista de contactos, crearlo automáticamente con cuentas contables NIIF
+1040:       if (!existingContact && customerName.trim()) {
+1041:         const newContactId = `cli_${Date.now()}`;
+1042:         const newContact = {
+1043:           id: newContactId,
+1044:           name: customerName.trim(),
+1045:           isCompany: !customerRif.toUpperCase().startsWith('V'),
+1046:           taxId: customerRif.trim() || 'J-00000000-0',
+1047:           email: customerEmail.trim(),
+1048:           phone: customerPhone.trim(),
+1049:           address: customerAddress.trim(),
+1050:           type: 'customer',
+1051:           debitAccount: configContable?.cuentaCxc || '1.1.02.001',
+1052:           creditAccount: configContable?.cuentaAnticipoRecibido || '2.1.01.002',
+1053:           created_at: new Date().toISOString()
+1054:         };
+1055:         onSave?.('contactos', newContact);
+1056:         effectiveCustomerId = newContactId;
+1057:         existingContact = newContact;
+1058:       } else if (existingContact) {
+1059:         effectiveCustomerId = existingContact.id;
+1060:       }
+1061: 
+1062:       // Preparar items de la factura: base en USD y valores equivalentes en Bolívares
+1063:       const isVes = currency === 'VES' && exchangeRate > 0;
+1064:       const itemsToSave: FacturaItemModel[] = items.map(item => {
+1065:         const rawUnitPrice = Number(item.precio_unitario) || 0;
+1066:         const unitPriceUSD = isVes ? (rawUnitPrice / exchangeRate) : rawUnitPrice;
+1067:         const unitPriceBs = isVes ? rawUnitPrice : (rawUnitPrice * exchangeRate);
+1068: 
+1069:         const subtotalUSD = isVes ? (Number(item.subtotal) / exchangeRate) : Number(item.subtotal);
+1070:         const subtotalBs = isVes ? Number(item.subtotal) : (Number(item.subtotal) * exchangeRate);
+1071: 
+1072:         const ivaUSD = isVes ? (Number(item.iva_monto) / exchangeRate) : Number(item.iva_monto);
+1073:         const ivaBs = isVes ? Number(item.iva_monto) : (Number(item.iva_monto) * exchangeRate);
+1074: 
+1075:         const totalUSD = isVes ? (Number(item.total) / exchangeRate) : Number(item.total);
+1076:         const totalBs = isVes ? Number(item.total) : (Number(item.total) * exchangeRate);
+1077: 
+1078:         return {
+1079:           ...item,
+1080:           precio_unitario: Number(unitPriceUSD.toFixed(2)),
+1081:           subtotal: Number(subtotalUSD.toFixed(2)),
+1082:           iva_monto: Number(ivaUSD.toFixed(2)),
+1083:           total: Number(totalUSD.toFixed(2)),
+1084:           precio_unitario_bs: Number(unitPriceBs.toFixed(2)),
+1085:           subtotal_bs: Number(subtotalBs.toFixed(2)),
+1086:           iva_monto_bs: Number(ivaBs.toFixed(2)),
+1087:           total_bs: Number(totalBs.toFixed(2))
+1088:         };
+1089:       });
+1090: 
+1091:       // 1. Guardar la Factura (La moneda principal siempre es USD, con moneda de presentación)
+1092:       const newFactura: FacturaVentaModel = {
+1093:         id: factId,
+1094:         empresa_id: '',
+1095:         numero: invoiceNumber.trim().toUpperCase(),
+1096:         control_numero: controlNumber.trim(),
+1097:         tipo_documento: docType,
+1098:         condicion: selectedCondition,
+1099:         dias_credito: selectedCondition === 'credito' ? creditDays : 0,
+1100:         cliente_id: effectiveCustomerId || selectedCustomerId || `ct_${Date.now()}`,
+1101:         cliente_nombre: customerName.trim(),
+1102:         cliente_rif: customerRif.trim(),
+1103:         cliente_direccion: customerAddress.trim(),
+1104:         cliente_telefono: customerPhone.trim(),
+1105:         cliente_email: customerEmail.trim(),
+1106:         fecha_emision: issueDate,
+1107:         fecha_vencimiento: selectedCondition === 'credito' ? calculatedDueDate : issueDate,
+1108:         moneda: 'USD',
+1109:         moneda_presentacion: currency,
+1110:         tasa_cambio: exchangeRate,
+1111:         items: itemsToSave,
+1112:         subtotal: Number(totals.subtotalUSD.toFixed(2)),
+1113:         base_imponible: Number(totals.baseImponibleUSD.toFixed(2)),
+1114:         monto_exento: Number(totals.montoExentoUSD.toFixed(2)),
+1115:         iva_porcentaje: 16,
+1116:         iva_monto: Number(totals.ivaMontoUSD.toFixed(2)),
+1117:         igtf_porcentaje: applyIgtf ? igtfPercent : 0,
+1118:         igtf_monto: Number(totals.igtfMontoUSD.toFixed(2)),
+1119:         retencion_iva_porcentaje: applyRetIva ? retIvaPercent : 0,
+1120:         retencion_iva_monto: Number(totals.retIvaMontoUSD.toFixed(2)),
+1121:         retencion_islr_porcentaje: applyRetIslr ? retIslrPercent : 0,
+1122:         retencion_islr_monto: Number(totals.retIslrMontoUSD.toFixed(2)),
+1123:         neto_cobrar: Number(totals.netoCobrarUSD.toFixed(2)),
+1124:         total: Number(totals.totalUSD.toFixed(2)),
+1125:         saldo_pendiente: selectedCondition === 'credito' ? Number(totals.netoCobrarUSD.toFixed(2)) : 0,
+1126:         subtotal_bs: Number(totals.subtotalBs.toFixed(2)),
+1127:         base_imponible_bs: Number(totals.baseImponibleBs.toFixed(2)),
+1128:         monto_exento_bs: Number(totals.montoExentoBs.toFixed(2)),
+1129:         iva_monto_bs: Number(totals.ivaMontoBs.toFixed(2)),
+1130:         igtf_monto_bs: Number(totals.igtfMontoBs.toFixed(2)),
+1131:         retencion_iva_monto_bs: Number(totals.retIvaMontoBs.toFixed(2)),
+1132:         retencion_islr_monto_bs: Number(totals.retIslrMontoBs.toFixed(2)),
+1133:         neto_cobrar_bs: Number(totals.netoCobrarBs.toFixed(2)),
+1134:         total_bs: Number(totals.totalBs.toFixed(2)),
+1135:         saldo_pendiente_bs: selectedCondition === 'credito' ? Number(totals.netoCobrarBs.toFixed(2)) : 0,
+1136:         estado: selectedCondition === 'credito' ? 'emitida' : 'cobrada',
+1137:         banco_id: selectedCondition === 'contado' && cobranzaForm.pagos.length > 0 ? cobranzaForm.pagos[0].bancoId : undefined,
+1138:         comprobante_id: voucherId,
+1139:         cxc_id: selectedCondition === 'credito' ? cxcDocId : undefined,
+1140:         notas: notes.trim(),
+1141:         created_at: new Date().toISOString()
+1142:       };
+1143: 
+1144:       onSave?.('facturasVenta', newFactura);
+1145: 
+1146:       // 2. Descontar Stock de Inventario y Registrar Kardex
+1147:       items.forEach(item => {
+1148:         if (item.producto_id) {
+1149:           const originalProd = products.find(p => p.id === item.producto_id);
+1150:           if (originalProd) {
+1151:             const currentStock = Number(originalProd.stock_actual) || 0;
+1152:             const cantFacturada = Number(item.cantidad) || 0;
+1153:             // Permitir stock resultante negativo cuando se autorizó con stock 0
+1154:             const newStock = currentStock - cantFacturada;
+1155: 
+1156:             onSave?.('products', {
+1157:               ...originalProd,
+1158:               stock_actual: newStock,
+1159:               updated_at: new Date().toISOString()
+1160:             });
+1161: 
+1162:             const fueSinStock = currentStock <= 0 || (currentStock - cantFacturada < 0);
+1163:             onSave?.('movimientosInventario', {
+1164:               id: `mov_vta_${Date.now()}_${item.id}`,
+1165:               empresa_id: '',
+1166:               producto_id: originalProd.id,
+1167:               producto_nombre: originalProd.nombre,
+1168:               producto_codigo: originalProd.codigo,
+1169:               tipo: 'venta',
+1170:               cantidad: cantFacturada,
+1171:               stock_anterior: currentStock,
+1172:               stock_resultante: newStock,
+1173:               costo_unitario: originalProd.costo_unitario,
+1174:               referencia: `Venta Factura ${newFactura.numero}${fueSinStock ? ' [Stock 0 Aut. Master]' : ''}`,
+1175:               fecha: issueDate,
+1176:               usuario: 'Administrador',
+1177:               created_at: new Date().toISOString()
+1178:             });
+1179:           }
+1180:         }
+1181:       });
+1182: 
+1183:       // 3. Crear CxC si es a Crédito asociada al cliente (Moneda base: USD)
+1184:       if (selectedCondition === 'credito') {
+1185:         const montoCxCUSD = Number(totals.netoCobrarUSD.toFixed(2));
+1186:         const montoCxCBs = Number(totals.netoCobrarBs.toFixed(2));
+1187: 
+1188:         onSave?.('cxc', {
+1189:           id: cxcDocId,
+1190:           factura_id: newFactura.numero,
+1191:           factura: newFactura.numero,
+1192:           numero: newFactura.numero,
+1193:           factura_db_id: newFactura.id,
+1194:           cliente_id: effectiveCustomerId || newFactura.cliente_id,
+1195:           cliente: newFactura.cliente_nombre,
+1196:           cliente_nombre: newFactura.cliente_nombre,
+1197:           cliente_rif: newFactura.cliente_rif,
+1198:           taxId: newFactura.cliente_rif,
+1199:           categoria: 'clientes',
+1200:           fecha: issueDate,
+1201:           fecha_emision: issueDate,
+1202:           vencimiento: calculatedDueDate,
+1203:           fecha_vencimiento: calculatedDueDate,
+1204:           descripcion: `Factura de Venta ${newFactura.numero}`,
+1205:           tipo: 'factura',
+1206:           total: montoCxCUSD,
+1207:           monto: montoCxCUSD,
+1208:           monto_total: montoCxCUSD,
+1209:           saldo: montoCxCUSD,
+1210:           saldo_pendiente: montoCxCUSD,
+1211:           monto_bs: montoCxCBs,
+1212:           saldo_bs: montoCxCBs,
+1213:           moneda: 'USD',
+1214:           tasa: exchangeRate,
+1215:           tasa_cambio: exchangeRate,
+1216:           estado: 'pendiente',
+1217:           metadata: {
+1218:             factura_id: newFactura.id,
+1219:             factura_numero: newFactura.numero,
+1220:             control_numero: newFactura.control_numero,
+1221:             moneda: 'USD',
+1222:             moneda_presentacion: currency,
+1223:             tasa_cambio: exchangeRate,
+1224:             cliente_rif: newFactura.cliente_rif,
+1225:             monto_original: montoCxCUSD,
+1226:             monto_bs: montoCxCBs,
+1227:             monto_usd: montoCxCUSD
+1228:           },
+1229:           created_at: new Date().toISOString()
+1230:         });
+1231:       }
+1232: 
+1233:       // 4. Registrar Cobranza y Movimiento Bancario o Lote POS si fue de Contado
+1234:       if (selectedCondition === 'contado') {
+1235:         cobranzaForm.pagos.forEach(async (pago, idx) => {
+1236:           const isPos = pago.metodoPago === 'Punto de Venta';
+1237:           const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
+1238:           const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
+1239: 
+1240:           if (isPos) {
+1241:             // Acumular en el Lote Abierto del Terminal POS
+1242:             const termId = pago.terminalId || (terminalesPos.length > 0 ? terminalesPos[0].id : 'pos_term_1');
+1243:             const termObj = terminalesPos.find(t => t.id === termId);
+1244:             
+1245:             try {
+1246:               const existingLotes = await dbFetchLotesPos();
+1247:               let openLote = existingLotes.find((l: any) => l.terminal_id === termId && l.estado === 'abierto');
+1248:               if (!openLote) {
+1249:                 openLote = {
+1250:                   id: `lote_${Date.now()}_${idx}`,
+1251:                   terminal_id: termId,
+1252:                   terminal_nombre: termObj ? termObj.nombre : 'Punto de Venta',
+1253:                   banco_id: termObj ? termObj.banco_id : (bancos.length > 0 ? bancos[0].id : ''),
+1254:                   lote_numero: 'EN CURSO',
+1255:                   fecha_apertura: issueDate,
+1256:                   total_operaciones: 0,
+1257:                   monto_bruto_sistema: 0,
+1258:                   monto_bruto_ticket: 0,
+1259:                   diferencia: 0,
+1260:                   comision_monto: 0,
+1261:                   monto_neto_banco: 0,
+1262:                   estado: 'abierto',
+1263:                   transacciones: []
+1264:                 };
+1265:               }
+1266: 
+1267:               const newTx: LotePosTransaccion = {
+1268:                 id: `tx_pos_${Date.now()}_${idx}`,
+1269:                 factura_id: newFactura.id,
+1270:                 factura_numero: newFactura.numero,
+1271:                 cliente_nombre: customerName,
+1272:                 referencia: pago.referencia || 'VOUCHER',
+1273:                 monto_bs: pagoMontoBsNum,
+1274:                 monto_usd: pagoMontoNum,
+1275:                 hora: new Date().toLocaleTimeString('es-VE', { hour: '2-digit', minute: '2-digit' }),
+1276:                 fecha: issueDate
+1277:               };
+1278: 
+1279:               const updatedLote = {
+1280:                 ...openLote,
+1281:                 total_operaciones: (openLote.transacciones?.length || 0) + 1,
+1282:                 monto_bruto_sistema: Number(((openLote.monto_bruto_sistema || 0) + pagoMontoBsNum).toFixed(2)),
+1283:                 monto_bruto_usd: Number(((openLote.monto_bruto_usd || 0) + pagoMontoNum).toFixed(2)),
+1284:                 transacciones: [...(openLote.transacciones || []), newTx],
+1285:                 updated_at: new Date().toISOString()
+1286:               };
+1287: 
+1288:               await dbSaveLotePos(updatedLote);
+1289:               onSave?.('lotesPos', updatedLote);
+1290:             } catch (err) {
+1291:               console.error("Error acumulando en lote POS:", err);
+1292:             }
+1293:           } else {
+1294:             const bank = bancos.find(b => b.id === pago.bancoId);
+1295:             if (bank) {
+1296:               const isBankVES = bank.moneda === 'VES' || bank.moneda === 'Bs';
+1297:               onSave?.('movimientosBancos', {
+1298:                 id: `mov_bnk_${Date.now()}_${idx}`,
+1299:                 banco_id: bank.id,
+1300:                 fecha: issueDate,
+1301:                 ref: pago.referencia || newFactura.numero,
+1302:                 descripcion: `Ingreso Cobranza Factura ${newFactura.numero} (${customerName}) - ${pago.metodoPago}`,
+1303:                 tipo: 'ingreso',
+1304:                 monto: isBankVES ? pagoMontoBsNum : pagoMontoNum,
+1305:                 tasa: exchangeRate,
+1306:                 estado: 'conciliado',
+1307:                 comprobante_id: voucherId,
+1308:                 created_at: new Date().toISOString()
+1309:               });
+1310:             }
+1311:           }
+1312:         });
+1313:       }
+1314: 
+1315:       // 5. Guardar Asiento Contable
+1316:       if (pendingVoucher) {
+1317:         onSave?.('comprobantes', pendingVoucher);
+1318:       }
+1319: 
+1320:       // 6. Incrementar correlativo
+1321:       let nextCorrelativo = '00002';
+1322:       if (configContable) {
+1323:         const numPart = parseInt(configContable.correlativoFactura || '1', 10);
+1324:         nextCorrelativo = String(numPart + 1).padStart(5, '0');
+1325:         onSave?.('configContable', {
+1326:           ...configContable,
+1327:           correlativoFactura: nextCorrelativo
+1328:         });
+1329:       }
+1330: 
+1331:       showToast?.(`Factura ${newFactura.numero} emitida exitosamente (${selectedCondition.toUpperCase()})`, 'success');
+1332:       setIsVoucherModalOpen(false);
+1333: 
+1334:       // Guardar última factura emitida para permitir impresión o consulta
+1335:       setLastEmittedInvoice(newFactura);
+1336: 
+1337:       // Preparar automáticamente la siguiente factura continua
+1338:       const prefix = docType === 'nota_credito' ? 'NC-' : docType === 'nota_debito' ? 'ND-' : docType === 'nota_entrega' ? 'NE-' : (configContable?.prefijoFactura || 'FAC-');
+1339:       setInvoiceNumber(`${prefix}${nextCorrelativo}`);
+1340:       setControlNumber(`00-${Math.floor(100000 + Math.random() * 900000)}`);
+1341: 
+1342:       // Limpiar cliente y campos para la próxima factura
+1343:       setSelectedCustomerId('');
+1344:       setCustomerName('');
+1345:       setCustomerRif('');
+1346:       setCustomerAddress('');
+1347:       setCustomerPhone('');
+1348:       setCustomerEmail('');
+1349: 
+1350:       setItems([{
+1351:         id: `item_${Date.now()}_1`,
+1352:         producto_id: '',
+1353:         codigo: '',
+1354:         descripcion: '',
+1355:         cantidad: 1,
+1356:         precio_unitario: 0,
+1357:         exento: false,
+1358:         subtotal: 0,
+1359:         iva_monto: 0,
+1360:         total: 0,
+1361:         cuenta_ingreso_id: '4.1.01.001',
+1362:         cuenta_costo_id: '5.1.01.001',
+1363:         cuenta_inventario_id: '1.1.04.001'
+1364:       }]);
+1365:       setNotes('');
+1366:       setApplyRetIva(false);
+1367:       setApplyRetIslr(false);
+1368:       setApplyIgtf(false);
+1369:       setIsZeroStockAuthorized(false);
+1370:     } catch (err: any) {
+1371:       console.error("Error guardando factura:", err);
+1372:       showToast?.('Error al emitir la factura', 'error');
+1373:     }
+1374:   };
+1375: 
+1376:   return (
+1377:     <div className="px-2 sm:px-4 lg:px-6 pt-1 pb-16 max-w-[1400px] mx-auto animate-in fade-in duration-300 text-slate-800">
+1378:       
+1379:       {/* ========================================================================= */}
+1380:       {/* AVISO DE FACTURA EMITIDA EXITOSAMENTE (MODO CONTINUO) */}
+1381:       {/* ========================================================================= */}
+1382:       {lastEmittedInvoice && (
+1383:         <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-2xl p-3.5 mb-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-emerald-950 animate-in fade-in slide-in-from-top-2 duration-300 shadow-xs">
+1384:           <div className="flex items-center gap-3">
+1385:             <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+1386:               <CheckCircle2 size={22} />
+1387:             </div>
+1388:             <div>
+1389:               <div className="flex items-center gap-2 flex-wrap">
+1390:                 <h4 className="font-black text-sm text-emerald-950">
+1391:                   ¡Factura {lastEmittedInvoice.numero} emitida exitosamente!
+1392:                 </h4>
+1393:                 <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">
+1394:                   {lastEmittedInvoice.condicion?.toUpperCase()}
+1395:                 </span>
+1396:                 <span className="text-[11px] font-mono font-bold text-emerald-800">
+1397:                   Total: ${Number(lastEmittedInvoice.total || 0).toFixed(2)} (Bs. {Number(lastEmittedInvoice.total_bs || 0).toFixed(2)})
+1398:                 </span>
+1399:               </div>
+1400:               <p className="text-xs text-emerald-800 mt-0.5">
+1401:                 Comprobante e inventario actualizados. Formulario reiniciado y listo para facturar el siguiente documento ({invoiceNumber}).
+1402:               </p>
+1403:             </div>
+1404:           </div>
+1405:           <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+1406:             <button
+1407:               type="button"
+1408:               onClick={() => setIsPrintModalOpen(true)}
+1409:               className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+1410:             >
+1411:               <Printer size={13} />
+1412:               <span>Imprimir Factura</span>
+1413:             </button>
+1414:             <button
+1415:               type="button"
+1416:               onClick={() => setLastEmittedInvoice(null)}
+1417:               className="px-3 py-1.5 bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+1418:             >
+1419:               <span>Ocultar Aviso</span>
+1420:             </button>
+1421:             <button
+1422:               type="button"
+1423:               onClick={() => navigate('/invoicing')}
+1424:               className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+1425:             >
+1426:               <span>Volver al Listado</span>
+1427:             </button>
+1428:           </div>
+1429:         </div>
+1430:       )}
+1431: 
+1432:       {/* ========================================================================= */}
+1433:       {/* 1. BARRA SUPERIOR ERP (COMMAND TOOLBAR) */}
+1434:       {/* ========================================================================= */}
+1435:       <div className="bg-slate-900 text-white px-3 sm:px-5 py-2.5 rounded-2xl shadow-md border border-slate-800 flex flex-col md:flex-row items-center justify-between gap-3 mb-3">
+1436:         {/* Izquierda: Volver, Tipo Documento, Número y Conmutador de Moneda */}
+1437:         <div className="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+1438:           <BackButton to="/invoicing" label="Listado" />
+1439: 
+1440:           <div className="h-5 w-px bg-slate-700 hidden sm:block"></div>
+1441: 
+1442:           {/* Selector Tipo de Documento */}
+1443:           <div className="flex items-center gap-1.5">
+1444:             <div className="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-xs shrink-0">
+1445:               <FileText size={15} />
+1446:             </div>
+1447:             <select
+1448:               value={docType}
+1449:               onChange={(e) => setDocType(e.target.value as any)}
+1450:               className="bg-slate-800 text-white font-black text-xs px-2.5 py-1.5 rounded-xl border border-slate-700 outline-none cursor-pointer hover:border-indigo-500 transition"
+1451:             >
+1452:               <option value="factura">FACTURA DE VENTA</option>
+1453:               <option value="nota_entrega">NOTA DE ENTREGA</option>
+1454:               <option value="nota_credito">NOTA DE CRÉDITO</option>
+1455:               <option value="nota_debito">NOTA DE DÉBITO</option>
+1456:             </select>
+1457:           </div>
+1458: 
+1459:           {/* Badge Número Correlativo */}
+1460:           <span className="font-mono text-xs font-black text-indigo-300 bg-indigo-950/80 px-2.5 py-1 rounded-xl border border-indigo-800/70">
+1461:             N° {invoiceNumber || '---'}
+1462:           </span>
+1463: 
+1464:           {/* Conmutador Multimoneda USD vs VES */}
+1465:           <div className="inline-flex items-center bg-slate-800 p-0.5 rounded-xl border border-slate-700">
+1466:             <button
+1467:               type="button"
+1468:               onClick={() => handleCurrencyChange('USD')}
+1469:               className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+1470:                 currency === 'USD' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+1471:               }`}
+1472:             >
+1473:               USD ($)
+1474:             </button>
+1475:             <button
+1476:               type="button"
+1477:               onClick={() => handleCurrencyChange('VES')}
+1478:               className={`px-2.5 py-1 rounded-lg text-[11px] font-black transition cursor-pointer ${
+1479:                 currency === 'VES' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-white'
+1480:               }`}
+1481:             >
+1482:               Bs. (VES)
+1483:             </button>
+1484:           </div>
+1485: 
+1486:           {/* Tasa Oficial BCV con sincronización en vivo */}
+1487:           <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1 rounded-xl border border-slate-700 text-[11px]">
+1488:             <span className="text-slate-400 font-medium">Tasa BCV:</span>
+1489:             <span className="font-mono font-black text-emerald-400">Bs. {exchangeRate.toFixed(2)}</span>
+1490:             <button
+1491:               type="button"
+1492:               onClick={handleSyncLiveBcv}
+1493:               disabled={isSyncingBcvLive}
+1494:               title="Sincronizar tasa oficial en vivo desde el BCV"
+1495:               className="text-slate-400 hover:text-emerald-400 p-0.5 rounded transition disabled:opacity-50 cursor-pointer"
+1496:             >
+1497:               <RefreshCw size={11} className={isSyncingBcvLive ? 'animate-spin text-emerald-400' : ''} />
+1498:             </button>
+1499:             <button
+1500:               type="button"
+1501:               onClick={() => setIsTasaModalOpen(true)}
+1502:               className="text-[10px] text-slate-400 hover:text-white font-bold ml-1 cursor-pointer"
+1503:               title="Histórico de tasas oficiales"
+1504:             >
+1505:               <Coins size={11} />
+1506:             </button>
+1507:           </div>
+1508:         </div>
+1509: 
+1510:         {/* Derecha: Botones de Acción Rápida ERP */}
+1511:         <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
+1512:           <button
+1513:             type="button"
+1514:             onClick={() => buildAndShowVoucher(selectedCondition)}
+1515:             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+1516:             title="Previsualizar el Asiento Contable que generará esta factura"
+1517:           >
+1518:             <BookOpen size={13} className="text-indigo-400" />
+1519:             <span className="hidden sm:inline">Previsualizar</span> Asiento
+1520:           </button>
+1521:           <button
+1522:             type="button"
+1523:             onClick={handleResetForm}
+1524:             className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 border border-slate-700 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+1525:             title="Limpiar formulario y reiniciar documento"
+1526:           >
+1527:             <Trash2 size={13} />
+1528:             <span className="hidden sm:inline">Limpiar</span>
+1529:           </button>
+1530:           <button
+1531:             type="submit"
+1532:             form="invoice-main-form"
+1533:             className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-500/25 transition cursor-pointer"
+1534:           >
+1535:             <Save size={14} />
+1536:             <span>EMITIR FACTURA (F2)</span>
+1537:           </button>
+1538:         </div>
+1539:       </div>
+1540: 
+1541:       <form id="invoice-main-form" onSubmit={handleStartEmission} className="space-y-3">
+1542:         
+1543:         {/* ========================================================================= */}
+1544:         {/* 2. ENCABEZADO ADMINISTRATIVO UNIFICADO (ESTILO ERP SAINT / GÁLAC) */}
+1545:         {/* ========================================================================= */}
+1546:         <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/90 shadow-xs">
+1547:           <div className="grid grid-cols-1 md:grid-cols-12 gap-3.5 text-xs">
+1548:             
+1549:             {/* SECCIÓN A: DATOS DE CONTROL Y EMISIÓN (4 COLS) */}
+1550:             <div className="md:col-span-4 bg-slate-50/70 p-3 rounded-xl border border-slate-200/80 space-y-2.5">
+1551:               <div className="flex items-center justify-between border-b border-slate-200/70 pb-1.5">
+1552:                 <span className="font-black text-slate-700 text-[11px] uppercase tracking-wider flex items-center gap-1.5">
+1553:                   <FileText size={13} className="text-indigo-600" />
+1554:                   Datos del Documento
+1555:                 </span>
+1556:                 <span className="text-[10px] font-mono text-slate-400 font-bold uppercase">SENIAT</span>
+1557:               </div>
+1558: 
+1559:               <div className="grid grid-cols-2 gap-2">
+1560:                 <div>
+1561:                   <label className="block text-slate-600 font-bold text-[10px] uppercase mb-0.5">N° Factura *</label>
+1562:                   <input
+1563:                     type="text"
+1564:                     required
+1565:                     value={invoiceNumber}
+1566:                     onChange={(e) => setInvoiceNumber(e.target.value)}
+1567:                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono font-bold text-indigo-700 focus:border-indigo-600 outline-none uppercase text-xs"
+1568:                   />
+1569:                 </div>
+1570:                 <div>
+1571:                   <label className="block text-slate-600 font-bold text-[10px] uppercase mb-0.5">N° Control</label>
+1572:                   <input
+1573:                     type="text"
+1574:                     placeholder="00-000000"
+1575:                     value={controlNumber}
+1576:                     onChange={(e) => setControlNumber(e.target.value)}
+1577:                     className="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg font-mono font-semibold text-slate-700 focus:border-indigo-600 outline-none text-xs"
+1578:                   />
+1579:                 </div>
+1580:               </div>
+1581: 
+1582:               <div className="grid grid-cols-2 gap-2">
+1583:                 <div>
+1584:                   <label className="block text-slate-600 font-bold text-[10px] uppercase mb-0.5">Fecha Emisión</label>
+1585:                   <input
+1586:                     type="date"
+1587:                     required
+1588:                     value={issueDate}
+1589:                     onChange={(e) => setIssueDate(e.target.value)}
+1590:                     className="w-full px-2 py-1 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 focus:border-indigo-600 outline-none text-xs"
+1591:                   />
+1592:                 </div>
+1593:                 <div>
+1594:                   <label className="block text-slate-600 font-bold text-[10px] uppercase mb-0.5">Tasa BCV (Bs./$)</label>
+1595:                   <input
+1596:                     type="text"
+1597:                     inputMode="decimal"
+1598:                     value={exchangeRateInput}
+1599:                     onChange={(e) => {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+

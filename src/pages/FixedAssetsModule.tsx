@@ -15,19 +15,58 @@ interface FixedAssetsModuleProps {
   cuentasContables: any[];
   proveedores: any[];
   configContable: any;
+  comprobantes?: any[];
+  cxp?: any[];
+  cxc?: any[];
   onSave: (collection: string, data: any) => void;
   showToast: (msg: string, type: string) => void;
 }
 
-export default function FixedAssetsModule({ activosFijos, categoriasActivos, depreciaciones, cuentasContables, proveedores, configContable, onSave, showToast }: FixedAssetsModuleProps) {
+export default function FixedAssetsModule({ 
+  activosFijos, 
+  categoriasActivos, 
+  depreciaciones, 
+  cuentasContables, 
+  proveedores, 
+  configContable, 
+  comprobantes = [],
+  cxp = [],
+  cxc = [],
+  onSave, 
+  showToast 
+}: FixedAssetsModuleProps) {
   const [view, setView] = useState<ViewState>('menu');
 
   const renderContent = () => {
     switch (view) {
       case 'activos_fijos':
-        return <FixedAssetsList activosFijos={activosFijos} categoriasActivos={categoriasActivos} proveedores={proveedores} cuentasContables={cuentasContables} configContable={configContable} onSave={onSave} showToast={showToast} />;
+        return (
+          <FixedAssetsList 
+            activosFijos={activosFijos} 
+            categoriasActivos={categoriasActivos} 
+            proveedores={proveedores} 
+            cuentasContables={cuentasContables} 
+            configContable={configContable} 
+            comprobantes={comprobantes}
+            cxp={cxp}
+            cxc={cxc}
+            depreciaciones={depreciaciones}
+            onSave={onSave} 
+            showToast={showToast} 
+          />
+        );
       case 'depreciaciones':
-        return <Depreciations depreciaciones={depreciaciones} activosFijos={activosFijos} categoriasActivos={categoriasActivos} onSave={onSave} showToast={showToast} />;
+        return (
+          <Depreciations 
+            depreciaciones={depreciaciones} 
+            activosFijos={activosFijos} 
+            categoriasActivos={categoriasActivos} 
+            cuentasContables={cuentasContables}
+            comprobantes={comprobantes}
+            onSave={onSave} 
+            showToast={showToast} 
+          />
+        );
       case 'parametros':
         return <FixedAssetParameters categoriasActivos={categoriasActivos} cuentasContables={cuentasContables} onSave={onSave} showToast={showToast} />;
       default:

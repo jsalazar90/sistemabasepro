@@ -1,0 +1,44 @@
+Created At: 2026-09-12T16:47:28-04:00
+Completed At: 2026-09-12T16:47:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2647
+Total Bytes: 128815
+Showing lines 1000 to 1035
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1000:                 </span>
+1001:               </div>
+1002:               <input
+1003:                 type="date"
+1004:                 required
+1005:                 value={issueDate}
+1006:                 onChange={(e) => setIssueDate(e.target.value)}
+1007:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
+1008:               />
+1009:             </div>
+1010: 
+1011:             <div>
+1012:               <label className="block text-slate-700 font-bold mb-1">Tasa de Cambio Oficial (Bs./$)</label>
+1013:               <div className="relative">
+1014:                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">Bs.</span>
+1015:                 <input
+1016:                   type="number"
+1017:                   step="0.01"
+1018:                   min="0.01"
+1019:                   value={exchangeRate}
+1020:                   onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 1)}
+1021:                   className="w-full pl-9 pr-3.5 py-2.5 bg-emerald-50/50 border border-emerald-200 rounded-xl font-black text-emerald-800 focus:bg-white focus:border-emerald-600 outline-none"
+1022:                 />
+1023:               </div>
+1024:             </div>
+1025:           </div>
+1026:         </div>
+1027: 
+1028:         {/* ========================================================================= */}
+1029:         {/* DISTRIBUCIÓN PRINCIPAL DE PANTALLA: 2 COLUMNAS */}
+1030:         {/* ========================================================================= */}
+1031:         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+1032:           
+1033:           {/* COLUMNA IZQUIERDA (2/3): CLIENTE + GRILLA DE PRODUCTOS + NOTAS */}
+1034:           <div className="lg:col-span-2 space-y-6">
+1035:             
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

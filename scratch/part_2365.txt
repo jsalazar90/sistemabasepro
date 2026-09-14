@@ -1,0 +1,39 @@
+Created At: 2026-09-12T16:40:57-04:00
+Completed At: 2026-09-12T16:40:57-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2641
+Total Bytes: 128467
+Showing lines 2365 to 2395
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2365:                 <button 
+2366:                   type="button" 
+2367:                   onClick={() => setIsNewCustomerModalOpen(false)}
+2368:                   className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-200 transition-colors cursor-pointer"
+2369:                 >
+2370:                   Cancelar
+2371:                 </button>
+2372:                 <button 
+2373:                   type="submit" 
+2374:                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition shadow-xs cursor-pointer"
+2375:                 >
+2376:                   Registrar y Seleccionar Cliente
+2377:                 </button>
+2378:               </div>
+2379:             </form>
+2380:           </div>
+2381:         </div>
+2382:       )}
+2383: 
+2384:       {/* Modal Selector de Cuenta para el Cliente */}
+2385:       <CuentaContableModal
+2386:         isOpen={showCustomerCuentaModal}
+2387:         onClose={() => {
+2388:           setShowCustomerCuentaModal(false);
+2389:           setActiveCustomerAccountKey(null);
+2390:         }}
+2391:         cuentasContables={cuentasContables}
+2392:         selectedCuentaId={activeCustomerAccountKey ? (customerModalForm as any)[activeCustomerAccountKey] : ''}
+2393:         onSelect={(cuenta) => {
+2394:           if (activeCustomerAccountKey && cuenta) {
+2395:             setCustomerModalForm(prev => ({ ...prev, [activeCustomerAccountKey]: cuenta.id }));
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

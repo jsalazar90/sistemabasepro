@@ -1,0 +1,54 @@
+Created At: 2026-09-12T17:38:32-04:00
+Completed At: 2026-09-12T17:38:32-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 130 to 175
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+130:     taxIdNumber: '',
+131:     email: '',
+132:     phone: '',
+133:     personaContacto: '',
+134:     cargo: '',
+135:     address: '',
+136:     debitAccount: '',
+137:     creditAccount: ''
+138:   });
+139:   const [customerAccountError, setCustomerAccountError] = useState<string | null>(null);
+140:   const [showCustomerCuentaModal, setShowCustomerCuentaModal] = useState(false);
+141:   const [activeCustomerAccountKey, setActiveCustomerAccountKey] = useState<'debitAccount' | 'creditAccount' | null>(null);
+142: 
+143:   // Modal de Selección de Productos de Inventario
+144:   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+145:   const [activeItemIndexForProduct, setActiveItemIndexForProduct] = useState<number | null>(null);
+146:   const [productSearchTerm, setProductSearchTerm] = useState('');
+147:   const [selectedProductCategory, setSelectedProductCategory] = useState('all');
+148: 
+149:   // Items / Líneas de la Factura
+150:   const [items, setItems] = useState<FacturaItemModel[]>([
+151:     {
+152:       id: `item_${Date.now()}_1`,
+153:       producto_id: '',
+154:       codigo: '',
+155:       descripcion: '',
+156:       cantidad: 1,
+157:       precio_unitario: 0,
+158:       exento: false,
+159:       subtotal: 0,
+160:       iva_monto: 0,
+161:       total: 0,
+162:       cuenta_ingreso_id: '4.1.01.001',
+163:       cuenta_costo_id: '5.1.01.001',
+164:       cuenta_inventario_id: '1.1.04.001'
+165:     }
+166:   ]);
+167: 
+168:   // Modales del flujo de emisión
+169:   // Modales del flujo de emisión
+170:   const [isConditionModalOpen, setIsConditionModalOpen] = useState(false);
+171:   const [selectedCondition, setSelectedCondition] = useState<'contado' | 'credito'>('contado');
+172:   const [creditDays, setCreditDays] = useState(15);
+173:   const [calculatedDueDate, setCalculatedDueDate] = useState('');
+174: 
+175:   // Opciones de Retenciones e IGTF (Leyes Tributarias Venezolanas - SENIAT)
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

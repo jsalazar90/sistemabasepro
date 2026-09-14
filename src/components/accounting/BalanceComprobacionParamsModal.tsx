@@ -6,7 +6,6 @@ import {
   Search, 
   ExternalLink, 
   FileSpreadsheet, 
-  Sparkles,
   Columns,
   Layers
 } from 'lucide-react';
@@ -32,7 +31,10 @@ const formatoES = (num: number | string) => {
 };
 
 const formatMontoContableHtml = (num: number | string) => {
-  const n = typeof num === 'string' ? parseFloat(num) || 0 : num || 0;
+  let n = typeof num === 'string' ? parseFloat(num) || 0 : num || 0;
+  if (Math.abs(n) < 0.009) {
+    n = 0;
+  }
   if (n < -0.009) {
     return `<span style="color:#dc2626; font-weight:bold;">($${formatoES(Math.abs(n))})</span>`;
   }
@@ -81,13 +83,30 @@ export default function BalanceComprobacionParamsModal({
   const [hideZero, setHideZero] = useState<boolean>(true);
   const [maxDepthLevel, setMaxDepthLevel] = useState<number>(5);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [useFullDemo, setUseFullDemo] = useState<boolean>(true);
+  const useFullDemo = false;
 
   if (!isOpen) return null;
 
+  const isDescendant = (childCode: string, parentCode: string) => {
+    if (!childCode || !parentCode) return false;
+    if (childCode === parentCode) return true;
+    if (childCode.startsWith(parentCode + '.')) return true;
+    if (!parentCode.includes('.') && childCode.startsWith(parentCode) && childCode.length > parentCode.length) {
+      return true;
+    }
+    return false;
+  };
+
   const computeData = (): { rows: ComprobacionRow[]; totals: any } => {
-    const hasLive = comprobantes.some(c => c.estado === 'Contabilizado');
-    const isDemo = useFullDemo || !hasLive;
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const hasLive = comprobantes.some(isContabilizado);
+    const hasAccounts = cuentasContables && cuentasContables.length > 0;
+    const isDemo = useFullDemo || (!hasLive && !hasAccounts);
 
     if (isDemo) {
       const activeCuentas = (cuentasContables.length >= 30 && !useFullDemo) 
@@ -120,13 +139,18 @@ export default function BalanceComprobacionParamsModal({
           }
         }
 
-        const saldoInicialNeto = isDeudora ? (initDeudor - initAcreedor) : (initAcreedor - initDeudor);
-        const saldoFinalNeto = isDeudora 
-          ? (saldoInicialNeto + deb - cred) 
-          : (saldoInicialNeto + cred - deb);
+        // Saldo algebraico (Debe - Haber) para formato 4 columnas:
+        // Cuentas deudoras (Activo, Costos, Gastos): saldo positivo.
+        // Cuentas acreedoras (Pasivo, Patrimonio, Ingresos): saldo negativo ($X,XX).
+        const saldoInicialNeto = initDeudor - initAcreedor;
+        const saldoFinalNeto = (initDeudor - initAcreedor) + deb - cred;
 
-        const finDeudor = isDeudora ? Math.max(0, saldoFinalNeto) : (saldoFinalNeto < 0 ? Math.abs(saldoFinalNeto) : 0);
-        const finAcreedor = !isDeudora ? Math.max(0, saldoFinalNeto) : (saldoFinalNeto < 0 ? Math.abs(saldoFinalNeto) : 0);
+        const finDeudor = isDeudora 
+          ? (saldoFinalNeto >= 0 ? saldoFinalNeto : 0) 
+          : (saldoFinalNeto > 0 ? saldoFinalNeto : 0);
+        const finAcreedor = !isDeudora 
+          ? (saldoFinalNeto <= 0 ? Math.abs(saldoFinalNeto) : 0) 
+          : (saldoFinalNeto < 0 ? Math.abs(saldoFinalNeto) : 0);
 
         computedRows.push({
           id: String(c.id),
@@ -161,48 +185,96 @@ export default function BalanceComprobacionParamsModal({
 
       // Sumas de comprobación
       const leafRows = filtered.filter(r => r.isLeaf);
+      const targetRows = leafRows.length > 0 ? leafRows : filtered;
+      const rawFinalNeto = targetRows.reduce((s, r) => s + r.saldoFinalNeto, 0);
+      const rawInicialNeto = targetRows.reduce((s, r) => s + r.saldoInicialNeto, 0);
+
       const totals = {
-        saldoInicialDeudor: leafRows.reduce((s, r) => s + r.saldoInicialDeudor, 0),
-        saldoInicialAcreedor: leafRows.reduce((s, r) => s + r.saldoInicialAcreedor, 0),
-        saldoInicialNeto: leafRows.reduce((s, r) => s + r.saldoInicialNeto, 0),
-        debitos: leafRows.reduce((s, r) => s + r.debitos, 0),
-        creditos: leafRows.reduce((s, r) => s + r.creditos, 0),
-        saldoFinalDeudor: leafRows.reduce((s, r) => s + r.saldoFinalDeudor, 0),
-        saldoFinalAcreedor: leafRows.reduce((s, r) => s + r.saldoFinalAcreedor, 0),
-        saldoFinalNeto: leafRows.reduce((s, r) => s + r.saldoFinalNeto, 0),
+        saldoInicialDeudor: targetRows.reduce((s, r) => s + r.saldoInicialDeudor, 0),
+        saldoInicialAcreedor: targetRows.reduce((s, r) => s + r.saldoInicialAcreedor, 0),
+        saldoInicialNeto: Math.abs(rawInicialNeto) < 0.009 ? 0 : rawInicialNeto,
+        debitos: targetRows.reduce((s, r) => s + r.debitos, 0),
+        creditos: targetRows.reduce((s, r) => s + r.creditos, 0),
+        saldoFinalDeudor: targetRows.reduce((s, r) => s + r.saldoFinalDeudor, 0),
+        saldoFinalAcreedor: targetRows.reduce((s, r) => s + r.saldoFinalAcreedor, 0),
+        saldoFinalNeto: Math.abs(rawFinalNeto) < 0.009 ? 0 : rawFinalNeto,
       };
 
       return { rows: filtered, totals };
     }
 
     // Datos Reales
-    const pastComps = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] < localStartDate);
-    const periodComps = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate);
+    const pastComps = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] < localStartDate);
+    const periodComps = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate);
 
-    const activeCuentas = cuentasContables.filter(c => c.tipo === 'Movimiento');
+    const activeCuentas = cuentasContables;
+    const isLeaf = (c: any) => {
+      const t = (c.tipo || '').toLowerCase();
+      if (t === 'movimiento' || t === 'detalle') return true;
+      if (t === 'grupo' || t === 'título general' || t === 'titulo general' || t === 'subtotal') return false;
+      const cod = c.codigo || '';
+      return !activeCuentas.some(o => String(o.id) !== String(c.id) && o.codigo && o.codigo.startsWith(cod + '.'));
+    };
+
+    const leafAccounts = activeCuentas.filter(isLeaf);
+    const leafSaldos: Record<string, { pastDeb: number; pastCred: number; deb: number; cred: number }> = {};
+    activeCuentas.forEach(c => {
+      leafSaldos[c.id] = { pastDeb: 0, pastCred: 0, deb: 0, cred: 0 };
+    });
+
+    pastComps.forEach(comp => {
+      (comp.lineas || []).forEach((l: any) => {
+        const cId = String(l.cuentaId || l.cuenta_id || '').trim();
+        if (!cId) return;
+        const matched = activeCuentas.find(c => 
+          String(c.id) === cId || 
+          String(c.codigo) === cId || 
+          (c.codigo && c.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
+        if (matched && leafSaldos[matched.id]) {
+          leafSaldos[matched.id].pastDeb += Number(l.debe) || 0;
+          leafSaldos[matched.id].pastCred += Number(l.haber) || 0;
+        }
+      });
+    });
+
+    periodComps.forEach(comp => {
+      (comp.lineas || []).forEach((l: any) => {
+        const cId = String(l.cuentaId || l.cuenta_id || '').trim();
+        if (!cId) return;
+        const matched = activeCuentas.find(c => 
+          String(c.id) === cId || 
+          String(c.codigo) === cId || 
+          (c.codigo && c.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
+        if (matched && leafSaldos[matched.id]) {
+          leafSaldos[matched.id].deb += Number(l.debe) || 0;
+          leafSaldos[matched.id].cred += Number(l.haber) || 0;
+        }
+      });
+    });
+
     const rows: ComprobacionRow[] = activeCuentas.map(c => {
+      const isLeafNode = isLeaf(c);
       let pastDeb = 0;
       let pastCred = 0;
       let deb = 0;
       let cred = 0;
 
-      pastComps.forEach(comp => {
-        (comp.lineas || []).forEach((l: any) => {
-          if (String(l.cuentaId) === String(c.id)) {
-            pastDeb += Number(l.debe) || 0;
-            pastCred += Number(l.haber) || 0;
-          }
+      if (isLeafNode) {
+        pastDeb = leafSaldos[c.id]?.pastDeb || 0;
+        pastCred = leafSaldos[c.id]?.pastCred || 0;
+        deb = leafSaldos[c.id]?.deb || 0;
+        cred = leafSaldos[c.id]?.cred || 0;
+      } else {
+        const childLeaves = leafAccounts.filter(l => l.id !== c.id && isDescendant(l.codigo, c.codigo));
+        childLeaves.forEach(l => {
+          pastDeb += leafSaldos[l.id]?.pastDeb || 0;
+          pastCred += leafSaldos[l.id]?.pastCred || 0;
+          deb += leafSaldos[l.id]?.deb || 0;
+          cred += leafSaldos[l.id]?.cred || 0;
         });
-      });
-
-      periodComps.forEach(comp => {
-        (comp.lineas || []).forEach((l: any) => {
-          if (String(l.cuentaId) === String(c.id)) {
-            deb += Number(l.debe) || 0;
-            cred += Number(l.haber) || 0;
-          }
-        });
-      });
+      }
 
       const cod = c.codigo || '';
       const nat = c.naturaleza || (cod.startsWith('1') || cod.startsWith('5') || cod.startsWith('6') ? 'Deudora' : 'Acreedora');
@@ -219,19 +291,23 @@ export default function BalanceComprobacionParamsModal({
         else initDeudor = Math.abs(net);
       }
 
-      const saldoInicialNeto = nat === 'Deudora' ? (initDeudor - initAcreedor) : (initAcreedor - initDeudor);
-      let saldoFinalNeto = 0;
+      // Saldo algebraico (Debe - Haber) para el Balance de Comprobación:
+      // - Cuentas Deudoras (Activo, Costos, Gastos): saldo positivo.
+      // - Cuentas Acreedoras (desde Pasivo hasta Ingresos): saldo negativo ($X,XX).
+      // De esta manera, la suma total de saldos deudores y acreedores al final es exactamente $0,00.
+      const saldoInicialNeto = pastDeb - pastCred;
+      const saldoFinalNeto = (pastDeb - pastCred) + (deb - cred);
+
       let finDeudor = 0;
       let finAcreedor = 0;
 
       if (nat === 'Deudora') {
-        saldoFinalNeto = (initDeudor - initAcreedor) + deb - cred;
         if (saldoFinalNeto >= 0) finDeudor = saldoFinalNeto;
         else finAcreedor = Math.abs(saldoFinalNeto);
       } else {
-        saldoFinalNeto = (initAcreedor - initDeudor) + cred - deb;
-        if (saldoFinalNeto >= 0) finAcreedor = saldoFinalNeto;
-        else finDeudor = Math.abs(saldoFinalNeto);
+        const acreedorNet = (pastCred - pastDeb) + (cred - deb);
+        if (acreedorNet >= 0) finAcreedor = acreedorNet;
+        else finDeudor = Math.abs(acreedorNet);
       }
 
       return {
@@ -239,8 +315,8 @@ export default function BalanceComprobacionParamsModal({
         codigo: cod,
         nombre: c.nombre || '',
         nivel: Number(c.nivel) || cod.split('.').length || 1,
-        tipo: 'Movimiento',
-        isLeaf: true,
+        tipo: isLeafNode ? 'Movimiento' : (c.tipo || 'Grupo'),
+        isLeaf: isLeafNode,
         saldoInicialDeudor: initDeudor,
         saldoInicialAcreedor: initAcreedor,
         saldoInicialNeto,
@@ -255,6 +331,7 @@ export default function BalanceComprobacionParamsModal({
     rows.sort((a, b) => a.codigo.localeCompare(b.codigo, undefined, { numeric: true }));
 
     let filtered = rows.filter(r => {
+      if (r.nivel > maxDepthLevel) return false;
       if (hideZero && r.debitos === 0 && r.creditos === 0 && Math.abs(r.saldoFinalNeto) < 0.01) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -263,15 +340,20 @@ export default function BalanceComprobacionParamsModal({
       return true;
     });
 
+    const leafRows = filtered.filter(r => r.isLeaf);
+    const targetRows = leafRows.length > 0 ? leafRows : filtered;
+    const rawFinalNeto = targetRows.reduce((s, r) => s + r.saldoFinalNeto, 0);
+    const rawInicialNeto = targetRows.reduce((s, r) => s + r.saldoInicialNeto, 0);
+
     const totals = {
-      saldoInicialDeudor: filtered.reduce((s, r) => s + r.saldoInicialDeudor, 0),
-      saldoInicialAcreedor: filtered.reduce((s, r) => s + r.saldoInicialAcreedor, 0),
-      saldoInicialNeto: filtered.reduce((s, r) => s + r.saldoInicialNeto, 0),
-      debitos: filtered.reduce((s, r) => s + r.debitos, 0),
-      creditos: filtered.reduce((s, r) => s + r.creditos, 0),
-      saldoFinalDeudor: filtered.reduce((s, r) => s + r.saldoFinalDeudor, 0),
-      saldoFinalAcreedor: filtered.reduce((s, r) => s + r.saldoFinalAcreedor, 0),
-      saldoFinalNeto: filtered.reduce((s, r) => s + r.saldoFinalNeto, 0),
+      saldoInicialDeudor: targetRows.reduce((s, r) => s + r.saldoInicialDeudor, 0),
+      saldoInicialAcreedor: targetRows.reduce((s, r) => s + r.saldoInicialAcreedor, 0),
+      saldoInicialNeto: Math.abs(rawInicialNeto) < 0.009 ? 0 : rawInicialNeto,
+      debitos: targetRows.reduce((s, r) => s + r.debitos, 0),
+      creditos: targetRows.reduce((s, r) => s + r.creditos, 0),
+      saldoFinalDeudor: targetRows.reduce((s, r) => s + r.saldoFinalDeudor, 0),
+      saldoFinalAcreedor: targetRows.reduce((s, r) => s + r.saldoFinalAcreedor, 0),
+      saldoFinalNeto: Math.abs(rawFinalNeto) < 0.009 ? 0 : rawFinalNeto,
     };
 
     return { rows: filtered, totals };
@@ -697,42 +779,7 @@ export default function BalanceComprobacionParamsModal({
           </div>
         </div>
 
-        {/* CUERPO */}
         <div className="p-6 space-y-6 bg-slate-50/50">
-          {/* Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-amber-950 to-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-amber-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs md:text-sm font-black uppercase tracking-wide">
-                    Verificación de Partida Doble
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    SUMAS IGUALES GARANTIZADAS
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  Balanza de verificación con cuadraturas exactas entre Débitos y Créditos para pre-cierre mensual o anual.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all border border-white/10">
-                <input 
-                  type="checkbox"
-                  checked={useFullDemo}
-                  onChange={(e) => setUseFullDemo(e.target.checked)}
-                  className="rounded text-amber-500 cursor-pointer"
-                />
-                <span>Usar Catálogo Extendido</span>
-              </label>
-            </div>
-          </div>
-
           {/* Formato de Columnas */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2.5">

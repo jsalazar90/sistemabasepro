@@ -1,0 +1,44 @@
+Created At: 2026-09-12T19:17:31-04:00
+Completed At: 2026-09-12T19:17:31-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3276
+Total Bytes: 156671
+Showing lines 2045 to 2080
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2045:                 <span className="font-sans">Total Facturado:</span>
+2046:                 <div className="text-right space-x-3">
+2047:                   <span className="text-sm font-black">{formatMoney(totals.totalUSD, 'USD')}</span>
+2048:                   <span className="text-xs text-slate-600 font-bold">{formatMoney(totals.totalBs, 'VES')}</span>
+2049:                 </div>
+2050:               </div>
+2051: 
+2052:               {/* Deducción Retención IVA */}
+2053:               {applyRetIva && totals.retIvaMonto > 0 && (
+2054:                 <div className="flex justify-between items-center py-0.5 text-amber-700 bg-amber-50/60 px-2 rounded">
+2055:                   <span className="font-sans">(-) Retención IVA ({retIvaPercent}%):</span>
+2056:                   <div className="text-right space-x-3 font-bold">
+2057:                     <span>-{formatMoney(totals.retIvaMontoUSD, 'USD')}</span>
+2058:                     <span>-{formatMoney(totals.retIvaMontoBs, 'VES')}</span>
+2059:                   </div>
+2060:                 </div>
+2061:               )}
+2062: 
+2063:               {/* Deducción Retención ISLR */}
+2064:               {applyRetIslr && totals.retIslrMonto > 0 && (
+2065:                 <div className="flex justify-between items-center py-0.5 text-indigo-700 bg-indigo-50/60 px-2 rounded">
+2066:                   <span className="font-sans">(-) Retención ISLR ({retIslrPercent}%):</span>
+2067:                   <div className="text-right space-x-3 font-bold">
+2068:                     <span>-{formatMoney(totals.retIslrMontoUSD, 'USD')}</span>
+2069:                     <span>-{formatMoney(totals.retIslrMontoBs, 'VES')}</span>
+2070:                   </div>
+2071:                 </div>
+2072:               )}
+2073: 
+2074:             </div>
+2075: 
+2076:             {/* GRAN TOTAL NETO A COBRAR DESTACADO */}
+2077:             <div className="border-t-2 border-slate-900 pt-2.5 bg-slate-50 p-3 rounded-xl border border-slate-200">
+2078:               <div className="flex justify-between items-center">
+2079:                 <div>
+2080:                   <span className="text-[11px] font-black uppercase text-slate-500 block">
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

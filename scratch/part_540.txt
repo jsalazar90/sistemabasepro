@@ -1,0 +1,39 @@
+Created At: 2026-09-12T16:25:58-04:00
+Completed At: 2026-09-12T16:25:58-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2355
+Total Bytes: 113482
+Showing lines 540 to 570
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+540:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+541:     setSelectedCondition(cond);
+542:     setIsConditionModalOpen(false);
+543: 
+544:     if (cond === 'credito') {
+545:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+546:       buildAndShowVoucher('credito');
+547:     } else {
+548:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+549:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+550:       const isBancoVES = defaultBanco && (defaultBanco.moneda === 'VES' || defaultBanco.moneda === 'Bs');
+551:       
+552:       const pagoInicial = {
+553:         id: `pg_${Date.now()}`,
+554:         bancoId: defaultBanco ? defaultBanco.id : '',
+555:         metodoPago: 'Transferencia',
+556:         referencia: '',
+557:         monto: currency === 'USD' ? totals.total.toFixed(2) : totals.totalUSD.toFixed(2),
+558:         montoBs: currency === 'VES' ? totals.total.toFixed(2) : totals.totalBs.toFixed(2)
+559:       };
+560: 
+561:       setCobranzaForm({
+562:         fecha: issueDate,
+563:         tasa: exchangeRate,
+564:         pagos: [pagoInicial]
+565:       });
+566:       setIsCobranzaModalOpen(true);
+567:     }
+568:   };
+569: 
+570:   // Manejo de pagos en el Modal de Cobranza
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

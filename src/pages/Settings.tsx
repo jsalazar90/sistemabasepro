@@ -4,14 +4,15 @@ import {
   Building2, FileSpreadsheet, Receipt, Percent, Save, Upload, Settings as SettingsIcon, 
   Database, UploadCloud, Download, FileJson, FileText, CheckCircle2, Users, Plus, 
   Key, X, Search, Trash2, Shield, Filter, UserCheck, UserX, Hash, ArrowLeft, 
-  ChevronRight, Coins, HelpCircle, Info, Layers, Scale, Printer, Briefcase, 
-  ShieldAlert, AlertTriangle, Check, BookOpen, Sparkles, Globe, Cpu, RefreshCw,
+  ChevronRight, Coins, HelpCircle, Info, Layers, Scale, Briefcase, 
+  ShieldAlert, AlertTriangle, Check, BookOpen, Sparkles, Globe, RefreshCw,
   Lock, Eye, EyeOff, KeyRound, MapPin, Truck, FolderArchive, Calendar
 } from 'lucide-react';
 import BulkUploadConfig from '../components/settings/BulkUploadConfig';
 import { useCompany } from '../context/CompanyContext';
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import BackButton from '../components/common/BackButton';
+import { formatCorrelativo, formatDocumentNumber } from '../utils/numberFormat';
 import { 
   dbSaveEmpresa, 
   dbDeleteEmpresa,
@@ -21,7 +22,9 @@ import {
   dbFetchUsuarioEmpresas,
   dbSaveUsuarioEmpresa,
   dbDeleteUsuarioEmpresa,
-  dbSaveConfiguracionContable
+  dbSaveConfiguracionContable,
+  dbGetMasterClaveOperaciones,
+  dbSaveMasterClaveOperaciones
 } from '../services/db';
 
 interface SettingsProps {
@@ -33,6 +36,13 @@ interface SettingsProps {
   configContable?: any;
   contactos?: any[];
   servicios?: any[];
+  comprobantes?: any[];
+  bancos?: any[];
+  movimientosBancos?: any[];
+  cxc?: any[];
+  cxp?: any[];
+  products?: any[];
+  activosFijos?: any[];
 }
 
 export default function Settings({ 
@@ -43,7 +53,14 @@ export default function Settings({
   setEmpresa, 
   configContable, 
   contactos = [],
-  servicios = []
+  servicios = [],
+  comprobantes = [],
+  bancos = [],
+  movimientosBancos = [],
+  cxc = [],
+  cxp = [],
+  products = [],
+  activosFijos = []
 }: SettingsProps) {
   const [activeTab, setActiveTab] = useState('empresa');
   const { activeCompanyId, setActiveCompanyId, availableCompanies, setAvailableCompanies, workingYear, setWorkingYear, userRole, currentUser } = useCompany();
@@ -99,35 +116,35 @@ export default function Settings({
   const [contabilidad, setContabilidad] = useState({
     cuentaInventario: configContable?.cuentaInventario || '',
     cuentaCostoVentas: configContable?.cuentaCostoVentas || '',
-    cuentaVentas: configContable?.cuentaVentas || '41',
-    cuentaGastos: configContable?.cuentaGastos || '51',
+    cuentaVentas: configContable?.cuentaVentas || '',
+    cuentaGastos: configContable?.cuentaGastos || '',
     cuentaAnticipoRecibido: configContable?.cuentaAnticipoRecibido || '',
     cuentaAnticipoOtorgado: configContable?.cuentaAnticipoOtorgado || '',
-    cuentaCxc: configContable?.cuentaCxc || '11',
-    cuentaCxp: configContable?.cuentaCxp || '21',
-    cuentaDebitoFiscal: configContable?.cuentaDebitoFiscal || '22',
+    cuentaCxc: configContable?.cuentaCxc || '',
+    cuentaCxp: configContable?.cuentaCxp || '',
+    cuentaDebitoFiscal: configContable?.cuentaDebitoFiscal || '',
     cuentaCreditoFiscal: configContable?.cuentaCreditoFiscal || '',
     cuentaIvaRetenidoVentas: configContable?.cuentaIvaRetenidoVentas || '',
     cuentaIvaRetenidoCompras: configContable?.cuentaIvaRetenidoCompras || '',
     cuentaIslrRetenidoVentas: configContable?.cuentaIslrRetenidoVentas || '',
     cuentaIslrRetenidoCompras: configContable?.cuentaIslrRetenidoCompras || '',
-    cuentaGananciaDiferencialCambiario: configContable?.cuentaGananciaDiferencialCambiario || '4.1.1',
-    cuentaPerdidaDiferencialCambiario: configContable?.cuentaPerdidaDiferencialCambiario || '5.2.1',
+    cuentaGananciaDiferencialCambiario: configContable?.cuentaGananciaDiferencialCambiario || '',
+    cuentaPerdidaDiferencialCambiario: configContable?.cuentaPerdidaDiferencialCambiario || '',
     cuentaUtilidadAnteriores: configContable?.cuentaUtilidadAnteriores || '',
-    cuentaBancoDefault: configContable?.cuentaBancoDefault || '11',
+    cuentaBancoDefault: configContable?.cuentaBancoDefault || '',
     mesCierre: configContable?.mesCierre || '12'
   });
 
   // States for Billing & POS
   const [facturacion, setFacturacion] = useState({
     prefijoFactura: configContable?.prefijoFactura ?? '',
-    correlativoFactura: configContable?.correlativoFactura ?? '00001',
+    correlativoFactura: formatCorrelativo(configContable?.correlativoFactura, 6),
     prefijoCotizacion: configContable?.prefijoCotizacion ?? '',
-    correlativoCotizacion: configContable?.correlativoCotizacion ?? '00001',
+    correlativoCotizacion: formatCorrelativo(configContable?.correlativoCotizacion, 6),
     prefijoNotaEntrega: configContable?.prefijoNotaEntrega ?? '',
-    correlativoNotaEntrega: configContable?.correlativoNotaEntrega ?? '00001',
+    correlativoNotaEntrega: formatCorrelativo(configContable?.correlativoNotaEntrega, 6),
     prefijoRecibo: configContable?.prefijoRecibo ?? 'REC-',
-    correlativoRecibo: configContable?.correlativoRecibo ?? '00001',
+    correlativoRecibo: formatCorrelativo(configContable?.correlativoRecibo, 6),
     diasVencimientoDefault: configContable?.diasVencimientoDefault ?? 15,
     notasDefault: configContable?.notasDefault ?? 'Los pagos en bolívares se calcularán a la tasa del BCV del día del pago.',
     usaMaquinaFiscal: configContable?.usaMaquinaFiscal ?? false,
@@ -155,8 +172,8 @@ export default function Settings({
   // States for Importation
   const [importacion, setImportacion] = useState({
     autoContabilizar: true,
-    cuentaDefaultIngresos: '41',
-    cuentaDefaultGastos: '51',
+    cuentaDefaultIngresos: '',
+    cuentaDefaultGastos: '',
     separadorCsv: ',',
     formatoFecha: 'DD/MM/YYYY'
   });
@@ -169,39 +186,38 @@ export default function Settings({
       const isConfigLoadedFromDb = lastLoadedConfigIdRef.current !== configIdOrHash;
       
       if (isNewCompany || isConfigLoadedFromDb) {
-        setContabilidad(prev => ({
-          ...prev,
-          cuentaInventario: configContable.cuentaInventario || prev.cuentaInventario,
-          cuentaCostoVentas: configContable.cuentaCostoVentas || prev.cuentaCostoVentas,
-          cuentaVentas: configContable.cuentaVentas || prev.cuentaVentas,
-          cuentaGastos: configContable.cuentaGastos || prev.cuentaGastos,
-          cuentaAnticipoRecibido: configContable.cuentaAnticipoRecibido || prev.cuentaAnticipoRecibido,
-          cuentaAnticipoOtorgado: configContable.cuentaAnticipoOtorgado || prev.cuentaAnticipoOtorgado,
-          cuentaCxc: configContable.cuentaCxc || prev.cuentaCxc,
-          cuentaCxp: configContable.cuentaCxp || prev.cuentaCxp,
-          cuentaDebitoFiscal: configContable.cuentaDebitoFiscal || prev.cuentaDebitoFiscal,
-          cuentaCreditoFiscal: configContable.cuentaCreditoFiscal || prev.cuentaCreditoFiscal,
-          cuentaIvaRetenidoVentas: configContable.cuentaIvaRetenidoVentas || prev.cuentaIvaRetenidoVentas,
-          cuentaIvaRetenidoCompras: configContable.cuentaIvaRetenidoCompras || prev.cuentaIvaRetenidoCompras,
-          cuentaIslrRetenidoVentas: configContable.cuentaIslrRetenidoVentas || prev.cuentaIslrRetenidoVentas,
-          cuentaIslrRetenidoCompras: configContable.cuentaIslrRetenidoCompras || prev.cuentaIslrRetenidoCompras,
-          cuentaGananciaDiferencialCambiario: configContable.cuentaGananciaDiferencialCambiario || prev.cuentaGananciaDiferencialCambiario,
-          cuentaPerdidaDiferencialCambiario: configContable.cuentaPerdidaDiferencialCambiario || prev.cuentaPerdidaDiferencialCambiario,
-          cuentaUtilidadAnteriores: configContable.cuentaUtilidadAnteriores || prev.cuentaUtilidadAnteriores,
-          cuentaBancoDefault: configContable.cuentaBancoDefault || prev.cuentaBancoDefault,
-          mesCierre: configContable.mesCierre || prev.mesCierre
-        }));
+        setContabilidad({
+          cuentaInventario: configContable.cuentaInventario || '',
+          cuentaCostoVentas: configContable.cuentaCostoVentas || '',
+          cuentaVentas: configContable.cuentaVentas || '',
+          cuentaGastos: configContable.cuentaGastos || '',
+          cuentaAnticipoRecibido: configContable.cuentaAnticipoRecibido || '',
+          cuentaAnticipoOtorgado: configContable.cuentaAnticipoOtorgado || '',
+          cuentaCxc: configContable.cuentaCxc || '',
+          cuentaCxp: configContable.cuentaCxp || '',
+          cuentaDebitoFiscal: configContable.cuentaDebitoFiscal || '',
+          cuentaCreditoFiscal: configContable.cuentaCreditoFiscal || '',
+          cuentaIvaRetenidoVentas: configContable.cuentaIvaRetenidoVentas || '',
+          cuentaIvaRetenidoCompras: configContable.cuentaIvaRetenidoCompras || '',
+          cuentaIslrRetenidoVentas: configContable.cuentaIslrRetenidoVentas || '',
+          cuentaIslrRetenidoCompras: configContable.cuentaIslrRetenidoCompras || '',
+          cuentaGananciaDiferencialCambiario: configContable.cuentaGananciaDiferencialCambiario || '',
+          cuentaPerdidaDiferencialCambiario: configContable.cuentaPerdidaDiferencialCambiario || '',
+          cuentaUtilidadAnteriores: configContable.cuentaUtilidadAnteriores || '',
+          cuentaBancoDefault: configContable.cuentaBancoDefault || '',
+          mesCierre: configContable.mesCierre || '12'
+        });
 
         setFacturacion(prev => ({
           ...prev,
           prefijoFactura: configContable.prefijoFactura ?? prev.prefijoFactura,
-          correlativoFactura: configContable.correlativoFactura ?? prev.correlativoFactura,
+          correlativoFactura: configContable.correlativoFactura !== undefined ? formatCorrelativo(configContable.correlativoFactura, 6) : prev.correlativoFactura,
           prefijoCotizacion: configContable.prefijoCotizacion ?? prev.prefijoCotizacion,
-          correlativoCotizacion: configContable.correlativoCotizacion ?? prev.correlativoCotizacion,
+          correlativoCotizacion: configContable.correlativoCotizacion !== undefined ? formatCorrelativo(configContable.correlativoCotizacion, 6) : prev.correlativoCotizacion,
           prefijoNotaEntrega: configContable.prefijoNotaEntrega ?? prev.prefijoNotaEntrega,
-          correlativoNotaEntrega: configContable.correlativoNotaEntrega ?? prev.correlativoNotaEntrega,
+          correlativoNotaEntrega: configContable.correlativoNotaEntrega !== undefined ? formatCorrelativo(configContable.correlativoNotaEntrega, 6) : prev.correlativoNotaEntrega,
           prefijoRecibo: configContable.prefijoRecibo ?? prev.prefijoRecibo,
-          correlativoRecibo: configContable.correlativoRecibo ?? prev.correlativoRecibo,
+          correlativoRecibo: configContable.correlativoRecibo !== undefined ? formatCorrelativo(configContable.correlativoRecibo, 6) : prev.correlativoRecibo,
           diasVencimientoDefault: configContable.diasVencimientoDefault ?? prev.diasVencimientoDefault,
           notasDefault: configContable.notasDefault ?? prev.notasDefault,
           usaMaquinaFiscal: configContable.usaMaquinaFiscal ?? prev.usaMaquinaFiscal,
@@ -244,9 +260,11 @@ export default function Settings({
   const [userToChangePassword, setUserToChangePassword] = useState<any>(null);
   const [newPasswordForUser, setNewPasswordForUser] = useState('');
   const [newClaveOperacionesForUser, setNewClaveOperacionesForUser] = useState('');
+  const [globalMasterClave, setGlobalMasterClave] = useState('19072828');
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [showNewUserClaveOperaciones, setShowNewUserClaveOperaciones] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
+  const [showModalClaveOperaciones, setShowModalClaveOperaciones] = useState(false);
   const [newUser, setNewUser] = useState<{
     email: string;
     password: string;
@@ -364,13 +382,18 @@ export default function Settings({
 
   const fetchUsers = async () => {
     try {
-      const dbList = await dbFetchUsuarios();
+      const [dbList, masterClave] = await Promise.all([
+        dbFetchUsuarios(),
+        dbGetMasterClaveOperaciones()
+      ]);
+      setGlobalMasterClave(masterClave || '19072828');
       const defaultUsers = [
         {
           id: "u-admin",
           email: "administrador@empresa.com",
           name: "Administrador Principal",
           role: "Master",
+          claveOperaciones: masterClave || '19072828',
           activo: true,
           companyRoles: { [activeCompanyId || "default"]: "Master" },
           companyPermissions: {}
@@ -390,12 +413,14 @@ export default function Settings({
         ? newUser.companies 
         : (activeCompanyId ? [activeCompanyId] : []);
 
+      const chosenClave = newUser.role === 'Master' ? (newUser.claveOperaciones ? newUser.claveOperaciones.trim() : globalMasterClave) : undefined;
+
       const userObj = {
         id: `user-${Date.now()}`,
         email: cleanEmail,
         name: cleanEmail.split('@')[0],
         password: newUser.password ? newUser.password.trim() : '123456',
-        claveOperaciones: newUser.role === 'Master' ? (newUser.claveOperaciones ? newUser.claveOperaciones.trim() : '19072828') : undefined,
+        claveOperaciones: chosenClave,
         role: newUser.role,
         vendedorId: newUser.vendedorId,
         vendedorNombre: newUser.vendedorNombre,
@@ -408,6 +433,11 @@ export default function Settings({
       };
 
       await dbSaveUsuario(userObj);
+
+      if (newUser.role === 'Master' && newUser.claveOperaciones.trim()) {
+        await dbSaveMasterClaveOperaciones(newUser.claveOperaciones.trim());
+        setGlobalMasterClave(newUser.claveOperaciones.trim());
+      }
 
       // Guardar accesos explícitos para las empresas seleccionadas
       const defaultPerms = SYSTEM_MODULES.reduce((acc, mod) => {
@@ -441,30 +471,47 @@ export default function Settings({
 
   const handleSaveNewPassword = async () => {
     if (!userToChangePassword) return;
-    if (!newPasswordForUser.trim() && !newClaveOperacionesForUser.trim()) {
-      if (showToast) showToast('Por favor ingrese una contraseña válida', 'error');
+    const pwd = newPasswordForUser.trim();
+    const claveOp = newClaveOperacionesForUser.trim();
+
+    if (!pwd && !claveOp) {
+      if (showToast) showToast('Por favor ingrese al menos una clave o contraseña para actualizar', 'error');
       return;
     }
 
-    const updatedUser = { 
-      ...userToChangePassword, 
-      ...(newPasswordForUser.trim() ? { password: newPasswordForUser.trim() } : {}),
-      ...(userToChangePassword.role === 'Master' && newClaveOperacionesForUser.trim() ? { claveOperaciones: newClaveOperacionesForUser.trim() } : {})
-    };
-    await dbSaveUsuario(updatedUser);
-
-    const updatedUsers = users.map(u => {
-      if (u.email.toLowerCase() === userToChangePassword.email.toLowerCase()) {
-        return updatedUser;
+    try {
+      // 1. Si el usuario es Master y configuró clave de operaciones, persistir como clave global de operaciones
+      if ((userToChangePassword.role === 'Master' || userToChangePassword.role === 'SuperAdmin') && claveOp) {
+        await dbSaveMasterClaveOperaciones(claveOp);
+        setGlobalMasterClave(claveOp);
       }
-      return u;
-    });
 
-    setUsers(updatedUsers);
-    if (showToast) showToast(`Credenciales actualizadas exitosamente para ${userToChangePassword.email}`, 'success');
-    setUserToChangePassword(null);
-    setNewPasswordForUser('');
-    setNewClaveOperacionesForUser('');
+      // 2. Preparar el objeto de usuario actualizado
+      const updatedUser = { 
+        ...userToChangePassword, 
+        ...(pwd ? { password: pwd, password_hash: pwd } : {}),
+        ...(claveOp ? { claveOperaciones: claveOp, clave_operaciones: claveOp } : {})
+      };
+      
+      await dbSaveUsuario(updatedUser);
+
+      // 3. Sincronizar en memoria y lista de usuarios
+      const updatedUsers = users.map(u => {
+        if (u.email.toLowerCase() === userToChangePassword.email.toLowerCase()) {
+          return updatedUser;
+        }
+        return u;
+      });
+
+      setUsers(updatedUsers);
+      if (showToast) showToast(`Claves actualizadas exitosamente para ${userToChangePassword.email}`, 'success');
+      setUserToChangePassword(null);
+      setNewPasswordForUser('');
+      setNewClaveOperacionesForUser('');
+    } catch (e: any) {
+      console.error(e);
+      if (showToast) showToast('Error al actualizar credenciales: ' + (e.message || ''), 'error');
+    }
   };
 
   const handleTogglePermission = (modId: string, type: 'view' | 'create' | 'delete') => {
@@ -540,7 +587,7 @@ export default function Settings({
   };
 
   // Centralized Save Handler
-  const handleSave = () => {
+  const handleSave = async () => {
     if (setEmpresa) {
       setEmpresa(localEmpresa);
     }
@@ -555,19 +602,18 @@ export default function Settings({
     };
 
     if (onSave) {
-      onSave('settings', { 
-        empresa: localEmpresa,
-        callback: (err?: any) => {
-          if (err) {
-            if (showToast) showToast('Error al guardar empresa: ' + (err.message || 'Error desconocido'), 'error');
-            return;
-          }
-          onSave('accounting-config', updatedConfig);
-          if (showToast) {
-            showToast('Configuración del sistema guardada exitosamente.', 'success');
-          }
+      try {
+        await onSave('settings', { empresa: localEmpresa });
+        await onSave('accounting-config', updatedConfig);
+        if (showToast) {
+          showToast('Configuración del sistema guardada exitosamente.', 'success');
         }
-      });
+      } catch (err: any) {
+        console.error('Error al guardar configuración:', err);
+        if (showToast) {
+          showToast('Error al guardar configuración: ' + (err?.message || 'Error desconocido'), 'error');
+        }
+      }
     } else {
       if (showToast) {
         showToast('Configuraciones guardadas exitosamente.', 'success');
@@ -666,7 +712,9 @@ export default function Settings({
   // Helper para renderizar selector de cuenta contable NIIF
   const renderSelectCuenta = (label: string, key: string, description: string) => {
     const value = contabilidad[key as keyof typeof contabilidad] as string;
-    const selectedCuenta = cuentasContables.find(c => String(c.id) === String(value) || String(c.codigo) === String(value));
+    const selectedCuenta = value 
+      ? cuentasContables.find(c => String(c.id) === String(value) || String(c.codigo) === String(value))
+      : undefined;
 
     return (
       <div className="flex flex-col">
@@ -687,8 +735,8 @@ export default function Settings({
           }}
           className={`w-full p-3 border rounded-xl cursor-pointer transition-all flex items-center justify-between group ${
             selectedCuenta 
-              ? 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-xs' 
-              : 'border-dashed border-slate-300 bg-slate-50 hover:bg-white hover:border-indigo-400'
+               ? 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-xs' 
+               : 'border-dashed border-slate-300 bg-slate-50 hover:bg-white hover:border-indigo-400'
           }`}
         >
           {selectedCuenta ? (
@@ -723,8 +771,7 @@ export default function Settings({
     {
       group: 'ORGANIZACIÓN',
       tabs: [
-        { id: 'empresa', label: 'Perfil de Empresa', icon: Building2, desc: 'Razón social, RIF, monedas y logo' },
-        { id: 'modulos', label: 'Módulos & Operaciones', icon: Layers, desc: 'POS, Vendedores, Pedidos y SAPS' }
+        { id: 'empresa', label: 'Perfil de Empresa', icon: Building2, desc: 'Razón social, RIF, monedas y logo' }
       ]
     },
     {
@@ -733,13 +780,6 @@ export default function Settings({
         { id: 'contabilidad', label: 'Mapeo Contable NIIF', icon: BookOpen, desc: 'Cuentas maestras y enlaces automáticos' },
         { id: 'impuestos', label: 'Régimen Fiscal & Tasas', icon: Percent, desc: 'IVA, IGTF, retenciones SENIAT' },
         { id: 'correlativos', label: 'Series & Correlativos', icon: Hash, desc: 'Numeración y prefijos de documentos' }
-      ]
-    },
-    {
-      group: 'VENTAS & FACTURACIÓN',
-      tabs: [
-        { id: 'facturacion', label: 'Facturación & POS', icon: Receipt, desc: 'Términos, comisiones y máquinas fiscales' },
-        { id: 'formatos_seleccionados', label: 'Formatos de Impresión', icon: FileText, desc: 'Diseños de facturas e inventario' }
       ]
     },
     {
@@ -1000,116 +1040,23 @@ export default function Settings({
     </div>
   );
 
-  // 2. Módulos & Operaciones
-  const renderModulos = () => (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="mb-4">
-        <h3 className="text-base font-black text-slate-900">Activación Modular del Sistema</h3>
-        <p className="text-xs text-slate-500 font-medium mt-0.5">
-          Habilita o desactiva módulos operativos según las necesidades de tu modelo de negocio.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Switch POS */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-              <Cpu className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Punto de Venta (TPV / POS)</h4>
-              <p className="text-xs text-slate-400 font-medium">Facturación rápida de mostrador y cajas.</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={localEmpresa.habilitarPOS}
-              onChange={e => setLocalEmpresa({...localEmpresa, habilitarPOS: e.target.checked})}
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {/* Switch Fuerza de Ventas */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Fuerza de Ventas & Comisiones</h4>
-              <p className="text-xs text-slate-400 font-medium">Asignación de asesores y cálculo de comisiones.</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={localEmpresa.habilitarVendedores ?? true}
-              onChange={e => setLocalEmpresa({...localEmpresa, habilitarVendedores: e.target.checked})}
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {/* Switch Buzón de Pedidos */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
-              <Receipt className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Buzón de Pedidos Recibidos</h4>
-              <p className="text-xs text-slate-400 font-medium">Aprobación de pedidos y paso a facturación.</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={localEmpresa.habilitarPedidos ?? true}
-              onChange={e => setLocalEmpresa({...localEmpresa, habilitarPedidos: e.target.checked})}
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {/* Switch Tasas Referenciales */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs flex items-center justify-between">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center shrink-0">
-              <Scale className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-sm font-bold text-slate-900">Tasa Referencial en Cobranzas</h4>
-              <p className="text-xs text-slate-400 font-medium">Solicitud de tasa paralela / informativa en cobros.</p>
-            </div>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={facturacion.habilitarTasaReferencialCobranza}
-              onChange={e => setFacturacion({...facturacion, habilitarTasaReferencialCobranza: e.target.checked})}
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-      </div>
-    </div>
-  );
-
-  // 3. Mapeo Contable NIIF
+  // 2. Mapeo Contable NIIF
   const renderContabilidad = () => (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl flex items-start gap-3">
-        <BookOpen className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
-        <div className="text-xs text-indigo-950 font-medium leading-relaxed">
-          <span className="font-bold">Mapeo Automático de Asientos:</span> Las cuentas seleccionadas aquí se utilizarán automáticamente cuando se emitan facturas, se registren cobros, pagos y traspasos bancarios, garantizando sincronización contable NIIF en tiempo real sin intervención manual.
+      <div className="p-4 bg-indigo-50/70 border border-indigo-100 rounded-2xl flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <BookOpen className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+          <div className="text-xs text-indigo-950 font-medium leading-relaxed">
+            <span className="font-bold">Mapeo Automático de Asientos:</span> Las cuentas seleccionadas aquí se sincronizan automáticamente con el catálogo NIIF para facturas, cobros, pagos y asientos contables. Cada selección se guarda al instante.
+          </div>
         </div>
+        <button
+          onClick={handleSave}
+          className="hidden sm:inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs shrink-0 cursor-pointer active:scale-95 transition-all"
+        >
+          <Save size={14} />
+          <span>Guardar Mapeo</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1206,6 +1153,21 @@ export default function Settings({
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Botón inferior de confirmación de mapeo */}
+      <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          <span>Configuración de enlaces contables lista para producción</span>
+        </div>
+        <button
+          onClick={handleSave}
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer active:scale-95"
+        >
+          <Save size={15} />
+          <span>Guardar Mapeo NIIF</span>
+        </button>
       </div>
     </div>
   );
@@ -1305,7 +1267,7 @@ export default function Settings({
               <h4 className="text-sm font-black text-slate-900">Facturas de Venta</h4>
             </div>
             <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-              {facturacion.prefijoFactura ? `${facturacion.prefijoFactura}-` : ''}{facturacion.correlativoFactura}
+              {formatDocumentNumber(facturacion.prefijoFactura, facturacion.correlativoFactura, 6)}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1323,7 +1285,7 @@ export default function Settings({
               <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Próximo Número</label>
               <input 
                 type="text" 
-                placeholder="00001"
+                placeholder="000001"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all font-mono"
                 value={facturacion.correlativoFactura || ''}
                 onChange={e => setFacturacion({...facturacion, correlativoFactura: e.target.value})}
@@ -1342,7 +1304,7 @@ export default function Settings({
               <h4 className="text-sm font-black text-slate-900">Notas de Entrega / Despacho</h4>
             </div>
             <span className="font-mono text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-              {facturacion.prefijoNotaEntrega ? `${facturacion.prefijoNotaEntrega}-` : ''}{facturacion.correlativoNotaEntrega}
+              {formatDocumentNumber(facturacion.prefijoNotaEntrega, facturacion.correlativoNotaEntrega, 6)}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1360,7 +1322,7 @@ export default function Settings({
               <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Próximo Número</label>
               <input 
                 type="text" 
-                placeholder="00001"
+                placeholder="000001"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all font-mono"
                 value={facturacion.correlativoNotaEntrega || ''}
                 onChange={e => setFacturacion({...facturacion, correlativoNotaEntrega: e.target.value})}
@@ -1379,7 +1341,7 @@ export default function Settings({
               <h4 className="text-sm font-black text-slate-900">Cotizaciones / Presupuestos</h4>
             </div>
             <span className="font-mono text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
-              {facturacion.prefijoCotizacion ? `${facturacion.prefijoCotizacion}-` : ''}{facturacion.correlativoCotizacion}
+              {formatDocumentNumber(facturacion.prefijoCotizacion, facturacion.correlativoCotizacion, 6)}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1397,7 +1359,7 @@ export default function Settings({
               <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Próximo Número</label>
               <input 
                 type="text" 
-                placeholder="00001"
+                placeholder="000001"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all font-mono"
                 value={facturacion.correlativoCotizacion || ''}
                 onChange={e => setFacturacion({...facturacion, correlativoCotizacion: e.target.value})}
@@ -1416,7 +1378,7 @@ export default function Settings({
               <h4 className="text-sm font-black text-slate-900">Recibos de Cobranza</h4>
             </div>
             <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-              {facturacion.prefijoRecibo || 'REC-'}{facturacion.correlativoRecibo}
+              {formatDocumentNumber(facturacion.prefijoRecibo, facturacion.correlativoRecibo, 6)}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1434,7 +1396,7 @@ export default function Settings({
               <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Próximo Número</label>
               <input 
                 type="text" 
-                placeholder="00001"
+                placeholder="000001"
                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all font-mono"
                 value={facturacion.correlativoRecibo || ''}
                 onChange={e => setFacturacion({...facturacion, correlativoRecibo: e.target.value})}
@@ -1445,164 +1407,6 @@ export default function Settings({
       </div>
     </div>
   );
-
-  // 6. Facturación & POS
-  const renderFacturacion = () => (
-    <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="flex flex-col">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Días de Crédito por Defecto</label>
-          <div className="relative">
-            <input 
-              type="number" 
-              min="0"
-              className="w-full pl-4 pr-12 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-              value={facturacion.diasVencimientoDefault}
-              onChange={e => setFacturacion({...facturacion, diasVencimientoDefault: Number(e.target.value)})}
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">días</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Liquidación de Comisiones</label>
-          <select 
-            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all cursor-pointer"
-            value={facturacion.comisionMode}
-            onChange={e => setFacturacion({...facturacion, comisionMode: e.target.value})}
-          >
-            <option value="emitidas">Sobre Facturas Emitidas (Devengado)</option>
-            <option value="cobradas">Sobre Facturas 100% Cobradas (Percibido)</option>
-          </select>
-        </div>
-
-        <div className="flex flex-col md:col-span-2">
-          <label className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Términos y Condiciones al Pie de Documento</label>
-          <textarea 
-            rows={3}
-            className="w-full p-4 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all leading-relaxed"
-            value={facturacion.notasDefault}
-            onChange={e => setFacturacion({...facturacion, notasDefault: e.target.value})}
-          />
-        </div>
-      </div>
-
-      {/* Máquina Fiscal */}
-      <div className="mt-8 pt-6 border-t border-slate-200/80">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <Printer className="w-4 h-4 text-indigo-600" /> Integración de Impresora Fiscal
-            </h4>
-            <p className="text-xs text-slate-400 mt-0.5">Emisión directa por protocolo de hardware fiscal.</p>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
-              className="sr-only peer"
-              checked={facturacion.usaMaquinaFiscal}
-              onChange={e => setFacturacion({...facturacion, usaMaquinaFiscal: e.target.checked})}
-            />
-            <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
-
-        {facturacion.usaMaquinaFiscal && (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50/80 p-5 rounded-2xl border border-slate-200 animate-in fade-in duration-200">
-            <div>
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Marca / Protocolo</label>
-              <select 
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-                value={facturacion.marcaMaquinaFiscal}
-                onChange={e => setFacturacion({...facturacion, marcaMaquinaFiscal: e.target.value})}
-              >
-                <option value="bixolon">Bixolon SRP</option>
-                <option value="thefactory">The Factory HKA</option>
-                <option value="pnp">PNP / Custom</option>
-                <option value="epson">Epson TM</option>
-                <option value="vmax">VMAX</option>
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Puerto de Conexión</label>
-              <input 
-                type="text" 
-                placeholder="COM1, COM2, /dev/ttyUSB0"
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-800"
-                value={facturacion.puertoMaquinaFiscal}
-                onChange={e => setFacturacion({...facturacion, puertoMaquinaFiscal: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1 block">Formato de Salida</label>
-              <select 
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800"
-                value={facturacion.formatoImpresion}
-                onChange={e => setFacturacion({...facturacion, formatoImpresion: e.target.value})}
-              >
-                <option value="estandar">Ticket Fiscal 80mm</option>
-                <option value="detallado">Ticket Desglosado 80mm</option>
-                <option value="media_carta">Media Carta / Forma Libre</option>
-              </select>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  // 7. Formatos de Impresión
-  const renderFormatosSeleccionados = () => {
-    const templates = configContable?.templates || {};
-    const templateNames = Object.keys(templates);
-
-    return (
-      <div className="space-y-6 animate-in fade-in duration-300">
-        <div className="mb-4">
-          <h3 className="text-base font-black text-slate-900">Formatos Visuales de Documentos</h3>
-          <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Selecciona la plantilla de diseño predeterminada para facturas y documentos de servicios.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-indigo-600" /> Plantilla para Facturas de Servicios
-            </h4>
-            <select
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all cursor-pointer"
-              value={facturacion.activeServiceTemplate}
-              onChange={(e) => setFacturacion({ ...facturacion, activeServiceTemplate: e.target.value })}
-            >
-              <option value="Estándar">Diseño Estándar Corporativo</option>
-              {templateNames.map((name) => (
-                <option key={`service-${name}`} value={name}>{name}</option>
-              ))}
-            </select>
-            <p className="text-[11px] text-slate-400">Aplica a facturas emitidas sin control de inventario físico.</p>
-          </div>
-
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/90 shadow-xs space-y-3">
-            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-emerald-600" /> Plantilla para Facturas de Inventario
-            </h4>
-            <select
-              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-500 outline-none transition-all cursor-pointer"
-              value={facturacion.activeInventoryTemplate}
-              onChange={(e) => setFacturacion({ ...facturacion, activeInventoryTemplate: e.target.value })}
-            >
-              <option value="Estándar">Diseño Estándar con Cantidades</option>
-              {templateNames.map((name) => (
-                <option key={`inventory-${name}`} value={name}>{name}</option>
-              ))}
-            </select>
-            <p className="text-[11px] text-slate-400">Aplica a facturas y notas de despacho de productos físicos.</p>
-          </div>
-        </div>
-      </div>
-    );
-  };
 
   // 8. Usuarios & RBAC
   const renderUsuarios = () => {
@@ -2019,9 +1823,13 @@ export default function Settings({
                       {/* Botón de Cambiar Contraseña Exclusivo para Rol Master */}
                       {(userRole === 'Master' || currentUser?.role === 'Master') && (
                         <button 
-                          onClick={() => { setUserToChangePassword(u); setNewPasswordForUser(''); }}
+                          onClick={() => { 
+                            setUserToChangePassword(u); 
+                            setNewPasswordForUser(''); 
+                            setNewClaveOperacionesForUser(u.claveOperaciones || u.clave_operaciones || (u.role === 'Master' ? globalMasterClave : '') || '');
+                          }}
                           className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
-                          title="Cambiar Contraseña (Acceso Exclusivo Master)"
+                          title="Gestionar Contraseña de Acceso y Clave de Operaciones"
                         >
                           <KeyRound size={12} /> Clave
                         </button>
@@ -2049,16 +1857,21 @@ export default function Settings({
             </tbody>
           </table>
         </div>
-        {/* Modal para Cambiar Contraseña (Solo Master) */}
+        {/* Modal para Cambiar Contraseña y Clave de Operaciones */}
         {userToChangePassword && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 border border-slate-100">
               <div className="p-5 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                    <KeyRound className="w-4 h-4 text-amber-600" /> Reasignar Contraseña de Acceso
+                    <KeyRound className="w-4 h-4 text-amber-600" /> Reasignar Contraseñas del Usuario
                   </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">{userToChangePassword.email}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs text-slate-600 font-bold">{userToChangePassword.email}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.2 rounded-full bg-slate-200 text-slate-700">
+                      {userToChangePassword.role || 'Operador'}
+                    </span>
+                  </div>
                 </div>
                 <button onClick={() => setUserToChangePassword(null)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer">
                   <X size={16} />
@@ -2067,17 +1880,18 @@ export default function Settings({
 
               <div className="p-6 space-y-4">
                 <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/80 text-amber-900 text-xs font-medium leading-relaxed">
-                  Como usuario <strong>Master</strong>, tienes la autorización de seguridad exclusiva para asignar o actualizar la clave de acceso de este usuario.
+                  Como usuario <strong>Master</strong>, tienes la autorización de seguridad exclusiva para registrar o actualizar las contraseñas de acceso y de operaciones de este usuario.
                 </div>
 
+                {/* 1. Contraseña de Acceso al Sistema */}
                 <div>
-                  <label className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-1.5 block">
-                    Nueva Contraseña de Acceso
+                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5 block">
+                    Nueva Contraseña de Acceso (Inicio de Sesión)
                   </label>
                   <div className="relative">
                     <input
                       type={showModalPassword ? 'text' : 'password'}
-                      placeholder="Ingrese la nueva clave de acceso..."
+                      placeholder="Ingrese nueva clave de inicio de sesión..."
                       className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-indigo-500 transition-all"
                       value={newPasswordForUser}
                       onChange={e => setNewPasswordForUser(e.target.value)}
@@ -2086,28 +1900,46 @@ export default function Settings({
                       type="button"
                       onClick={() => setShowModalPassword(!showModalPassword)}
                       className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                      title={showModalPassword ? 'Ocultar' : 'Mostrar'}
                     >
                       {showModalPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                     </button>
                   </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Dejar en blanco para mantener la contraseña de acceso actual.
+                  </p>
                 </div>
 
-                {userToChangePassword.role === 'Master' && (
+                {/* 2. Clave Especial de Operaciones Master */}
+                {(userToChangePassword.role === 'Master' || userToChangePassword.role === 'SuperAdmin') && (
                   <div>
-                    <label className="text-[10px] font-extrabold text-rose-600 uppercase tracking-wider mb-1.5 block">
-                      Clave Especial de Operaciones Master (para autorizar eliminaciones)
+                    <label className="text-[10px] font-extrabold text-rose-600 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                      <span>Clave Especial de Operaciones Master</span>
+                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">Seguridad Crítica</span>
                     </label>
                     <div className="relative">
                       <input
-                        type={showModalPassword ? 'text' : 'password'}
-                        placeholder="Ej. 19072828"
-                        className="w-full px-3.5 py-2.5 pr-10 bg-rose-50/50 border border-rose-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-rose-500 transition-all"
+                        type={showModalClaveOperaciones ? 'text' : 'password'}
+                        placeholder="Ej. 1709 o 19072828"
+                        className="w-full px-3.5 py-2.5 pr-10 bg-rose-50/50 border border-rose-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-rose-500 transition-all font-mono"
                         value={newClaveOperacionesForUser}
                         onChange={e => setNewClaveOperacionesForUser(e.target.value)}
                       />
+                      <button
+                        type="button"
+                        onClick={() => setShowModalClaveOperaciones(!showModalClaveOperaciones)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showModalClaveOperaciones ? 'Ocultar' : 'Mostrar'}
+                      >
+                        {showModalClaveOperaciones ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Dejar en blanco para mantener la clave de operaciones actual ({userToChangePassword.claveOperaciones || '19072828'}).
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      {userToChangePassword.claveOperaciones || globalMasterClave ? (
+                        <>Clave de operaciones actual: <strong className="text-slate-800 font-mono font-bold">{userToChangePassword.claveOperaciones || globalMasterClave}</strong></>
+                      ) : (
+                        'Dejar en blanco para conservar la clave de operaciones actual (19072828).'
+                      )}
                     </p>
                   </div>
                 )}
@@ -2118,7 +1950,7 @@ export default function Settings({
                   Cancelar
                 </button>
                 <button onClick={handleSaveNewPassword} className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer">
-                  Guardar Nueva Clave
+                  Guardar Claves
                 </button>
               </div>
             </div>
@@ -2135,6 +1967,13 @@ export default function Settings({
         contactos={contactos}
         servicios={servicios}
         cuentasContables={cuentasContables}
+        comprobantes={comprobantes}
+        bancos={bancos}
+        movimientosBancos={movimientosBancos}
+        cxc={cxc}
+        cxp={cxp}
+        products={products}
+        activosFijos={activosFijos}
         onSave={onSave} 
         showToast={showToast} 
       />
@@ -2247,9 +2086,28 @@ export default function Settings({
           setShowCuentaModal(false);
           setActiveConfigKey(null);
         }}
-        onSelect={(c) => {
+        onSelect={async (c) => {
           if (activeConfigKey) {
-            setContabilidad(prev => ({ ...prev, [activeConfigKey]: c.id }));
+            const nextContabilidad = { ...contabilidad, [activeConfigKey]: c.id };
+            setContabilidad(nextContabilidad);
+            if (onSave) {
+              const updatedConfig = {
+                ...configContable,
+                ...nextContabilidad,
+                ...facturacion,
+                ...impuestos,
+                ...importacion,
+                workingYear: localEmpresa.anoInicio || workingYear || String(currentYear)
+              };
+              try {
+                await onSave('accounting-config', updatedConfig);
+                if (showToast) {
+                  showToast(`Cuenta ${c.codigo} - ${c.nombre} enlazada y guardada`, 'success');
+                }
+              } catch (e) {
+                console.error("Error al guardar cuenta contable:", e);
+              }
+            }
           }
           setShowCuentaModal(false);
           setActiveConfigKey(null);
@@ -2346,12 +2204,9 @@ export default function Settings({
         {/* Content Stage */}
         <main className="flex-1 w-full bg-white rounded-2xl border border-slate-200/90 shadow-xs p-6 md:p-8">
           {activeTab === 'empresa' && renderEmpresa()}
-          {activeTab === 'modulos' && renderModulos()}
           {activeTab === 'contabilidad' && renderContabilidad()}
           {activeTab === 'impuestos' && renderImpuestos()}
           {activeTab === 'correlativos' && renderCorrelativos()}
-          {activeTab === 'facturacion' && renderFacturacion()}
-          {activeTab === 'formatos_seleccionados' && renderFormatosSeleccionados()}
           {activeTab === 'usuarios' && renderUsuarios()}
           {activeTab === 'importacion' && renderImportacion()}
           {activeTab === 'respaldos' && renderRespaldos()}
@@ -2489,7 +2344,7 @@ export default function Settings({
                     if (showToast) showToast('Ingrese el nombre de la empresa', 'error');
                     return;
                   }
-                  const docId = `comp_${Date.now()}`;
+                  const docId = crypto.randomUUID();
                   const newCompanyObj = {
                     id: docId,
                     name: newCompName.trim(),
@@ -2519,7 +2374,7 @@ export default function Settings({
                     for (const acc of sourceAccounts) {
                       await dbSaveCuentaContable({
                         ...acc,
-                        id: `acc_${docId}_${acc.codigo.replace(/\./g, '_')}`,
+                        id: crypto.randomUUID(),
                         saldoActual: 0
                       }, docId);
                     }
@@ -2531,7 +2386,7 @@ export default function Settings({
                     for (const ct of sourceContacts) {
                       await dbSaveContacto({
                         ...ct,
-                        id: `ct_${docId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                        id: crypto.randomUUID(),
                         saldo: 0,
                         saldoCxp: 0
                       }, docId);

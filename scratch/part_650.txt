@@ -1,0 +1,209 @@
+Created At: 2026-09-12T18:50:34-04:00
+Completed At: 2026-09-12T18:50:34-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3397
+Total Bytes: 163973
+Showing lines 650 to 850
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+650:       ...prev,
+651:       {
+652:         id: `item_${Date.now()}_${prev.length + 1}`,
+653:         producto_id: '',
+654:         codigo: '',
+655:         descripcion: '',
+656:         cantidad: 1,
+657:         precio_unitario: 0,
+658:         exento: false,
+659:         subtotal: 0,
+660:         iva_monto: 0,
+661:         total: 0,
+662:         cuenta_ingreso_id: '4.1.01.001',
+663:         cuenta_costo_id: '5.1.01.001',
+664:         cuenta_inventario_id: '1.1.04.001'
+665:       }
+666:     ]);
+667:   };
+668: 
+669:   const handleRemoveItem = (index: number) => {
+670:     if (items.length === 1) {
+671:       showToast?.('La factura debe tener al menos una línea', 'info');
+672:       return;
+673:     }
+674:     setItems(prev => prev.filter((_, idx) => idx !== index));
+675:   };
+676: 
+677:   const handleProductSelect = (index: number, productId: string) => {
+678:     const prod = products.find(p => p.id === productId);
+679:     setItems(prev => {
+680:       const updated = [...prev];
+681:       if (prod) {
+682:         const qty = updated[index].cantidad || 1;
+683:         // Si la moneda es VES, convertir el precio venta en USD a VES
+684:         let price = prod.precio_venta || 0;
+685:         if (currency === 'VES' && exchangeRate > 0) {
+686:           price = price * exchangeRate;
+687:         }
+688: 
+689:         const lineSubtotal = qty * price;
+690:         const isExempt = !prod.aplica_iva;
+691:         const iva = isExempt ? 0 : lineSubtotal * 0.16;
+692: 
+693:         updated[index] = {
+694:           ...updated[index],
+695:           producto_id: prod.id,
+696:           codigo: prod.codigo,
+697:           descripcion: prod.nombre,
+698:           precio_unitario: price,
+699:           exento: isExempt,
+700:           subtotal: lineSubtotal,
+701:           iva_monto: iva,
+702:           total: lineSubtotal + iva,
+703:           cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
+704:           cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
+705:           cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
+706:         };
+707:       } else {
+708:         updated[index] = {
+709:           ...updated[index],
+710:           producto_id: '',
+711:           codigo: '',
+712:           descripcion: '',
+713:           precio_unitario: 0,
+714:           subtotal: 0,
+715:           iva_monto: 0,
+716:           total: 0
+717:         };
+718:       }
+719:       return updated;
+720:     });
+721:   };
+722: 
+723:   const handleItemFieldChange = (index: number, field: string, value: any) => {
+724:     setItems(prev => {
+725:       const updated = [...prev];
+726:       const item = { ...updated[index], [field]: value };
+727: 
+728:       const qty = Number(item.cantidad) || 0;
+729:       const price = Number(item.precio_unitario) || 0;
+730:       const lineSubtotal = qty * price;
+731:       const iva = item.exento ? 0 : lineSubtotal * 0.16;
+732: 
+733:       item.subtotal = lineSubtotal;
+734:       item.iva_monto = iva;
+735:       item.total = lineSubtotal + iva;
+736: 
+737:       updated[index] = item;
+738:       return updated;
+739:     });
+740:   };
+741: 
+742:   // =========================================================================
+743:   // PASO 1: Validar Formulario y Abrir Modal de Condición (Contado o Crédito)
+744:   // =========================================================================
+745:   const handleStartEmission = (e: React.FormEvent) => {
+746:     e.preventDefault();
+747: 
+748:     if (!customerName || !customerRif) {
+749:       showToast?.('Seleccione o registre el cliente a quien se emitirá la factura', 'error');
+750:       return;
+751:     }
+752: 
+753:     if (!invoiceNumber.trim()) {
+754:       showToast?.('El número de documento es obligatorio', 'error');
+755:       return;
+756:     }
+757: 
+758:     if (items.some(i => !i.descripcion.trim() || i.cantidad <= 0)) {
+759:       showToast?.('Complete la descripción y cantidad válida en cada línea', 'error');
+760:       return;
+761:     }
+762: 
+763:     if (totals.total <= 0) {
+764:       showToast?.('El total de la factura debe ser mayor a 0', 'error');
+765:       return;
+766:     }
+767: 
+768:     // Validar año contable
+769:     if (workingYear && issueDate) {
+770:       const yr = issueDate.substring(0, 4);
+771:       if (yr !== workingYear) {
+772:         showToast?.(`La fecha (${yr}) no coincide con el período contable seleccionado (${workingYear})`, 'error');
+773:         return;
+774:       }
+775:     }
+776: 
+777:     // Si hay productos con stock 0 o insuficiente y aún no han sido autorizados con clave master
+778:     if (zeroStockItems.length > 0 && !isZeroStockAuthorized) {
+779:       setIsMasterAuthModalOpen(true);
+780:       return;
+781:     }
+782: 
+783:     // Proceder directamente según la condición de pago seleccionada en la cabecera
+784:     if (selectedCondition === 'credito') {
+785:       buildAndShowVoucher('credito');
+786:     } else {
+787:       handleSelectCondition('contado');
+788:     }
+789:   };
+790: 
+791:   const handleResetForm = () => {
+792:     if (window.confirm('¿Está seguro de reiniciar y vaciar los datos de la factura actual?')) {
+793:       handleClearCustomer();
+794:       setItems([{
+795:         id: `item_${Date.now()}_1`,
+796:         producto_id: '',
+797:         codigo: '',
+798:         descripcion: '',
+799:         cantidad: 1,
+800:         precio_unitario: 0,
+801:         exento: false,
+802:         subtotal: 0,
+803:         iva_monto: 0,
+804:         total: 0,
+805:         cuenta_ingreso_id: '4.1.01.001',
+806:         cuenta_costo_id: '5.1.01.001',
+807:         cuenta_inventario_id: '1.1.04.001'
+808:       }]);
+809:       setNotes('');
+810:       setApplyRetIva(false);
+811:       setApplyRetIslr(false);
+812:       setApplyIgtf(false);
+813:       setSelectedCondition('contado');
+814:       showToast?.('Formulario reiniciado', 'info');
+815:     }
+816:   };
+817: 
+818:   // =========================================================================
+819:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+820:   // =========================================================================
+821:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+822:     setSelectedCondition(cond);
+823:     setIsConditionModalOpen(false);
+824: 
+825:     if (cond === 'credito') {
+826:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+827:       buildAndShowVoucher('credito');
+828:     } else {
+829:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+830:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+831:       
+832:       const pagoInicial = {
+833:         id: `pg_${Date.now()}`,
+834:         bancoId: defaultBanco ? defaultBanco.id : '',
+835:         metodoPago: 'Transferencia',
+836:         referencia: '',
+837:         monto: currency === 'USD' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarUSD.toFixed(2),
+838:         montoBs: currency === 'VES' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarBs.toFixed(2)
+839:       };
+840: 
+841:       setCobranzaForm({
+842:         fecha: issueDate,
+843:         tasa: exchangeRate,
+844:         pagos: [pagoInicial]
+845:       });
+846:       setIsCobranzaModalOpen(true);
+847:     }
+848:   };
+849: 
+850:   // Manejo de pagos en el Modal de Cobranza
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

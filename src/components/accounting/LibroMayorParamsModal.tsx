@@ -6,7 +6,6 @@ import {
   Search, 
   ExternalLink, 
   FileSpreadsheet, 
-  Sparkles,
   Filter
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -113,13 +112,20 @@ export default function LibroMayorParamsModal({
   const [hastaAccountId, setHastaAccountId] = useState<string>('');
   const [hideZero, setHideZero] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [useDemoData, setUseDemoData] = useState<boolean>(true);
+  const useDemoData = false;
 
   if (!isOpen) return null;
 
   const computeData = () => {
-    const hasLive = comprobantes.some(c => c.estado === 'Contabilizado');
-    const isDemo = useDemoData || !hasLive;
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const hasLive = comprobantes.some(isContabilizado);
+    const hasAccounts = cuentasContables && cuentasContables.length > 0;
+    const isDemo = useDemoData || (!hasLive && !hasAccounts);
 
     if (isDemo) {
       let accounts = SAMPLE_MAYOR_ACCOUNTS.map(acc => {
@@ -172,16 +178,22 @@ export default function LibroMayorParamsModal({
     }
 
     // Datos reales
-    const pastComps = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] < localStartDate);
-    const periodComps = comprobantes.filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate);
+    const pastComps = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] < localStartDate);
+    const periodComps = comprobantes.filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate);
 
     const sortedComps = [...periodComps].sort((a, b) => {
       const cmp = (a.fecha || '').localeCompare(b.fecha || '');
       if (cmp !== 0) return cmp;
-      return (a.codigo || '').localeCompare(b.codigo || '');
+      return (a.numero || a.codigo || '').localeCompare(b.numero || b.codigo || '');
     });
 
-    const activeCuentas = cuentasContables.filter(c => c.tipo === 'Movimiento');
+    const activeCuentas = cuentasContables.filter(c => c.tipo === 'Movimiento' || (!c.tipo && c.codigo && c.codigo.split('.').length >= 3));
+
+    const matchesAccount = (linea: any, c: any) => {
+      const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+      if (!cId) return false;
+      return String(c.id) === cId || String(c.codigo) === cId || (c.codigo && c.codigo.replace(/\./g, '') === cId.replace(/\./g, ''));
+    };
 
     let accounts = activeCuentas.map(c => {
       let pastDeb = 0;
@@ -189,7 +201,7 @@ export default function LibroMayorParamsModal({
 
       pastComps.forEach(comp => {
         (comp.lineas || []).forEach((l: any) => {
-          if (String(l.cuentaId) === String(c.id)) {
+          if (matchesAccount(l, c)) {
             pastDeb += Number(l.debe) || 0;
             pastCred += Number(l.haber) || 0;
           }
@@ -205,7 +217,7 @@ export default function LibroMayorParamsModal({
 
       sortedComps.forEach(comp => {
         (comp.lineas || []).forEach((l: any) => {
-          if (String(l.cuentaId) === String(c.id)) {
+          if (matchesAccount(l, c)) {
             const deb = Number(l.debe) || 0;
             const cred = Number(l.haber) || 0;
             if (deb > 0 || cred > 0) {
@@ -216,8 +228,8 @@ export default function LibroMayorParamsModal({
               }
               entries.push({
                 fecha: comp.fecha,
-                comprobante: comp.codigo || 'N/A',
-                concepto: l.descripcion || comp.glosa || comp.concepto || 'Sin detalle',
+                comprobante: comp.numero || comp.codigo || 'N/A',
+                concepto: l.descripcion || comp.descripcion || comp.glosa || comp.concepto || 'Sin detalle',
                 debe: deb,
                 haber: cred,
                 saldo: running
@@ -669,42 +681,7 @@ export default function LibroMayorParamsModal({
           </div>
         </div>
 
-        {/* CUERPO */}
         <div className="p-6 space-y-6 bg-slate-50/50">
-          {/* Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-sky-950 to-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-sky-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30 shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs md:text-sm font-black uppercase tracking-wide">
-                    Trazabilidad Contable Completa
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                    {activeAccounts.length} CUENTAS CON MOVIMIENTO
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  Detalla cada transacción, comprobante de origen, débitos, créditos y saldo acumulado cronológico.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all border border-white/10">
-                <input 
-                  type="checkbox"
-                  checked={useDemoData}
-                  onChange={(e) => setUseDemoData(e.target.checked)}
-                  className="rounded text-sky-500 cursor-pointer"
-                />
-                <span>Usar Catálogo Mayor Modelo</span>
-              </label>
-            </div>
-          </div>
-
           {/* Modalidad de Filtro */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2.5">

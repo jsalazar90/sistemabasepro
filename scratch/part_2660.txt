@@ -1,0 +1,50 @@
+Created At: 2026-09-12T16:56:31-04:00
+Completed At: 2026-09-12T16:56:31-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2701
+Total Bytes: 131217
+Showing lines 2660 to 2701
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2660:                                   e.stopPropagation();
+2661:                                   handleSelectProductFromModal(prod);
+2662:                                 }}
+2663:                                 className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs group-hover:scale-105 transition flex items-center gap-1 mx-auto cursor-pointer"
+2664:                               >
+2665:                                 <Check size={13} />
+2666:                                 <span>Seleccionar</span>
+2667:                               </button>
+2668:                             </td>
+2669:                           </tr>
+2670:                         );
+2671:                       })}
+2672:                     </tbody>
+2673:                   </table>
+2674:                 </div>
+2675:               )}
+2676:             </div>
+2677: 
+2678:             {/* Footer del Modal */}
+2679:             <div className="p-4 px-6 border-t border-slate-100 bg-slate-50 flex justify-between items-center text-xs shrink-0">
+2680:               <span className="text-slate-500 font-medium">
+2681:                 Mostrando <b>{filteredProducts.length}</b> de <b>{products.length}</b> artículos en catálogo
+2682:               </span>
+2683:               <button
+2684:                 type="button"
+2685:                 onClick={() => {
+2686:                   setIsProductModalOpen(false);
+2687:                   setActiveItemIndexForProduct(null);
+2688:                 }}
+2689:                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
+2690:               >
+2691:                 Cerrar Catálogo
+2692:               </button>
+2693:             </div>
+2694:           </div>
+2695:         </div>
+2696:       )}
+2697: 
+2698:     </div>
+2699:   );
+2700: }
+2701: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

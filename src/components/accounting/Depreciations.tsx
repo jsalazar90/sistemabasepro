@@ -1,28 +1,68 @@
 import React, { useState } from 'react';
-import { Calculator, Search, Filter, Play, X, Eye, Trash2 } from 'lucide-react';
+import { Calculator, Search, Filter, Play, X, Eye, Trash2, FileText } from 'lucide-react';
+import VoucherPreviewModal from '../common/VoucherPreviewModal';
 
 interface DepreciationsProps {
   depreciaciones: any[];
   activosFijos: any[];
   categoriasActivos: any[];
+  cuentasContables?: any[];
+  comprobantes?: any[];
   onSave: (collection: string, data: any) => void;
   showToast: (msg: string, type: string) => void;
 }
 
-export default function Depreciations({ depreciaciones, activosFijos, categoriasActivos, onSave, showToast }: DepreciationsProps) {
+export default function Depreciations({ 
+  depreciaciones, 
+  activosFijos, 
+  categoriasActivos, 
+  cuentasContables = [], 
+  comprobantes = [],
+  onSave, 
+  showToast 
+}: DepreciationsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedDepreciacion, setSelectedDepreciacion] = useState<any | null>(null);
   const [mes, setMes] = useState('1');
   const [anio, setAnio] = useState(new Date().getFullYear().toString());
 
+  // States for Voucher Preview Modal
+  const [showVoucherModal, setShowVoucherModal] = useState(false);
+  const [pendingVoucher, setPendingVoucher] = useState<any>(null);
+  const [pendingDeprecData, setPendingDeprecData] = useState<any>(null);
+  const [isViewingExistingVoucher, setIsViewingExistingVoucher] = useState(false);
+
   const handleDeleteDepreciacion = (dep: any) => {
     onSave('depreciaciones', { id: dep.id, _delete: true });
-    // Anular o eliminar comprobante asociado
-    if (dep.comprobante) {
-      onSave('comprobantes', { id: `asiento-dep-${dep.id}`, _delete: true });
+
+    // Anular o eliminar comprobante contable asociado
+    const relatedComps = (comprobantes || []).filter(c => 
+      (dep.comprobante_id && String(c.id) === String(dep.comprobante_id)) ||
+      c.numero === dep.comprobante ||
+      c.referencia === dep.comprobante ||
+      c.id === `asiento-dep-${dep.id}` ||
+      (c.descripcion && c.descripcion.includes('Depreciación') && c.descripcion.includes(dep.periodo))
+    );
+    for (const comp of relatedComps) {
+      onSave('comprobantes', { id: comp.id, _delete: true });
     }
-    showToast(`Registro de depreciación ${dep.periodo} eliminado`, 'success');
+
+    // Revertir la depreciación acumulada en los activos fijos
+    if (dep.detalles && Array.isArray(dep.detalles)) {
+      for (const det of dep.detalles) {
+        const asset = activosFijos.find(a => String(a.id) === String(det.activoId) || a.codigo === det.codigo);
+        if (asset) {
+          const reverted = Math.max(0, (Number(asset.depreciacionAcumulada) || 0) - Number(det.depreciacionMensual || 0));
+          onSave('activosFijos', {
+            ...asset,
+            depreciacionAcumulada: Math.round(reverted * 100) / 100
+          });
+        }
+      }
+    }
+
+    showToast(`Registro de depreciación ${dep.periodo} y su asiento contable fueron eliminados`, 'success');
   };
 
   const handleExecute = () => {
@@ -43,9 +83,11 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
     let totalDepreciado = 0;
     const detalles: any[] = [];
     const timestamp = Date.now();
+    const assetUpdates: any[] = [];
     
-    // Map to group depreciation by accounts
-    const accountTotals: Record<string, { debe: number, haber: number, descripcion: string }> = {};
+    // Maps to group debits (Gastos de Depreciación) and credits (Depreciación Acumulada)
+    const gastoTotals: Record<string, { cuentaId: string, nombreCuenta: string, descripcion: string, monto: number }> = {};
+    const acumTotals: Record<string, { cuentaId: string, nombreCuenta: string, descripcion: string, monto: number }> = {};
 
     activosFijos.forEach(activo => {
       const categoria = categoriasActivos.find(c => 
@@ -54,6 +96,7 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
         (c.codigo && (c.codigo.toLowerCase() === (activo.categoriaId || '').toLowerCase()))
       );
 
+      const catName = (categoria?.nombre || activo.categoriaNombre || activo.categoria || '').trim().toLowerCase();
       const vidaUtilMeses = Number(categoria?.vidaUtil || activo.vidaUtilMeses || 60);
       const valorInicial = Number(activo.valorInicial || activo.valorCompra || 0);
 
@@ -72,83 +115,248 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
           depreciacionMensual
         });
 
-        // Cuentas Contables NIIF: Gasto de Depreciación (Debe) y Depreciación Acumulada (Haber)
-        const cuentaGasto = categoria?.cuentaGastoDeprec || categoria?.cuentaGasto || '5.1.05.01';
-        const cuentaDeprecAcum = categoria?.cuentaDeprecAcumulada || categoria?.cuentaDepreciacion || '1.2.01.99';
+        // 1. CUENTA GASTO DE DEPRECIACIÓN (DEBE)
+        const cuentaGastoCodeOrId = categoria?.cuentaGastoDeprec || categoria?.cuentaGasto;
+        let cuentaGastoObj = cuentasContables.find(c => 
+          c.id === cuentaGastoCodeOrId || c.codigo === cuentaGastoCodeOrId
+        );
+        if (!cuentaGastoObj && catName) {
+          cuentaGastoObj = cuentasContables.find(c => 
+            (c.codigo?.startsWith('6.1') || c.codigo?.startsWith('5.1')) && 
+            c.nombre?.toLowerCase().includes('deprec') && 
+            c.nombre?.toLowerCase().includes(catName)
+          );
+        }
+        if (!cuentaGastoObj) {
+          cuentaGastoObj = cuentasContables.find(c => c.codigo === '6.1.01.29') ||
+            cuentasContables.find(c => (c.codigo?.startsWith('6.') || c.codigo?.startsWith('5.')) && c.nombre?.toLowerCase().includes('deprec')) ||
+            cuentasContables[0];
+        }
 
-        // Gasto de Depreciación (Debe)
-        if (!accountTotals[cuentaGasto]) {
-          accountTotals[cuentaGasto] = { 
-            debe: 0, 
-            haber: 0, 
-            descripcion: `Gasto Depreciación ${periodo} - ${categoria?.nombre || activo.categoriaNombre || 'Activos Fijos'}` 
+        // 2. CUENTA DEPRECIACIÓN ACUMULADA (HABER)
+        const cuentaAcumCodeOrId = categoria?.cuentaDeprecAcumulada || categoria?.cuentaDepreciacion;
+        let cuentaAcumObj = cuentasContables.find(c => 
+          c.id === cuentaAcumCodeOrId || c.codigo === cuentaAcumCodeOrId
+        );
+        if (!cuentaAcumObj && catName) {
+          cuentaAcumObj = cuentasContables.find(c => 
+            c.codigo?.startsWith('1.2.02') && 
+            c.nombre?.toLowerCase().includes(catName)
+          );
+        }
+        if (!cuentaAcumObj) {
+          cuentaAcumObj = cuentasContables.find(c => c.codigo === '1.2.02') ||
+            cuentasContables.find(c => c.codigo?.startsWith('1.2.02') && !cuentasContables.some(sub => sub.padre_id === c.id)) ||
+            cuentasContables.find(c => c.codigo?.startsWith('1.2.02')) ||
+            cuentasContables[1] || cuentasContables[0];
+        }
+
+        // Agrupar en Débitos (Gasto)
+        const gastoKey = cuentaGastoObj?.id || cuentaGastoCodeOrId || 'gasto-default';
+        if (!gastoTotals[gastoKey]) {
+          gastoTotals[gastoKey] = {
+            cuentaId: cuentaGastoObj?.id || cuentaGastoCodeOrId,
+            nombreCuenta: cuentaGastoObj ? `${cuentaGastoObj.codigo} - ${cuentaGastoObj.nombre}` : 'Gasto de Depreciación',
+            descripcion: `Gasto Depreciación ${periodo} - ${categoria?.nombre || activo.categoriaNombre || 'Activos Fijos'}`,
+            monto: 0
           };
         }
-        accountTotals[cuentaGasto].debe += depreciacionMensual;
+        gastoTotals[gastoKey].monto += depreciacionMensual;
 
-        // Depreciación Acumulada (Haber)
-        if (!accountTotals[cuentaDeprecAcum]) {
-          accountTotals[cuentaDeprecAcum] = { 
-            debe: 0, 
-            haber: 0, 
-            descripcion: `Deprec. Acumulada ${periodo} - ${categoria?.nombre || activo.categoriaNombre || 'Activos Fijos'}` 
+        // Agrupar en Créditos (Acumulada)
+        const acumKey = cuentaAcumObj?.id || cuentaAcumCodeOrId || 'acum-default';
+        if (!acumTotals[acumKey]) {
+          acumTotals[acumKey] = {
+            cuentaId: cuentaAcumObj?.id || cuentaAcumCodeOrId,
+            nombreCuenta: cuentaAcumObj ? `${cuentaAcumObj.codigo} - ${cuentaAcumObj.nombre}` : 'Depreciación Acumulada',
+            descripcion: `Deprec. Acumulada ${periodo} - ${categoria?.nombre || activo.categoriaNombre || 'Activos Fijos'}`,
+            monto: 0
           };
         }
-        accountTotals[cuentaDeprecAcum].haber += depreciacionMensual;
+        acumTotals[acumKey].monto += depreciacionMensual;
 
-        // Actualizar depreciación acumulada en el activo fijo
+        // Preparar actualización de activo fijo
         const nuevaDeprecAcum = (Number(activo.depreciacionAcumulada) || 0) + depreciacionMensual;
-        onSave('activosFijos', {
+        assetUpdates.push({
           ...activo,
           depreciacionAcumulada: Math.round(nuevaDeprecAcum * 100) / 100
         });
       }
     });
 
-    const comprobanteRef = `DEP-${anio}${mes.padStart(2, '0')}`;
     totalDepreciado = Math.round(totalDepreciado * 100) / 100;
+    const comprobanteRef = `DEP-${anio}${mes.padStart(2, '0')}`;
+    const voucherId = crypto.randomUUID();
 
-    onSave('depreciaciones', {
+    // Construir líneas de partida doble: Débitos primero, luego Créditos
+    const lineasAsiento = [
+      ...Object.values(gastoTotals).map((g, idx) => ({
+        id: `line-deb-${idx + 1}-${timestamp}`,
+        cuentaId: g.cuentaId,
+        nombreCuenta: g.nombreCuenta,
+        descripcion: g.descripcion,
+        debe: Math.round(g.monto * 100) / 100,
+        haber: 0
+      })),
+      ...Object.values(acumTotals).map((a, idx) => ({
+        id: `line-cred-${idx + 1}-${timestamp}`,
+        cuentaId: a.cuentaId,
+        nombreCuenta: a.nombreCuenta,
+        descripcion: a.descripcion,
+        debe: 0,
+        haber: Math.round(a.monto * 100) / 100
+      }))
+    ];
+
+    const proposedVoucher = {
+      id: voucherId,
+      numero: comprobanteRef,
+      comprobante: comprobanteRef,
+      referencia: comprobanteRef,
+      fecha: new Date().toISOString().split('T')[0],
+      tipo: 'Diario',
+      modulo: 'Depreciaciones',
+      descripcion: `Depreciación Mensual de Activos Fijos - Período ${periodo}`,
+      total: totalDepreciado,
+      estado: 'Contabilizado',
+      lineas: lineasAsiento
+    };
+
+    setPendingDeprecData({
       id: timestamp.toString(),
       periodo,
       fechaEjecucion: new Date().toISOString().split('T')[0],
       totalDepreciado,
       comprobante: comprobanteRef,
       estado: 'Procesado',
-      detalles
+      detalles,
+      assetUpdates
     });
 
-    // Crear Asiento Contable en Comprobantes de Diario
-    const lineasAsiento = Object.entries(accountTotals).map(([cuentaId, totales], index) => ({
-      id: `l${index + 1}-${timestamp}`,
-      cuentaId,
-      descripcion: totales.descripcion,
-      debe: Math.round(totales.debe * 100) / 100,
-      haber: Math.round(totales.haber * 100) / 100
-    }));
+    setPendingVoucher(proposedVoucher);
+    setIsViewingExistingVoucher(false);
+    setShowModal(false);
+    setShowVoucherModal(true);
+  };
 
-    if (lineasAsiento.length > 0) {
-      onSave('comprobantes', {
-        id: `asiento-dep-${timestamp}`,
+  const handleConfirmVoucher = async (finalComprobante: any) => {
+    if (isViewingExistingVoucher) {
+      onSave('comprobantes', finalComprobante);
+      setShowVoucherModal(false);
+      setPendingVoucher(null);
+      setPendingDeprecData(null);
+      showToast('Asiento de depreciación actualizado exitosamente', 'success');
+      return;
+    }
+
+    if (!pendingDeprecData) return;
+
+    // 1. Guardar Comprobante Contable confirmado por el usuario
+    const voucherToSave = {
+      ...finalComprobante,
+      id: finalComprobante.id || crypto.randomUUID()
+    };
+    onSave('comprobantes', voucherToSave);
+
+    // 2. Guardar registro de Depreciación
+    onSave('depreciaciones', {
+      id: pendingDeprecData.id,
+      periodo: pendingDeprecData.periodo,
+      fechaEjecucion: pendingDeprecData.fechaEjecucion,
+      totalDepreciado: pendingDeprecData.totalDepreciado,
+      comprobante: voucherToSave.numero || pendingDeprecData.comprobante,
+      comprobante_id: voucherToSave.id,
+      estado: 'Procesado',
+      detalles: pendingDeprecData.detalles
+    });
+
+    // 3. Actualizar la depreciación acumulada de cada activo fijo
+    if (pendingDeprecData.assetUpdates && Array.isArray(pendingDeprecData.assetUpdates)) {
+      for (const update of pendingDeprecData.assetUpdates) {
+        onSave('activosFijos', update);
+      }
+    }
+
+    setShowVoucherModal(false);
+    setPendingDeprecData(null);
+    setPendingVoucher(null);
+    showToast(`Depreciación del período ${pendingDeprecData.periodo} por $${pendingDeprecData.totalDepreciado.toLocaleString('es-VE', { minimumFractionDigits: 2 })} y su asiento contable fueron contabilizados exitosamente`, 'success');
+  };
+
+  const handleViewVoucher = (dep: any) => {
+    // Buscar si ya existe el comprobante en la colección
+    const existing = (comprobantes || []).find(c => 
+      (dep.comprobante_id && String(c.id) === String(dep.comprobante_id)) ||
+      c.numero === dep.comprobante ||
+      c.comprobante === dep.comprobante ||
+      c.referencia === dep.comprobante ||
+      c.id === `asiento-dep-${dep.id}` ||
+      (c.descripcion && c.descripcion.includes('Depreciación') && c.descripcion.includes(dep.periodo))
+    );
+
+    if (existing) {
+      setPendingVoucher(existing);
+      setIsViewingExistingVoucher(true);
+      setShowVoucherModal(true);
+    } else {
+      // Reconstruir borrador si no se encuentra el asiento
+      const timestamp = Date.now();
+      const voucherId = crypto.randomUUID();
+      const comprobanteRef = dep.comprobante || `DEP-${dep.periodo.replace('/', '')}`;
+      const totalNum = Number(dep.totalDepreciado) || 0;
+
+      const defaultGasto = cuentasContables.find(c => c.codigo === '6.1.01.29') ||
+        cuentasContables.find(c => c.codigo?.startsWith('6.') && c.nombre?.toLowerCase().includes('deprec')) ||
+        cuentasContables[0];
+
+      const defaultAcum = cuentasContables.find(c => c.codigo === '1.2.02') ||
+        cuentasContables.find(c => c.codigo?.startsWith('1.2.02')) ||
+        cuentasContables[1] || cuentasContables[0];
+
+      const draftVoucher = {
+        id: voucherId,
         numero: comprobanteRef,
         comprobante: comprobanteRef,
         referencia: comprobanteRef,
-        fecha: new Date().toISOString().split('T')[0],
+        fecha: dep.fechaEjecucion || new Date().toISOString().split('T')[0],
         tipo: 'Diario',
-        descripcion: `Depreciación Mensual de Activos Fijos - Período ${periodo}`,
-        total: totalDepreciado,
+        modulo: 'Depreciaciones',
+        descripcion: `Depreciación Mensual de Activos Fijos - Período ${dep.periodo}`,
+        total: totalNum,
         estado: 'Contabilizado',
-        lineas: lineasAsiento
-      });
-    }
+        lineas: [
+          {
+            id: `line-deb-1-${timestamp}`,
+            cuentaId: defaultGasto?.id || '',
+            nombreCuenta: defaultGasto ? `${defaultGasto.codigo} - ${defaultGasto.nombre}` : 'Gasto de Depreciación',
+            descripcion: `Gasto Depreciación ${dep.periodo}`,
+            debe: totalNum,
+            haber: 0
+          },
+          {
+            id: `line-cred-1-${timestamp}`,
+            cuentaId: defaultAcum?.id || '',
+            nombreCuenta: defaultAcum ? `${defaultAcum.codigo} - ${defaultAcum.nombre}` : 'Depreciación Acumulada',
+            descripcion: `Deprec. Acumulada ${dep.periodo}`,
+            debe: 0,
+            haber: totalNum
+          }
+        ]
+      };
 
-    setShowModal(false);
-    showToast(`Depreciación del período ${periodo} por $${totalDepreciado.toLocaleString('es-VE', { minimumFractionDigits: 2 })} contabilizada exitosamente`, 'success');
+      setPendingVoucher(draftVoucher);
+      setIsViewingExistingVoucher(true);
+      setShowVoucherModal(true);
+    }
   };
 
-  const filteredDepreciaciones = depreciaciones.filter(dep => 
-    dep.periodo.includes(searchTerm) || dep.comprobante.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredDepreciaciones = (depreciaciones || []).filter(dep => {
+    if (!dep) return false;
+    const periodo = String(dep.periodo || '');
+    const comprobante = String(dep.comprobante || '');
+    const query = (searchTerm || '').toLowerCase();
+    return periodo.toLowerCase().includes(query) || comprobante.toLowerCase().includes(query);
+  });
 
   return (
     <div className="p-6 w-full">
@@ -198,31 +406,44 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredDepreciaciones.map((dep) => (
-                <tr key={dep.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-4 py-3 text-sm font-medium text-slate-900">{dep.periodo}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700">{dep.fechaEjecucion}</td>
-                  <td className="px-4 py-3 text-sm text-slate-700 text-right">${Number(dep.totalDepreciado).toFixed(2)}</td>
+                <tr key={dep.id || Math.random()} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="px-4 py-3 text-sm font-medium text-slate-900">{dep.periodo || 'N/A'}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700">{dep.fechaEjecucion || dep.fecha || ''}</td>
+                  <td className="px-4 py-3 text-sm text-slate-700 text-right">${Number(dep.totalDepreciado || dep.monto || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 text-sm text-center">
-                    <span className="text-indigo-600 hover:underline cursor-pointer font-medium">{dep.comprobante}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-center">
-                    <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
-                      {dep.estado}
+                    <span 
+                      onClick={() => handleViewVoucher(dep)} 
+                      className="text-indigo-600 hover:underline cursor-pointer font-medium font-mono text-xs"
+                      title="Click para ver asiento contable"
+                    >
+                      {dep.comprobante || (dep.comprobante_id ? `DEP-${String(dep.comprobante_id).slice(-6)}` : 'Ver Asiento')}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-sm text-center">
-                    <div className="flex justify-center gap-2">
+                    <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-medium">
+                      {dep.estado || 'Procesado'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-center">
+                    <div className="flex justify-center gap-1.5">
+                      <button 
+                        onClick={() => handleViewVoucher(dep)}
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer tooltip" 
+                        title="Ver Asiento Contable"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
                       <button 
                         onClick={() => setSelectedDepreciacion(dep)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Ver Detalle"
+                        className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer tooltip" 
+                        title="Ver Detalle de Cálculo"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => handleDeleteDepreciacion(dep)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
-                        title="Eliminar Depreciación"
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer tooltip" 
+                        title="Eliminar Depreciación y Asiento"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -309,7 +530,7 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
               <div>
                 <h2 className="text-xl font-bold text-slate-800">Detalle de Depreciación</h2>
                 <p className="text-sm text-slate-500 mt-1">
-                  Período: {selectedDepreciacion.periodo} | Comprobante: {selectedDepreciacion.comprobante}
+                  Período: {selectedDepreciacion.periodo || 'N/A'} | Comprobante: {selectedDepreciacion.comprobante || 'N/A'}
                 </p>
               </div>
               <button onClick={() => setSelectedDepreciacion(null)} className="p-2 text-slate-400 hover:bg-rose-100 hover:text-rose-600 rounded-lg transition-colors">
@@ -362,6 +583,24 @@ export default function Depreciations({ depreciaciones, activosFijos, categorias
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal Previsualización de Asiento Contable */}
+      {showVoucherModal && pendingVoucher && (
+        <VoucherPreviewModal
+          isOpen={showVoucherModal}
+          onClose={() => {
+            setShowVoucherModal(false);
+            setPendingVoucher(null);
+            setPendingDeprecData(null);
+          }}
+          initialComprobante={pendingVoucher}
+          cuentasContables={cuentasContables}
+          onConfirm={handleConfirmVoucher}
+          showToast={showToast}
+          title="Asiento Contable - Depreciación de Activos Fijos"
+          subtitle="Gasto de Depreciación (Debe) contra Depreciación Acumulada (Haber) configuradas en las categorías."
+        />
       )}
     </div>
   );

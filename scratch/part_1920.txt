@@ -1,0 +1,24 @@
+Created At: 2026-09-12T16:31:39-04:00
+Completed At: 2026-09-12T16:31:39-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2582
+Total Bytes: 124827
+Showing lines 1920 to 1935
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1920:                 onClick={() => setIsVoucherModalOpen(false)}
+1921:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold"
+1922:               >
+1923:                 ✕
+1924:               </button>
+1925:             </div>
+1926: 
+1927:             <div className="p-6 space-y-4 text-xs">
+1928:               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex justify-between text-slate-600 font-medium">
+1929:                 <span>Concepto: <b>{pendingVoucher.concepto}</b></span>
+1930:                 <span>Fecha: <b>{pendingVoucher.fecha}</b></span>
+1931:               </div>
+1932: 
+1933:               {/* Tabla de Cuentas */}
+1934:               <div className="border border-slate-200 rounded-2xl overflow-hidden">
+1935:                 <table className="w-full text-left text-xs">
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

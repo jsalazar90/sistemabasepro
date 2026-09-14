@@ -1,0 +1,64 @@
+Created At: 2026-09-12T16:58:31-04:00
+Completed At: 2026-09-12T16:58:31-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2724
+Total Bytes: 132134
+Showing lines 320 to 375
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+320:     setActiveItemIndexForProduct(index);
+321:     setProductSearchTerm('');
+322:     setSelectedProductCategory('all');
+323:     setIsProductModalOpen(true);
+324:   };
+325: 
+326:   const handleSelectProductFromModal = (prod: ProductModel) => {
+327:     let targetIndex = activeItemIndexForProduct;
+328: 
+329:     // Si no había índice activo (ej. botón global "+ Buscar en Catálogo"), buscamos una línea vacía o agregamos una nueva
+330:     if (targetIndex === null || targetIndex < 0 || targetIndex >= items.length) {
+331:       const emptyIdx = items.findIndex(it => !it.producto_id && !it.descripcion && (it.precio_unitario === 0 || !it.precio_unitario));
+332:       if (emptyIdx !== -1) {
+333:         targetIndex = emptyIdx;
+334:       } else {
+335:         targetIndex = items.length;
+336:       }
+337:     }
+338: 
+339:     setItems(prev => {
+340:       const updated = [...prev];
+341:       const existingLine = targetIndex !== null && targetIndex < updated.length ? updated[targetIndex] : null;
+342:       const qty = existingLine ? (Number(existingLine.cantidad) || 1) : 1;
+343: 
+344:       // Calcular precio unitario según la moneda de emisión (USD o VES)
+345:       let price = Number(prod.precio_venta) || 0;
+346:       if (currency === 'VES' && exchangeRate > 0) {
+347:         price = price * exchangeRate;
+348:       }
+349: 
+350:       const lineSubtotal = qty * price;
+351:       const isExempt = !prod.aplica_iva;
+352:       const iva = isExempt ? 0 : lineSubtotal * 0.16;
+353:       const cleanName = (prod.nombre || '').replace(/\s*\(E\)\s*$/i, '').trim();
+354:       const itemDescription = isExempt ? `${cleanName} (E)` : cleanName;
+355: 
+356:       const newItem: FacturaItemModel = {
+357:         id: existingLine?.id || `item_${Date.now()}_${targetIndex}`,
+358:         producto_id: prod.id,
+359:         codigo: prod.codigo,
+360:         descripcion: itemDescription,
+361:         cantidad: qty,
+362:         precio_unitario: price,
+363:         exento: isExempt,
+364:         subtotal: lineSubtotal,
+365:         iva_monto: iva,
+366:         total: lineSubtotal + iva,
+367:         cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
+368:         cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
+369:         cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
+370:       };
+371: 
+372:       if (targetIndex !== null && targetIndex < updated.length) {
+373:         updated[targetIndex] = newItem;
+374:       } else {
+375:         updated.push(newItem);
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

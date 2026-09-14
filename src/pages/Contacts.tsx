@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Search, Plus, Building2, User, Users, Mail, Phone, MapPin, 
   Edit2, X, BookOpen, Briefcase, ShieldCheck, Truck, Trash2,
-  LayoutGrid, List, CheckCircle2
+  LayoutGrid, List, CheckCircle2, AlertTriangle
 } from 'lucide-react';
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import CuentaSelectorTrigger from '../components/common/CuentaSelectorTrigger';
@@ -73,6 +73,7 @@ export default function Contacts({
   // Selector de cuentas contables
   const [showCuentaModal, setShowCuentaModal] = useState(false);
   const [activeAccountKey, setActiveAccountKey] = useState<'debitAccount' | 'creditAccount' | null>(null);
+  const [accountValidationError, setAccountValidationError] = useState<string | null>(null);
 
   // Formulario de registro unificado
   const [contactForm, setContactForm] = useState({
@@ -90,6 +91,27 @@ export default function Contacts({
     debitAccount: '',
     creditAccount: ''
   });
+
+  // Helper para resolver el código y la descripción de la cuenta contable
+  const getAccountDetail = (idOrCode?: string) => {
+    if (!idOrCode) return null;
+    const cleanId = String(idOrCode).trim();
+    const found = cuentasContables.find(
+      c => String(c.id).trim() === cleanId || String(c.codigo).trim() === cleanId
+    );
+    if (found) {
+      return {
+        codigo: found.codigo || '',
+        nombre: found.nombre || found.descripcion || '',
+        fullDisplay: `${found.codigo ? found.codigo + ' - ' : ''}${found.nombre || found.descripcion || ''}`
+      };
+    }
+    return {
+      codigo: cleanId.length > 15 ? cleanId.substring(0, 8) + '...' : cleanId,
+      nombre: cleanId.length > 20 ? cleanId.substring(0, 18) + '...' : cleanId,
+      fullDisplay: cleanId
+    };
+  };
 
   // Detectar la categoría activa a partir de la URL
   useEffect(() => {
@@ -256,6 +278,7 @@ export default function Contacts({
       creditAccount: ''
     });
     setActiveModalTab('info');
+    setAccountValidationError(null);
     setIsModalOpen(true);
   };
 
@@ -291,6 +314,7 @@ export default function Contacts({
       creditAccount: contact.creditAccount || ''
     });
     setActiveModalTab('info');
+    setAccountValidationError(null);
     setIsModalOpen(true);
   };
 
@@ -302,12 +326,25 @@ export default function Contacts({
       return;
     }
 
+    // Validación obligatoria de cuentas contables vinculadas manualmente
+    if (!contactForm.debitAccount?.trim() || !contactForm.creditAccount?.trim()) {
+      setActiveModalTab('contabilidad');
+      const msg = !contactForm.debitAccount?.trim() && !contactForm.creditAccount?.trim()
+        ? 'Debe vincular las cuentas contables de forma manual antes de registrar el contacto'
+        : !contactForm.debitAccount?.trim()
+          ? `Debe vincular la ${moduleConfig.debitLabel} de forma manual`
+          : `Debe vincular la ${moduleConfig.creditLabel} de forma manual`;
+      setAccountValidationError(msg);
+      showToast?.(msg, 'error');
+      return;
+    }
+
     const fullTaxId = contactForm.taxIdNumber.trim()
       ? `${contactForm.taxIdPrefix}-${contactForm.taxIdNumber.trim().toUpperCase()}`
       : contactForm.taxId.trim();
 
     const contactData: Contact = {
-      id: editingContactId || `ct_${Date.now()}`,
+      id: editingContactId || crypto.randomUUID(),
       name: contactForm.name.trim(),
       type: (contactForm.type === 'clientes' ? 'customer' : contactForm.type) as ContactType,
       taxId: fullTaxId,
@@ -351,6 +388,7 @@ export default function Contacts({
   const handleSelectCuenta = (cuenta: any) => {
     if (activeAccountKey && cuenta) {
       setContactForm(prev => ({ ...prev, [activeAccountKey]: cuenta.id }));
+      setAccountValidationError(null);
     }
     setShowCuentaModal(false);
     setActiveAccountKey(null);
@@ -599,17 +637,33 @@ export default function Contacts({
                 </div>
 
                 {/* Footer de Tarjeta con Mapeo Contable */}
-                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                  <div className="truncate">
-                    {contact.debitAccount || contact.creditAccount ? (
-                      <span className="inline-flex items-center gap-1 font-mono font-semibold text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100">
-                        <BookOpen size={11} />
-                        <span>Enlazado Contablemente</span>
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 italic text-[10px]">Cuenta general predeterminada</span>
-                    )}
-                  </div>
+                <div className="pt-2.5 border-t border-slate-100 text-[11px]">
+                  {contact.debitAccount || contact.creditAccount ? (
+                    <div className="space-y-1">
+                      {contact.debitAccount && (() => {
+                        const acc = getAccountDetail(contact.debitAccount);
+                        return acc ? (
+                          <div className="flex items-center gap-1.5 truncate" title={acc.fullDisplay}>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">D</span>
+                            <span className="font-mono font-bold text-[10px] text-slate-800 shrink-0">{acc.codigo}</span>
+                            <span className="text-[10px] text-slate-500 truncate font-medium">{acc.nombre}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                      {contact.creditAccount && (() => {
+                        const acc = getAccountDetail(contact.creditAccount);
+                        return acc ? (
+                          <div className="flex items-center gap-1.5 truncate" title={acc.fullDisplay}>
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-700 shrink-0">C</span>
+                            <span className="font-mono font-bold text-[10px] text-slate-800 shrink-0">{acc.codigo}</span>
+                            <span className="text-[10px] text-slate-500 truncate font-medium">{acc.nombre}</span>
+                          </div>
+                        ) : null;
+                      })()}
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 italic text-[10px]">Cuenta general predeterminada</span>
+                  )}
                 </div>
               </div>
             );
@@ -663,9 +717,27 @@ export default function Contacts({
                       </td>
                       <td className="px-4 py-3.5">
                         {contact.debitAccount || contact.creditAccount ? (
-                          <div className="text-[11px] font-mono text-indigo-700 space-y-0.5">
-                            {contact.debitAccount && <div>D: {contact.debitAccount}</div>}
-                            {contact.creditAccount && <div>C: {contact.creditAccount}</div>}
+                          <div className="space-y-1 max-w-[280px]">
+                            {contact.debitAccount && (() => {
+                              const acc = getAccountDetail(contact.debitAccount);
+                              return acc ? (
+                                <div className="flex items-center gap-1.5 text-[11px] truncate" title={acc.fullDisplay}>
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 shrink-0">D</span>
+                                  <span className="font-mono font-bold text-slate-800 shrink-0">{acc.codigo}</span>
+                                  <span className="text-slate-600 truncate font-medium">{acc.nombre}</span>
+                                </div>
+                              ) : null;
+                            })()}
+                            {contact.creditAccount && (() => {
+                              const acc = getAccountDetail(contact.creditAccount);
+                              return acc ? (
+                                <div className="flex items-center gap-1.5 text-[11px] truncate" title={acc.fullDisplay}>
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 text-emerald-700 shrink-0">C</span>
+                                  <span className="font-mono font-bold text-slate-800 shrink-0">{acc.codigo}</span>
+                                  <span className="text-slate-600 truncate font-medium">{acc.nombre}</span>
+                                </div>
+                              ) : null;
+                            })()}
                           </div>
                         ) : (
                           <span className="text-slate-400 text-[11px] italic">Automática</span>
@@ -751,6 +823,11 @@ export default function Contacts({
               >
                 <BookOpen size={14} />
                 <span>2. Enlace Contable</span>
+                {(!contactForm.debitAccount || !contactForm.creditAccount) && (
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-amber-100 text-amber-800 border border-amber-300">
+                    Requerido
+                  </span>
+                )}
               </button>
             </div>
 
@@ -779,7 +856,7 @@ export default function Contacts({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setContactForm(prev => ({ ...prev, isCompany: false, taxIdPrefix: 'V' }))}
+                          onClick={() => setContactForm(prev => ({ ...prev, isCompany: false, taxIdPrefix: 'V', personaContacto: '', cargo: '' }))}
                           className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 cursor-pointer transition ${
                             !contactForm.isCompany
                               ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
@@ -870,30 +947,32 @@ export default function Contacts({
                       </div>
                     </div>
 
-                    {/* Persona de Contacto & Cargo */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Persona de Contacto</label>
-                        <input 
-                          type="text" 
-                          placeholder="Nombre del responsable"
-                          value={contactForm.personaContacto}
-                          onChange={(e) => setContactForm(prev => ({ ...prev, personaContacto: e.target.value }))}
-                          className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none" 
-                        />
-                      </div>
+                    {/* Persona de Contacto & Cargo (Solo visible para Persona Jurídica / Empresa) */}
+                    {contactForm.isCompany && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Persona de Contacto</label>
+                          <input 
+                            type="text" 
+                            placeholder="Nombre del responsable"
+                            value={contactForm.personaContacto}
+                            onChange={(e) => setContactForm(prev => ({ ...prev, personaContacto: e.target.value }))}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none" 
+                          />
+                        </div>
 
-                      <div>
-                        <label className="block text-xs font-bold text-slate-700 mb-1">Cargo o Departamento</label>
-                        <input 
-                          type="text" 
-                          placeholder="Ej: Gerente de Compras / Administración"
-                          value={contactForm.cargo}
-                          onChange={(e) => setContactForm(prev => ({ ...prev, cargo: e.target.value }))}
-                          className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none" 
-                        />
+                        <div>
+                          <label className="block text-xs font-bold text-slate-700 mb-1">Cargo o Departamento</label>
+                          <input 
+                            type="text" 
+                            placeholder="Ej: Gerente de Compras / Administración"
+                            value={contactForm.cargo}
+                            onChange={(e) => setContactForm(prev => ({ ...prev, cargo: e.target.value }))}
+                            className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none" 
+                          />
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     {/* Dirección */}
                     <div>
@@ -911,32 +990,44 @@ export default function Contacts({
                 {/* PESTAÑA 2: ENLACE CONTABLE */}
                 {activeModalTab === 'contabilidad' && (
                   <div className="space-y-4 animate-in fade-in duration-200">
-                    <div className="bg-indigo-50/70 p-4 rounded-2xl border border-indigo-100">
-                      <div className="flex items-start gap-2.5 text-indigo-900">
-                        <BookOpen size={16} className="shrink-0 mt-0.5 text-indigo-600" />
+                    {/* Aviso si faltan vincular cuentas contables */}
+                    {accountValidationError && (
+                      <div className="p-3 bg-rose-50 border-2 border-rose-300 rounded-2xl flex items-center gap-2.5 text-rose-700 text-xs font-bold animate-in fade-in duration-200">
+                        <AlertTriangle size={18} className="shrink-0 text-rose-600" />
+                        <span>{accountValidationError}</span>
+                      </div>
+                    )}
+
+                    <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-200/80">
+                      <div className="flex items-start gap-2.5 text-amber-900">
+                        <AlertTriangle size={17} className="shrink-0 mt-0.5 text-amber-600" />
                         <div>
-                          <p className="text-xs font-bold">Mapeo Contable Automático</p>
-                          <p className="text-[11px] text-indigo-700/80 font-medium mt-0.5">
-                            {moduleConfig.accountHelp} Si se dejan vacías, se usarán las cuentas maestras por defecto del plan contable.
+                          <p className="text-xs font-bold text-amber-950">Vinculación Contable Obligatoria *</p>
+                          <p className="text-[11px] text-amber-800/90 font-medium mt-0.5 leading-relaxed">
+                            {moduleConfig.accountHelp} Debe vincular manualmente las cuentas contables de <b>{moduleConfig.debitLabel}</b> y <b>{moduleConfig.creditLabel}</b> para registrar el contacto.
                           </p>
                         </div>
                       </div>
                     </div>
 
                     <div className="space-y-4">
-                      <CuentaSelectorTrigger
-                        label={moduleConfig.debitLabel}
-                        value={contactForm.debitAccount}
-                        cuentasContables={cuentasContables}
-                        onClick={() => handleOpenCuentaModal('debitAccount')}
-                      />
+                      <div className={!contactForm.debitAccount ? 'ring-2 ring-amber-400 rounded-2xl p-0.5' : ''}>
+                        <CuentaSelectorTrigger
+                          label={`${moduleConfig.debitLabel} *`}
+                          value={contactForm.debitAccount}
+                          cuentasContables={cuentasContables}
+                          onClick={() => handleOpenCuentaModal('debitAccount')}
+                        />
+                      </div>
 
-                      <CuentaSelectorTrigger
-                        label={moduleConfig.creditLabel}
-                        value={contactForm.creditAccount}
-                        cuentasContables={cuentasContables}
-                        onClick={() => handleOpenCuentaModal('creditAccount')}
-                      />
+                      <div className={!contactForm.creditAccount ? 'ring-2 ring-amber-400 rounded-2xl p-0.5' : ''}>
+                        <CuentaSelectorTrigger
+                          label={`${moduleConfig.creditLabel} *`}
+                          value={contactForm.creditAccount}
+                          cuentasContables={cuentasContables}
+                          onClick={() => handleOpenCuentaModal('creditAccount')}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}

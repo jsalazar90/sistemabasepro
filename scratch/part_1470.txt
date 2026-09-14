@@ -1,0 +1,157 @@
+Created At: 2026-09-12T16:03:28-04:00
+Completed At: 2026-09-12T16:03:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 1618
+Total Bytes: 74755
+Showing lines 1470 to 1618
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1470:       )}
+1471: 
+1472:       {/* ========================================================================= */}
+1473:       {/* MODAL BUSCAR CLIENTE */}
+1474:       {/* ========================================================================= */}
+1475:       {isCustomerModalOpen && (
+1476:         <div className="fixed inset-0 z-[370] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+1477:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh] border border-slate-100">
+1478:             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+1479:               <h3 className="font-bold text-slate-900 text-sm">Seleccionar Cliente</h3>
+1480:               <button
+1481:                 type="button"
+1482:                 onClick={() => setIsCustomerModalOpen(false)}
+1483:                 className="w-7 h-7 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center"
+1484:               >
+1485:                 ✕
+1486:               </button>
+1487:             </div>
+1488: 
+1489:             <div className="p-4 border-b border-slate-100">
+1490:               <div className="relative">
+1491:                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+1492:                 <input
+1493:                   type="text"
+1494:                   placeholder="Buscar por nombre o RIF..."
+1495:                   value={customerSearchTerm}
+1496:                   onChange={(e) => setCustomerSearchTerm(e.target.value)}
+1497:                   className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:border-indigo-600 outline-none"
+1498:                 />
+1499:               </div>
+1500:             </div>
+1501: 
+1502:             <div className="overflow-y-auto divide-y divide-slate-100 text-xs p-2">
+1503:               {customersList.length === 0 ? (
+1504:                 <div className="p-8 text-center text-slate-400 font-bold">
+1505:                   No se encontraron clientes registrados con ese criterio.
+1506:                 </div>
+1507:               ) : (
+1508:                 customersList.map(c => (
+1509:                   <button
+1510:                     key={c.id}
+1511:                     type="button"
+1512:                     onClick={() => handleSelectCustomer(c)}
+1513:                     className="w-full p-3 text-left hover:bg-slate-50 rounded-xl transition flex justify-between items-center group"
+1514:                   >
+1515:                     <div>
+1516:                       <p className="font-bold text-slate-900 group-hover:text-indigo-600">{c.name}</p>
+1517:                       <p className="font-mono text-slate-400 text-[11px]">{c.taxId}</p>
+1518:                     </div>
+1519:                     <span className="text-[11px] font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
+1520:                       Seleccionar
+1521:                     </span>
+1522:                   </button>
+1523:                 ))
+1524:               )}
+1525:             </div>
+1526:           </div>
+1527:         </div>
+1528:       )}
+1529: 
+1530:       {/* ========================================================================= */}
+1531:       {/* MODAL NUEVO CLIENTE RÁPIDO */}
+1532:       {/* ========================================================================= */}
+1533:       {isNewCustomerModalOpen && (
+1534:         <div className="fixed inset-0 z-[370] flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+1535:           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-100">
+1536:             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+1537:               <h3 className="font-bold text-slate-900 text-sm">Registrar Nuevo Cliente</h3>
+1538:               <button
+1539:                 type="button"
+1540:                 onClick={() => setIsNewCustomerModalOpen(false)}
+1541:                 className="w-7 h-7 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center"
+1542:               >
+1543:                 ✕
+1544:               </button>
+1545:             </div>
+1546: 
+1547:             <div className="p-5 space-y-3 text-xs">
+1548:               <div>
+1549:                 <label className="block text-slate-700 font-bold mb-1">Nombre / Razón Social *</label>
+1550:                 <input
+1551:                   type="text"
+1552:                   required
+1553:                   placeholder="Ej: Inversiones Los Andes, C.A."
+1554:                   value={newCustName}
+1555:                   onChange={(e) => setNewCustName(e.target.value)}
+1556:                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900 focus:bg-white focus:border-indigo-600 outline-none"
+1557:                 />
+1558:               </div>
+1559: 
+1560:               <div>
+1561:                 <label className="block text-slate-700 font-bold mb-1">RIF / Cédula *</label>
+1562:                 <input
+1563:                   type="text"
+1564:                   required
+1565:                   placeholder="Ej: J-30948271-0"
+1566:                   value={newCustRif}
+1567:                   onChange={(e) => setNewCustRif(e.target.value.toUpperCase())}
+1568:                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold text-indigo-600 focus:bg-white focus:border-indigo-600 outline-none uppercase"
+1569:                 />
+1570:               </div>
+1571: 
+1572:               <div>
+1573:                 <label className="block text-slate-700 font-bold mb-1">Teléfono</label>
+1574:                 <input
+1575:                   type="text"
+1576:                   placeholder="+58 412 0000000"
+1577:                   value={newCustPhone}
+1578:                   onChange={(e) => setNewCustPhone(e.target.value)}
+1579:                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:bg-white focus:border-indigo-600 outline-none"
+1580:                 />
+1581:               </div>
+1582: 
+1583:               <div>
+1584:                 <label className="block text-slate-700 font-bold mb-1">Dirección Fiscal</label>
+1585:                 <input
+1586:                   type="text"
+1587:                   placeholder="Ciudad, dirección de oficina"
+1588:                   value={newCustAddress}
+1589:                   onChange={(e) => setNewCustAddress(e.target.value)}
+1590:                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:bg-white focus:border-indigo-600 outline-none"
+1591:                 />
+1592:               </div>
+1593: 
+1594:               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+1595:                 <button
+1596:                   type="button"
+1597:                   onClick={() => setIsNewCustomerModalOpen(false)}
+1598:                   className="px-4 py-2 rounded-xl border border-slate-200 text-slate-600 font-bold hover:bg-slate-50"
+1599:                 >
+1600:                   Cancelar
+1601:                 </button>
+1602:                 <button
+1603:                   type="button"
+1604:                   onClick={handleSaveQuickCustomer}
+1605:                   className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold transition shadow-xs"
+1606:                 >
+1607:                   Guardar y Asignar
+1608:                 </button>
+1609:               </div>
+1610:             </div>
+1611:           </div>
+1612:         </div>
+1613:       )}
+1614: 
+1615:     </div>
+1616:   );
+1617: }
+1618: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

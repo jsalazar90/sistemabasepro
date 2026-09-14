@@ -1,0 +1,44 @@
+Created At: 2026-09-12T17:38:45-04:00
+Completed At: 2026-09-12T17:38:45-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3025
+Total Bytes: 145544
+Showing lines 1070 to 1105
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1070:       items.forEach(item => {
+1071:         if (item.producto_id) {
+1072:           const originalProd = products.find(p => p.id === item.producto_id);
+1073:           if (originalProd) {
+1074:             const currentStock = Number(originalProd.stock_actual) || 0;
+1075:             const newStock = Math.max(0, currentStock - (Number(item.cantidad) || 0));
+1076: 
+1077:             onSave?.('products', {
+1078:               ...originalProd,
+1079:               stock_actual: newStock,
+1080:               updated_at: new Date().toISOString()
+1081:             });
+1082: 
+1083:             onSave?.('movimientosInventario', {
+1084:               id: `mov_vta_${Date.now()}_${item.id}`,
+1085:               empresa_id: '',
+1086:               producto_id: originalProd.id,
+1087:               producto_nombre: originalProd.nombre,
+1088:               producto_codigo: originalProd.codigo,
+1089:               tipo: 'venta',
+1090:               cantidad: item.cantidad,
+1091:               stock_anterior: currentStock,
+1092:               stock_resultante: newStock,
+1093:               costo_unitario: originalProd.costo_unitario,
+1094:               referencia: `Venta Factura ${newFactura.numero}`,
+1095:               fecha: issueDate,
+1096:               usuario: 'Administrador',
+1097:               created_at: new Date().toISOString()
+1098:             });
+1099:           }
+1100:         }
+1101:       });
+1102: 
+1103:       // 3. Crear CxC si es a Crédito asociada al cliente (Moneda base: USD)
+1104:       if (selectedCondition === 'credito') {
+1105:         const montoCxCUSD = Number(totals.netoCobrarUSD.toFixed(2));
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

@@ -1,0 +1,59 @@
+Created At: 2026-09-12T16:40:13-04:00
+Completed At: 2026-09-12T16:40:14-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2612
+Total Bytes: 126667
+Showing lines 360 to 410
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+360:       phone: '',
+361:       personaContacto: '',
+362:       cargo: '',
+363:       address: '',
+364:       debitAccount: configContable?.cuentaCxc || '1.1.02.001',
+365:       creditAccount: configContable?.cuentaAnticipoRecibido || '2.1.01.001'
+366:     });
+367:     setActiveCustomerModalTab('info');
+368:     setIsNewCustomerModalOpen(true);
+369:   };
+370: 
+371:   const handleSaveCustomerFromModal = (e: React.FormEvent) => {
+372:     e.preventDefault();
+373:     if (!customerModalForm.name.trim()) {
+374:       showToast?.('El nombre o razón social es obligatorio', 'error');
+375:       return;
+376:     }
+377: 
+378:     const fullTaxId = customerModalForm.taxIdNumber.trim()
+379:       ? `${customerModalForm.taxIdPrefix}-${customerModalForm.taxIdNumber.trim().toUpperCase()}`
+380:       : `${customerModalForm.taxIdPrefix}-00000000-0`;
+381: 
+382:     const newContact = {
+383:       id: `ct_${Date.now()}`,
+384:       name: customerModalForm.name.trim(),
+385:       type: 'customer',
+386:       taxId: fullTaxId,
+387:       email: customerModalForm.email.trim(),
+388:       phone: customerModalForm.phone.trim(),
+389:       address: customerModalForm.address.trim(),
+390:       isCompany: customerModalForm.isCompany,
+391:       personaContacto: customerModalForm.personaContacto.trim(),
+392:       cargo: customerModalForm.cargo.trim(),
+393:       debitAccount: customerModalForm.debitAccount,
+394:       creditAccount: customerModalForm.creditAccount,
+395:       saldo: 0,
+396:       activo: true,
+397:       created_at: new Date().toISOString()
+398:     };
+399: 
+400:     onSave?.('contactos', newContact);
+401:     handleSelectCustomer(newContact);
+402:     setIsNewCustomerModalOpen(false);
+403:     showToast?.('Cliente registrado y seleccionado en la factura', 'success');
+404:   };
+405: 
+406:   // Manejo de Items
+407:   const handleAddItem = () => {
+408:     setItems(prev => [
+409:       ...prev,
+410:       {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

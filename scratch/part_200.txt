@@ -1,0 +1,29 @@
+Created At: 2026-09-12T17:50:03-04:00
+Completed At: 2026-09-12T17:50:03-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3098
+Total Bytes: 150132
+Showing lines 200 to 220
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+200: 
+201:   // Modal de Cobranza (para facturas de Contado)
+202:   const [isCobranzaModalOpen, setIsCobranzaModalOpen] = useState(false);
+203:   const [cobranzaForm, setCobranzaForm] = useState({
+204:     fecha: new Date().toISOString().split('T')[0],
+205:     tasa: 36.50,
+206:     pagos: [] as Array<{
+207:       id: string;
+208:       bancoId: string;
+209:       metodoPago: string;
+210:       referencia: string;
+211:       monto: string;
+212:       montoBs: string;
+213:     }>
+214:   });
+215: 
+216:   // Modal de Asiento Contable
+217:   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+218:   const [pendingVoucher, setPendingVoucher] = useState<any>(null);
+219: 
+220:   // Generar correlativo inicial
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

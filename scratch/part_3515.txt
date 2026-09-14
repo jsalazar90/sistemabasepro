@@ -1,0 +1,36 @@
+Created At: 2026-09-12T18:57:49-04:00
+Completed At: 2026-09-12T18:57:49-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3542
+Total Bytes: 170575
+Showing lines 3515 to 3542
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+3515:       />
+3516: 
+3517:       {/* Modal de Impresión de Factura Emitida */}
+3518:       <InvoicePrintModal
+3519:         isOpen={isPrintModalOpen}
+3520:         onClose={() => setIsPrintModalOpen(false)}
+3521:         factura={lastEmittedInvoice}
+3522:         empresa={empresa}
+3523:       />
+3524: 
+3525:     </div>
+3526:   );
+3527: 
+3528:   if (isModal) {
+3529:     return (
+3530:       <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-2 sm:p-4 animate-in fade-in duration-200">
+3531:         <div className="bg-slate-100 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-[1440px] max-h-[96vh] flex flex-col overflow-hidden border border-slate-700/30">
+3532:           <div className="overflow-y-auto flex-1 p-2 sm:p-4">
+3533:             {formElement}
+3534:           </div>
+3535:         </div>
+3536:       </div>
+3537:     );
+3538:   }
+3539: 
+3540:   return formElement;
+3541: }
+3542: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

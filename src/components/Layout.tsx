@@ -38,6 +38,9 @@ import { dbSaveEmpresa, dbSaveConfiguracionContable } from "../services/db";
 const NAVIGATION = [
   { name: "Inicio", path: "/", icon: Home, exact: true, id: "home" },
   { name: "Contactos", path: "/contacts", icon: Contact, id: "contactos" },
+  { name: "Facturación", path: "/invoicing", icon: FileText, id: "facturacion" },
+  { name: "Inventario", path: "/inventory", icon: Package, id: "inventario" },
+  { name: "Compra / Servicio", path: "/purchases", icon: Truck, id: "compras" },
   {
     name: "Cuentas por Cobrar",
     path: "/receivables",
@@ -47,12 +50,6 @@ const NAVIGATION = [
   {
     name: "Cuentas por Pagar",
     path: "/payables",
-    icon: Building2,
-    id: "cuentasPagar",
-  },
-  {
-    name: "Compras",
-    path: "/purchases",
     icon: Building2,
     id: "cuentasPagar",
   },
@@ -161,7 +158,7 @@ export default function Layout({
 
     setIsCreatingCompany(true);
     try {
-      const docId = `comp_${Date.now()}`;
+      const docId = crypto.randomUUID();
       const newCompany = {
         id: docId,
         name: newCompanyName.trim(),
@@ -187,7 +184,7 @@ export default function Layout({
         for (const acc of sourceAccounts) {
           await dbSaveCuentaContable({
             ...acc,
-            id: `acc_${docId}_${acc.codigo.replace(/\./g, '_')}`,
+            id: crypto.randomUUID(),
             saldoActual: 0
           }, docId);
         }
@@ -199,7 +196,7 @@ export default function Layout({
         for (const ct of sourceContacts) {
           await dbSaveContacto({
             ...ct,
-            id: `ct_${docId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            id: crypto.randomUUID(),
             saldo: 0,
             saldoCxp: 0
           }, docId);
@@ -269,45 +266,54 @@ export default function Layout({
     (c) => c.id === activeCompanyId,
   );
 
+  if (
+    location.pathname === '/invoicing/new' || 
+    location.pathname === '/purchases/new'
+  ) {
+    return (
+      <div className="min-h-screen w-screen overflow-x-hidden bg-slate-50 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
+        {children}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
       {/* Top Navigation Bar - Premium Glassmorphic */}
       <header className="h-16 z-40 flex items-center px-4 sm:px-8 justify-between sticky top-0 bg-white/90 backdrop-blur-md border-b border-slate-200/80 text-slate-700 shadow-[0_1px_3px_0_rgba(15,23,42,0.03)] transition-all">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
-            <Link to="/" className="flex items-center gap-3 group transition-transform active:scale-95">
-              <div className="w-10 h-10 rounded-xl p-0.5 border border-slate-200/80 bg-white shadow-xs flex items-center justify-center overflow-hidden group-hover:border-indigo-300 transition-colors">
-                <img 
-                  src={empresa?.logo || activeCompany?.logo || '/logo.png'} 
-                  alt="Logo" 
-                  className="w-full h-full object-contain" 
-                  onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                  }}
-                />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 flex items-center leading-none">
-                  {empresa?.nombre || activeCompany?.name || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
-                </h1>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Sistema Operativo
-                  </span>
-                </div>
-              </div>
+            <Link to="/" className="w-10 h-10 rounded-xl p-0.5 border border-slate-200/80 bg-white shadow-xs flex items-center justify-center overflow-hidden hover:border-indigo-300 transition-colors">
+              <img 
+                src={empresa?.logo || activeCompany?.logo || '/logo.png'} 
+                alt="Logo" 
+                className="w-full h-full object-contain" 
+                onError={(e) => {
+                  (e.currentTarget as HTMLElement).style.display = 'none';
+                }}
+              />
             </Link>
-            {currentModule && currentModule.path !== "/" && (
-              <>
-                <div className="hidden sm:block w-px h-5 bg-slate-200 mx-1" />
-                <div className="hidden sm:flex items-center gap-2 bg-slate-100/70 border border-slate-200/80 px-3 py-1.5 rounded-xl text-slate-800 shadow-2xs">
-                  <currentModule.icon size={15} className="text-indigo-600 shrink-0" strokeWidth={2.2} />
-                  <span className="text-xs font-bold tracking-tight">{currentModule.name}</span>
-                </div>
-              </>
-            )}
+            <div className="flex flex-col">
+              <Link to="/" className="text-base sm:text-lg font-black tracking-tight text-slate-900 flex items-center leading-none hover:opacity-90">
+                {empresa?.nombre || activeCompany?.name || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
+              </Link>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  Sistema Operativo
+                </span>
+              </div>
+            </div>
           </div>
+          {currentModule && currentModule.path !== "/" && (
+            <>
+              <div className="hidden sm:block w-px h-5 bg-slate-200 mx-1" />
+              <div className="hidden sm:flex items-center gap-2 bg-slate-100/70 border border-slate-200/80 px-3 py-1.5 rounded-xl text-slate-800 shadow-2xs">
+                <currentModule.icon size={15} className="text-indigo-600 shrink-0" strokeWidth={2.2} />
+                <span className="text-xs font-bold tracking-tight">{currentModule.name}</span>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">

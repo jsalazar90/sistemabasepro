@@ -1,0 +1,34 @@
+Created At: 2026-09-12T16:48:23-04:00
+Completed At: 2026-09-12T16:48:23-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2652
+Total Bytes: 129028
+Showing lines 1010 to 1035
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1010:                 value={issueDate}
+1011:                 onChange={(e) => setIssueDate(e.target.value)}
+1012:                 className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none"
+1013:               />
+1014:             </div>
+1015: 
+1016:             <div>
+1017:               <label className="block text-slate-700 font-bold mb-1">Tasa de Cambio Oficial (Bs./$)</label>
+1018:               <div className="relative">
+1019:                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">Bs.</span>
+1020:                 <input
+1021:                   type="number"
+1022:                   step="0.01"
+1023:                   min="0.01"
+1024:                   value={exchangeRate}
+1025:                   onChange={(e) => setExchangeRate(parseFloat(e.target.value) || 1)}
+1026:                   className="w-full pl-9 pr-3.5 py-2.5 bg-emerald-50/50 border border-emerald-200 rounded-xl font-black text-emerald-800 focus:bg-white focus:border-emerald-600 outline-none"
+1027:                 />
+1028:               </div>
+1029:             </div>
+1030:           </div>
+1031:         </div>
+1032: 
+1033:         {/* ========================================================================= */}
+1034:         {/* DISTRIBUCIÓN PRINCIPAL DE PANTALLA: 2 COLUMNAS */}
+1035:         {/* ========================================================================= */}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

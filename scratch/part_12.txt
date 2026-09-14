@@ -1,0 +1,22 @@
+Created At: 2026-09-12T17:31:14-04:00
+Completed At: 2026-09-12T17:31:15-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2957
+Total Bytes: 142667
+Showing lines 12 to 25
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+12: import CuentaContableModal from '../components/common/CuentaContableModal';
+13: import TasaCambioModal from '../components/invoicing/TasaCambioModal';
+14: import { getTasaForDate } from '../services/exchangeRateService';
+15: import { FacturaVentaModel, FacturaItemModel, ProductModel } from '../types/database';
+16: import { formatDate } from '../utils/dateUtils';
+17: 
+18: export default function InvoiceForm({
+19:   contactos = [],
+20:   products = [],
+21:   cuentasContables = [],
+22:   bancos = [],
+23:   configContable,
+24:   onSave,
+25:   showToast,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

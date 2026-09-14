@@ -1,0 +1,49 @@
+Created At: 2026-09-12T17:38:44-04:00
+Completed At: 2026-09-12T17:38:44-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3025
+Total Bytes: 145544
+Showing lines 1050 to 1090
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1050:         base_imponible_bs: Number(totals.baseImponibleBs.toFixed(2)),
+1051:         monto_exento_bs: Number(totals.montoExentoBs.toFixed(2)),
+1052:         iva_monto_bs: Number(totals.ivaMontoBs.toFixed(2)),
+1053:         igtf_monto_bs: Number(totals.igtfMontoBs.toFixed(2)),
+1054:         retencion_iva_monto_bs: Number(totals.retIvaMontoBs.toFixed(2)),
+1055:         retencion_islr_monto_bs: Number(totals.retIslrMontoBs.toFixed(2)),
+1056:         neto_cobrar_bs: Number(totals.netoCobrarBs.toFixed(2)),
+1057:         total_bs: Number(totals.totalBs.toFixed(2)),
+1058:         saldo_pendiente_bs: selectedCondition === 'credito' ? Number(totals.netoCobrarBs.toFixed(2)) : 0,
+1059:         estado: selectedCondition === 'credito' ? 'emitida' : 'cobrada',
+1060:         banco_id: selectedCondition === 'contado' && cobranzaForm.pagos.length > 0 ? cobranzaForm.pagos[0].bancoId : undefined,
+1061:         comprobante_id: voucherId,
+1062:         cxc_id: selectedCondition === 'credito' ? cxcDocId : undefined,
+1063:         notas: notes.trim(),
+1064:         created_at: new Date().toISOString()
+1065:       };
+1066: 
+1067:       onSave?.('facturasVenta', newFactura);
+1068: 
+1069:       // 2. Descontar Stock de Inventario y Registrar Kardex
+1070:       items.forEach(item => {
+1071:         if (item.producto_id) {
+1072:           const originalProd = products.find(p => p.id === item.producto_id);
+1073:           if (originalProd) {
+1074:             const currentStock = Number(originalProd.stock_actual) || 0;
+1075:             const newStock = Math.max(0, currentStock - (Number(item.cantidad) || 0));
+1076: 
+1077:             onSave?.('products', {
+1078:               ...originalProd,
+1079:               stock_actual: newStock,
+1080:               updated_at: new Date().toISOString()
+1081:             });
+1082: 
+1083:             onSave?.('movimientosInventario', {
+1084:               id: `mov_vta_${Date.now()}_${item.id}`,
+1085:               empresa_id: '',
+1086:               producto_id: originalProd.id,
+1087:               producto_nombre: originalProd.nombre,
+1088:               producto_codigo: originalProd.codigo,
+1089:               tipo: 'venta',
+1090:               cantidad: item.cantidad,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

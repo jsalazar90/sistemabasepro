@@ -1,0 +1,129 @@
+Created At: 2026-09-12T16:25:29-04:00
+Completed At: 2026-09-12T16:25:29-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2311
+Total Bytes: 111506
+Showing lines 530 to 650
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+530:       ...prev,
+531:       pagos: [
+532:         ...prev.pagos,
+533:         {
+534:           id: `pg_${Date.now()}_${prev.pagos.length + 1}`,
+535:           bancoId: defaultBanco ? defaultBanco.id : '',
+536:           metodoPago: 'Transferencia',
+537:           referencia: '',
+538:           monto: '0.00',
+539:           montoBs: '0.00'
+540:         }
+541:       ]
+542:     }));
+543:   };
+544: 
+545:   const handleRemovePagoCobranza = (index: number) => {
+546:     if (cobranzaForm.pagos.length === 1) return;
+547:     setCobranzaForm(prev => ({
+548:       ...prev,
+549:       pagos: prev.pagos.filter((_, i) => i !== index)
+550:     }));
+551:   };
+552: 
+553:   // Proceder desde Cobranza al Asiento Contable
+554:   const handleConfirmCobranzaToVoucher = () => {
+555:     const totalPagado = cobranzaForm.pagos.reduce((acc, p) => acc + (parseFloat(p.monto) || 0), 0);
+556:     if (cobranzaForm.pagos.length === 0 || totalPagado <= 0) {
+557:       showToast?.('Ingrese al menos un pago con monto válido en la cobranza', 'error');
+558:       return;
+559:     }
+560: 
+561:     setIsCobranzaModalOpen(false);
+562:     buildAndShowVoucher('contado');
+563:   };
+564: 
+565:   // =========================================================================
+566:   // PASO 3: Construir Asiento Contable y Mostrar Previsualización
+567:   // =========================================================================
+568:   const buildAndShowVoucher = (condition: 'contado' | 'credito') => {
+569:     const mainCustomerAccount = configContable?.cuentaCxc || '1.1.02.001';
+570:     const mainSalesAccount = configContable?.cuentaVentas || '4.1.01.001';
+571:     const mainTaxAccount = configContable?.cuentaDebitoFiscal || '2.1.02.001';
+572: 
+573:     const linesVoucher: any[] = [];
+574:     const totalAmount = totals.total;
+575: 
+576:     if (condition === 'credito') {
+577:       // Debe: CxC Clientes
+578:       linesVoucher.push({
+579:         id: `vl_cxc`,
+580:         cuentaId: mainCustomerAccount,
+581:         nombreCuenta: `Cuentas por Cobrar Clientes (${customerName})`,
+582:         descripcion: `Factura a crédito ${invoiceNumber} - Venc. ${calculatedDueDate}`,
+583:         debe: totalAmount,
+584:         haber: 0
+585:       });
+586:     } else {
+587:       // Debe: Banco(s) según pagos registrados en el modal de cobranza
+588:       cobranzaForm.pagos.forEach((pago, pIdx) => {
+589:         const bank = bancos.find(b => b.id === pago.bancoId);
+590:         const bankAccount = bank?.cuenta_contable_id || configContable?.cuentaBancos || '1.1.01.004';
+591:         const pagoMonto = parseFloat(pago.monto) || (totalAmount / cobranzaForm.pagos.length);
+592: 
+593:         linesVoucher.push({
+594:           id: `vl_bnk_${pIdx}`,
+595:           cuentaId: bankAccount,
+596:           nombreCuenta: bank ? `${bank.banco} (${bank.moneda})` : 'Efectivo en Bancos',
+597:           descripcion: `Cobro contado Fac ${invoiceNumber} - Ref: ${pago.referencia || 'S/R'}`,
+598:           debe: pagoMonto,
+599:           haber: 0
+600:         });
+601:       });
+602:     }
+603: 
+604:     // Haber: Ventas por el subtotal neto
+605:     linesVoucher.push({
+606:       id: `vl_vta`,
+607:       cuentaId: mainSalesAccount,
+608:       nombreCuenta: 'Ventas de Mercancías',
+609:       descripcion: `Ingreso por venta Factura ${invoiceNumber}`,
+610:       debe: 0,
+611:       haber: totals.subtotal
+612:     });
+613: 
+614:     // Haber: IVA Débito Fiscal si aplica
+615:     if (totals.ivaMonto > 0) {
+616:       linesVoucher.push({
+617:         id: `vl_iva`,
+618:         cuentaId: mainTaxAccount,
+619:         nombreCuenta: 'IVA Débito Fiscal (16%)',
+620:         descripcion: `IVA 16% Factura ${invoiceNumber}`,
+621:         debe: 0,
+622:         haber: totals.ivaMonto
+623:       });
+624:     }
+625: 
+626:     const voucher = {
+627:       id: `comp_${Date.now()}`,
+628:       numero: `AS-FAC-${invoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+629:       fecha: issueDate,
+630:       concepto: `Registro de Factura de Venta ${invoiceNumber} a ${customerName} (${condition.toUpperCase()})`,
+631:       total: totalAmount,
+632:       lineas: linesVoucher,
+633:       estado: 'Contabilizado',
+634:       modulo: 'facturacion'
+635:     };
+636: 
+637:     setPendingVoucher(voucher);
+638:     setIsVoucherModalOpen(true);
+639:   };
+640: 
+641:   // =========================================================================
+642:   // PASO 4: Confirmación Final y Guardado Transaccional
+643:   // =========================================================================
+644:   const handleFinalSaveInvoice = async () => {
+645:     try {
+646:       const factId = `fac_${Date.now()}`;
+647:       const cxcDocId = `cxc_${Date.now()}`;
+648:       const voucherId = pendingVoucher ? pendingVoucher.id : `comp_${Date.now()}`;
+649: 
+650:       // 1. Guardar la Factura
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

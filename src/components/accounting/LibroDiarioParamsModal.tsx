@@ -6,7 +6,6 @@ import {
   Search, 
   ExternalLink, 
   FileSpreadsheet, 
-  Sparkles,
   FileText,
   ListFilter
 } from 'lucide-react';
@@ -131,13 +130,20 @@ export default function LibroDiarioParamsModal({
   const [localEndDate, setLocalEndDate] = useState<string>(endDate || new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<'resumen' | 'detalle'>('resumen');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [useDemoData, setUseDemoData] = useState<boolean>(true);
+  const useDemoData = false;
 
   if (!isOpen) return null;
 
   const computeData = () => {
-    const hasLive = comprobantes.some(c => c.estado === 'Contabilizado');
-    const isDemo = useDemoData || !hasLive;
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const hasLive = comprobantes.some(isContabilizado);
+    const hasAccounts = cuentasContables && cuentasContables.length > 0;
+    const isDemo = useDemoData || (!hasLive && !hasAccounts);
 
     if (isDemo) {
       let comps = SAMPLE_DIARIO_COMPROBANTES;
@@ -177,12 +183,17 @@ export default function LibroDiarioParamsModal({
 
     // Datos reales
     const filteredComps = comprobantes
-      .filter(c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate)
+      .filter(c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate)
       .sort((a, b) => (a.fecha || '').localeCompare(b.fecha || ''));
 
     const mappedComps = filteredComps.map(c => {
       const lineas = (c.lineas || []).map((l: any) => {
-        const cObj = cuentasContables.find(item => String(item.id) === String(l.cuentaId));
+        const cId = String(l.cuentaId || l.cuenta_id || '').trim();
+        const cObj = cuentasContables.find(item => 
+          String(item.id) === cId || 
+          String(item.codigo) === cId ||
+          (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
         return {
           cuentaCodigo: cObj?.codigo || l.cuentaCodigo || 'N/A',
           cuentaNombre: cObj?.nombre || l.cuentaNombre || 'Sin cuenta',
@@ -193,7 +204,7 @@ export default function LibroDiarioParamsModal({
 
       return {
         id: c.id,
-        codigo: c.codigo || c.numero || 'S/N',
+        codigo: c.numero || c.codigo || 'S/N',
         numero: c.numero || '',
         fecha: c.fecha ? c.fecha.split('T')[0] : '',
         tipo: c.tipo || 'Diario',
@@ -696,42 +707,7 @@ export default function LibroDiarioParamsModal({
           </div>
         </div>
 
-        {/* CUERPO */}
         <div className="p-6 space-y-6 bg-slate-50/50">
-          {/* Banner */}
-          <div className="bg-gradient-to-r from-slate-900 via-purple-950 to-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-purple-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs md:text-sm font-black uppercase tracking-wide">
-                    Libro Diario Oficial
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                    PARTIDA DOBLE GARANTIZADA
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  Registro secuencial y cronológico de todas las operaciones comerciales, compras, ventas y egresos bancarios.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all border border-white/10">
-                <input 
-                  type="checkbox"
-                  checked={useDemoData}
-                  onChange={(e) => setUseDemoData(e.target.checked)}
-                  className="rounded text-purple-500 cursor-pointer"
-                />
-                <span>Usar Asientos Demostrativos</span>
-              </label>
-            </div>
-          </div>
-
           {/* Formato de Visualización */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2.5">

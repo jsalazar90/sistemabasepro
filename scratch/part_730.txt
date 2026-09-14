@@ -1,0 +1,49 @@
+Created At: 2026-09-12T17:36:59-04:00
+Completed At: 2026-09-12T17:36:59-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 730 to 770
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+730:         showToast?.(`La fecha (${yr}) no coincide con el período contable seleccionado (${workingYear})`, 'error');
+731:         return;
+732:       }
+733:     }
+734: 
+735:     // Abrir modal de selección Contado vs Crédito
+736:     setIsConditionModalOpen(true);
+737:   };
+738: 
+739:   // =========================================================================
+740:   // PASO 2: Elegir Condición y Pasar a Cobranza o Asiento Contable
+741:   // =========================================================================
+742:   const handleSelectCondition = (cond: 'contado' | 'credito') => {
+743:     setSelectedCondition(cond);
+744:     setIsConditionModalOpen(false);
+745: 
+746:     if (cond === 'credito') {
+747:       // Si es crédito, armar el comprobante directo con CxC y abrir el modal contable
+748:       buildAndShowVoucher('credito');
+749:     } else {
+750:       // Si es contado, abrir el modal de Cobranza idéntico al del ERP
+751:       const defaultBanco = bancos.length > 0 ? bancos[0] : null;
+752:       const isBancoVES = defaultBanco && (defaultBanco.moneda === 'VES' || defaultBanco.moneda === 'Bs');
+753:       
+754:       const pagoInicial = {
+755:         id: `pg_${Date.now()}`,
+756:         bancoId: defaultBanco ? defaultBanco.id : '',
+757:         metodoPago: 'Transferencia',
+758:         referencia: '',
+759:         monto: currency === 'USD' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarUSD.toFixed(2),
+760:         montoBs: currency === 'VES' ? totals.netoCobrar.toFixed(2) : totals.netoCobrarBs.toFixed(2)
+761:       };
+762: 
+763:       setCobranzaForm({
+764:         fecha: issueDate,
+765:         tasa: exchangeRate,
+766:         pagos: [pagoInicial]
+767:       });
+768:       setIsCobranzaModalOpen(true);
+769:     }
+770:   };
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

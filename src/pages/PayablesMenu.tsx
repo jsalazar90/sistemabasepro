@@ -16,28 +16,12 @@ import BackButton from '../components/common/BackButton';
 
 const payableModules = [
   { 
-    name: 'Aerolíneas', 
-    description: 'Cuentas por pagar a líneas aéreas y liquidación de boletos', 
-    icon: Plane, 
-    gradient: 'from-sky-500 to-blue-600', 
-    shadow: 'shadow-sky-500/20', 
-    path: '/payables/aerolineas' 
-  },
-  { 
     name: 'Proveedores', 
     description: 'Gestión de facturas de compra, GDS y servicios comerciales', 
     icon: Truck, 
     gradient: 'from-rose-500 to-orange-500', 
     shadow: 'shadow-rose-500/20', 
     path: '/payables/proveedores' 
-  },
-  { 
-    name: 'Freelance (Comisiones)', 
-    description: 'Comisiones por pagar a emisores y asesores independientes', 
-    icon: Percent, 
-    gradient: 'from-cyan-500 to-teal-600', 
-    shadow: 'shadow-cyan-500/20', 
-    path: '/payables/freelance' 
   },
   { 
     name: 'Intercompañías', 

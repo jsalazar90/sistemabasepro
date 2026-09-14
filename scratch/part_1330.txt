@@ -1,0 +1,49 @@
+Created At: 2026-09-12T19:20:44-04:00
+Completed At: 2026-09-12T19:20:44-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 5776
+Total Bytes: 295236
+Showing lines 1330 to 1370
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1330: 
+1331:       showToast?.(`Factura ${newFactura.numero} emitida exitosamente (${selectedCondition.toUpperCase()})`, 'success');
+1332:       setIsVoucherModalOpen(false);
+1333: 
+1334:       // Guardar última factura emitida para permitir impresión o consulta
+1335:       setLastEmittedInvoice(newFactura);
+1336: 
+1337:       // Preparar automáticamente la siguiente factura continua
+1338:       const prefix = docType === 'nota_credito' ? 'NC-' : docType === 'nota_debito' ? 'ND-' : docType === 'nota_entrega' ? 'NE-' : (configContable?.prefijoFactura || 'FAC-');
+1339:       setInvoiceNumber(`${prefix}${nextCorrelativo}`);
+1340:       setControlNumber(`00-${Math.floor(100000 + Math.random() * 900000)}`);
+1341: 
+1342:       // Limpiar cliente y campos para la próxima factura
+1343:       setSelectedCustomerId('');
+1344:       setCustomerName('');
+1345:       setCustomerRif('');
+1346:       setCustomerAddress('');
+1347:       setCustomerPhone('');
+1348:       setCustomerEmail('');
+1349: 
+1350:       setItems([{
+1351:         id: `item_${Date.now()}_1`,
+1352:         producto_id: '',
+1353:         codigo: '',
+1354:         descripcion: '',
+1355:         cantidad: 1,
+1356:         precio_unitario: 0,
+1357:         exento: false,
+1358:         subtotal: 0,
+1359:         iva_monto: 0,
+1360:         total: 0,
+1361:         cuenta_ingreso_id: '4.1.01.001',
+1362:         cuenta_costo_id: '5.1.01.001',
+1363:         cuenta_inventario_id: '1.1.04.001'
+1364:       }]);
+1365:       setNotes('');
+1366:       setApplyRetIva(false);
+1367:       setApplyRetIslr(false);
+1368:       setApplyIgtf(false);
+1369:       setIsZeroStockAuthorized(false);
+1370:     } catch (err: any) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

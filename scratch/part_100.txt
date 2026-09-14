@@ -1,0 +1,159 @@
+Created At: 2026-09-12T18:50:28-04:00
+Completed At: 2026-09-12T18:50:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3397
+Total Bytes: 163973
+Showing lines 100 to 250
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+100: 
+101:   // Escuchar eventos globales de actualización de tasa
+102:   useEffect(() => {
+103:     const handleTasaUpdated = (e: any) => {
+104:       const detail = e.detail;
+105:       if (detail && detail.tasa) {
+106:         if (!detail.fecha || detail.fecha === issueDate) {
+107:           setExchangeRateInput(Number(detail.tasa).toFixed(2));
+108:         }
+109:       }
+110:     };
+111:     window.addEventListener('tasa-cambio-updated', handleTasaUpdated);
+112:     return () => window.removeEventListener('tasa-cambio-updated', handleTasaUpdated);
+113:   }, [issueDate]);
+114: 
+115:   // Cliente Info
+116:   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+117:   const [customerName, setCustomerName] = useState('');
+118:   const [customerRif, setCustomerRif] = useState('');
+119:   const [customerAddress, setCustomerAddress] = useState('');
+120:   const [customerPhone, setCustomerPhone] = useState('');
+121:   const [customerEmail, setCustomerEmail] = useState('');
+122: 
+123:   // Modales de Cliente
+124:   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+125:   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
+126:   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+127:   const [activeCustomerModalTab, setActiveCustomerModalTab] = useState<'info' | 'contabilidad'>('info');
+128:   const [customerModalForm, setCustomerModalForm] = useState({
+129:     name: '',
+130:     isCompany: true,
+131:     taxIdPrefix: 'J',
+132:     taxIdNumber: '',
+133:     email: '',
+134:     phone: '',
+135:     personaContacto: '',
+136:     cargo: '',
+137:     address: '',
+138:     debitAccount: '',
+139:     creditAccount: ''
+140:   });
+141:   const [customerAccountError, setCustomerAccountError] = useState<string | null>(null);
+142:   const [showCustomerCuentaModal, setShowCustomerCuentaModal] = useState(false);
+143:   const [activeCustomerAccountKey, setActiveCustomerAccountKey] = useState<'debitAccount' | 'creditAccount' | null>(null);
+144: 
+145:   // Modal de Selección de Productos de Inventario
+146:   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+147:   const [activeItemIndexForProduct, setActiveItemIndexForProduct] = useState<number | null>(null);
+148:   const [productSearchTerm, setProductSearchTerm] = useState('');
+149:   const [selectedProductCategory, setSelectedProductCategory] = useState('all');
+150: 
+151:   // Items / Líneas de la Factura
+152:   const [items, setItems] = useState<FacturaItemModel[]>([
+153:     {
+154:       id: `item_${Date.now()}_1`,
+155:       producto_id: '',
+156:       codigo: '',
+157:       descripcion: '',
+158:       cantidad: 1,
+159:       precio_unitario: 0,
+160:       exento: false,
+161:       subtotal: 0,
+162:       iva_monto: 0,
+163:       total: 0,
+164:       cuenta_ingreso_id: '4.1.01.001',
+165:       cuenta_costo_id: '5.1.01.001',
+166:       cuenta_inventario_id: '1.1.04.001'
+167:     }
+168:   ]);
+169: 
+170:   // Modales y estados del flujo de emisión
+171:   const [isConditionModalOpen, setIsConditionModalOpen] = useState(false);
+172:   const [selectedCondition, setSelectedCondition] = useState<'contado' | 'credito'>('contado');
+173:   const [creditDays, setCreditDays] = useState(15);
+174:   const [calculatedDueDate, setCalculatedDueDate] = useState('');
+175: 
+176:   // Autorización de Stock 0 con Clave Especial de Operaciones Master
+177:   const [isZeroStockAuthorized, setIsZeroStockAuthorized] = useState(false);
+178:   const [isMasterAuthModalOpen, setIsMasterAuthModalOpen] = useState(false);
+179: 
+180:   // Artículos con stock 0 o insuficiente
+181:   const zeroStockItems = useMemo(() => {
+182:     return items.filter(item => {
+183:       if (!item.producto_id) return false;
+184:       const prod = products.find(p => p.id === item.producto_id);
+185:       if (!prod) return false;
+186:       const stock = Number(prod.stock_actual) || 0;
+187:       const qty = Number(item.cantidad) || 0;
+188:       return stock <= 0 || qty > stock;
+189:     });
+190:   }, [items, products]);
+191: 
+192:   // Opciones de Retenciones e IGTF (Leyes Tributarias Venezolanas - SENIAT)
+193:   const [applyRetIva, setApplyRetIva] = useState(false);
+194:   const [retIvaPercent, setRetIvaPercent] = useState<number>(75); // 75% o 100% (Providencia SNAT/2015/0049)
+195: 
+196:   const [applyRetIslr, setApplyRetIslr] = useState(false);
+197:   const [retIslrPercent, setRetIslrPercent] = useState<number>(2); // 2%, 5%, 1%, 3% (Decreto 1808)
+198: 
+199:   const [applyIgtf, setApplyIgtf] = useState(false);
+200:   const [igtfPercent, setIgtfPercent] = useState<number>(3); // 3% Ley IGTF 2022
+201: 
+202:   // Modal de Cobranza (para facturas de Contado)
+203:   const [isCobranzaModalOpen, setIsCobranzaModalOpen] = useState(false);
+204:   const [cobranzaForm, setCobranzaForm] = useState({
+205:     fecha: new Date().toISOString().split('T')[0],
+206:     tasa: 36.50,
+207:     pagos: [] as Array<{
+208:       id: string;
+209:       bancoId: string;
+210:       metodoPago: string;
+211:       terminalId?: string;
+212:       referencia: string;
+213:       monto: string;
+214:       montoBs: string;
+215:     }>
+216:   });
+217: 
+218:   // Terminales POS para cobranzas con tarjeta
+219:   const [terminalesPos, setTerminalesPos] = useState<TerminalPosModel[]>([]);
+220:   useEffect(() => {
+221:     dbFetchTerminalesPos().then(res => {
+222:       if (res && res.length > 0) setTerminalesPos(res);
+223:     });
+224:   }, []);
+225: 
+226:   // Modal de Asiento Contable
+227:   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+228:   const [pendingVoucher, setPendingVoucher] = useState<any>(null);
+229: 
+230:   // Generar correlativo inicial
+231:   useEffect(() => {
+232:     const prefix = docType === 'nota_credito' ? 'NC-' : docType === 'nota_debito' ? 'ND-' : docType === 'nota_entrega' ? 'NE-' : (configContable?.prefijoFactura || 'FAC-');
+233:     const baseCorrelativo = configContable?.correlativoFactura || '00001';
+234:     setInvoiceNumber(`${prefix}${baseCorrelativo}`);
+235:     setControlNumber(`00-${Math.floor(100000 + Math.random() * 900000)}`);
+236:   }, [configContable, docType]);
+237: 
+238:   // Recalcular vencimiento al cambiar días de crédito o fecha de emisión
+239:   useEffect(() => {
+240:     const base = new Date(issueDate);
+241:     base.setDate(base.getDate() + Number(creditDays || 0));
+242:     setCalculatedDueDate(base.toISOString().split('T')[0]);
+243:   }, [issueDate, creditDays]);
+244: 
+245:   // Atajos de teclado estilo ERP (F2: Emitir Factura, F3: Buscar Catálogo)
+246:   useEffect(() => {
+247:     const handleKeyDown = (e: KeyboardEvent) => {
+248:       if (e.key === 'F2') {
+249:         e.preventDefault();
+250:         const formEl = document.getElementById('invoice-main-form') as HTMLFormElement;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

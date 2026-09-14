@@ -1,0 +1,49 @@
+Created At: 2026-09-12T19:22:55-04:00
+Completed At: 2026-09-12T19:22:55-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 5776
+Total Bytes: 295236
+Showing lines 2330 to 2370
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2330:                   </p>
+2331:                 </div>
+2332:               </div>
+2333:               <button
+2334:                 type="button"
+2335:                 onClick={() => setIsCobranzaModalOpen(false)}
+2336:                 className="w-8 h-8 rounded-full bg-slate-200/70 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold"
+2337:               >
+2338:                 ✕
+2339:               </button>
+2340:             </div>
+2341: 
+2342:             {/* Cuerpo del Modal de Cobranza */}
+2343:             <div className="p-6 overflow-y-auto space-y-4 text-xs">
+2344:               
+2345:               {/* Tarjeta de Resumen del Cobro */}
+2346:               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row justify-between items-center gap-3">
+2347:                 <div>
+2348:                   <p className="text-[10px] font-bold uppercase text-slate-400">Total Factura a Cobrar:</p>
+2349:                   <p className="text-lg font-black text-slate-900">{formatMoney(totals.total, currency)}</p>
+2350:                   {currency === 'USD' && (
+2351:                     <p className="text-[11px] font-bold text-emerald-600">
+2352:                       Equiv: Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(totals.totalBs)}
+2353:                     </p>
+2354:                   )}
+2355:                 </div>
+2356:                 <div className="text-right">
+2357:                   <div className="flex items-center justify-end gap-1.5 mb-1">
+2358:                     <label className="text-[10px] font-bold uppercase text-slate-400 block">Fecha de Pago</label>
+2359:                     <span className="text-[10px] font-bold text-emerald-600 font-mono">({formatDate(cobranzaForm.fecha)})</span>
+2360:                   </div>
+2361:                   <input
+2362:                     type="date"
+2363:                     value={cobranzaForm.fecha}
+2364:                     onChange={(e) => setCobranzaForm({ ...cobranzaForm, fecha: e.target.value })}
+2365:                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 outline-none"
+2366:                   />
+2367:                 </div>
+2368:               </div>
+2369: 
+2370:               {/* Lista de Pagos Recibidos */}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

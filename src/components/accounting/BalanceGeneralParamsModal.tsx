@@ -9,8 +9,7 @@ import {
   ExternalLink, 
   Printer, 
   FileSpreadsheet, 
-  Layers,
-  Sparkles
+  Layers
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SAMPLE_FULL_BALANCE_CUENTAS, dbResetToFullDemoCuentas } from '../../services/db';
@@ -76,7 +75,7 @@ export default function BalanceGeneralParamsModal({
   const [showVerticalAnalysis, setShowVerticalAnalysis] = useState<boolean>(true);
   const [maxDepthLevel, setMaxDepthLevel] = useState<number>(5);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [useFullDemoBalance, setUseFullDemoBalance] = useState<boolean>(true);
+  const useFullDemoBalance = false;
 
   if (!isOpen) return null;
 
@@ -126,12 +125,18 @@ export default function BalanceGeneralParamsModal({
   };
 
   const computeBalanceData = (cutoffDate: string) => {
-    const activeCuentas = (useFullDemoBalance || cuentasContables.length < 25)
+    const activeCuentas = (useFullDemoBalance || !cuentasContables || cuentasContables.length === 0)
       ? SAMPLE_FULL_BALANCE_CUENTAS
       : cuentasContables;
 
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
     const pastComprobantes = comprobantes.filter(
-      c => c.estado === 'Contabilizado' && (!c.fecha || c.fecha.split('T')[0] <= cutoffDate)
+      c => isContabilizado(c) && (!c.fecha || c.fecha.split('T')[0] <= cutoffDate)
     );
 
     const saldosCuentas: Record<string, number> = {};
@@ -143,8 +148,13 @@ export default function BalanceGeneralParamsModal({
     if (!useFullDemoBalance && comprobantes.length > 0) {
       pastComprobantes.forEach(comp => {
         (comp.lineas || []).forEach((linea: any) => {
-          const cId = String(linea.cuentaId);
-          const cuenta = activeCuentas.find(item => String(item.id) === cId);
+          const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+          if (!cId) return;
+          const cuenta = activeCuentas.find(item => 
+            String(item.id) === cId || 
+            String(item.codigo) === cId ||
+            (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+          );
           if (!cuenta) return;
 
           const debe = Number(linea.debe) || 0;
@@ -231,7 +241,33 @@ export default function BalanceGeneralParamsModal({
     }
 
     if (!useFullDemoBalance) {
-      const utilidadNetaPAndL = estadoResultados?.utilidadNeta || 0;
+      let utilidadNetaPAndL = estadoResultados?.utilidadNeta || 0;
+      if (Math.abs(utilidadNetaPAndL) < 0.009 && activeCuentas.length > 0 && pastComprobantes.length > 0) {
+        let ing = 0;
+        let egr = 0;
+        pastComprobantes.forEach(comp => {
+          (comp.lineas || []).forEach((linea: any) => {
+            const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+            if (!cId) return;
+            const cuenta = activeCuentas.find(item => 
+              String(item.id) === cId || 
+              String(item.codigo) === cId ||
+              (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+            );
+            if (!cuenta) return;
+            const first = cuenta.codigo?.charAt(0);
+            const debe = Number(linea.debe) || 0;
+            const haber = Number(linea.haber) || 0;
+            if (first === '4' || first === '7') {
+              ing += (haber - debe);
+            } else if (first >= '5' && first <= '9') {
+              egr += (debe - haber);
+            }
+          });
+        });
+        utilidadNetaPAndL = ing - egr;
+      }
+
       if (Math.abs(utilidadNetaPAndL) > 0.009) {
         rawPatrimonio.push({
           id: 'UTILIDAD_TEMP',
@@ -1067,43 +1103,6 @@ export default function BalanceGeneralParamsModal({
         {/* CUERPO: OPCIONES Y SELECTOR DE FORMATO                    */}
         {/* ========================================================== */}
         <div className="p-6 space-y-6 bg-slate-50/50">
-          {/* Banner Demostración Multi-Página */}
-          <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-indigo-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs md:text-sm font-black uppercase tracking-wide">
-                    Balance Completo Multi-Página
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    59 CUENTAS / 3 HOJAS CARTA
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/30">
-                    SOBREGIRO ROJO ($15.200,00)
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  Genera el reporte balanceado al centavo: <strong>Total Activos = Total Pasivo + Patrimonio = $1.774.850,00</strong> (Descuadre $0.00) con saltos de hoja automáticos y cuentas de título sin montos.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all border border-white/10">
-                <input 
-                  type="checkbox"
-                  checked={useFullDemoBalance}
-                  onChange={(e) => setUseFullDemoBalance(e.target.checked)}
-                  className="rounded text-indigo-500 cursor-pointer"
-                />
-                <span>Usar Demo 59 Cuentas</span>
-              </label>
-            </div>
-          </div>
-
           {/* Selector de Formato de Vista */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2.5">

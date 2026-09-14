@@ -1,0 +1,49 @@
+Created At: 2026-09-12T17:36:15-04:00
+Completed At: 2026-09-12T17:36:16-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 1020 to 1060
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1020:         retencion_iva_porcentaje: applyRetIva ? retIvaPercent : 0,
+1021:         retencion_iva_monto: Number(totals.retIvaMontoUSD.toFixed(2)),
+1022:         retencion_islr_porcentaje: applyRetIslr ? retIslrPercent : 0,
+1023:         retencion_islr_monto: Number(totals.retIslrMontoUSD.toFixed(2)),
+1024:         neto_cobrar: Number(totals.netoCobrarUSD.toFixed(2)),
+1025:         total: Number(totals.totalUSD.toFixed(2)),
+1026:         saldo_pendiente: selectedCondition === 'credito' ? Number(totals.netoCobrarUSD.toFixed(2)) : 0,
+1027:         subtotal_bs: Number(totals.subtotalBs.toFixed(2)),
+1028:         base_imponible_bs: Number(totals.baseImponibleBs.toFixed(2)),
+1029:         monto_exento_bs: Number(totals.montoExentoBs.toFixed(2)),
+1030:         iva_monto_bs: Number(totals.ivaMontoBs.toFixed(2)),
+1031:         igtf_monto_bs: Number(totals.igtfMontoBs.toFixed(2)),
+1032:         retencion_iva_monto_bs: Number(totals.retIvaMontoBs.toFixed(2)),
+1033:         retencion_islr_monto_bs: Number(totals.retIslrMontoBs.toFixed(2)),
+1034:         neto_cobrar_bs: Number(totals.netoCobrarBs.toFixed(2)),
+1035:         total_bs: Number(totals.totalBs.toFixed(2)),
+1036:         saldo_pendiente_bs: selectedCondition === 'credito' ? Number(totals.netoCobrarBs.toFixed(2)) : 0,
+1037:         estado: selectedCondition === 'credito' ? 'emitida' : 'cobrada',
+1038:         banco_id: selectedCondition === 'contado' && cobranzaForm.pagos.length > 0 ? cobranzaForm.pagos[0].bancoId : undefined,
+1039:         comprobante_id: voucherId,
+1040:         cxc_id: selectedCondition === 'credito' ? cxcDocId : undefined,
+1041:         notas: notes.trim(),
+1042:         created_at: new Date().toISOString()
+1043:       };
+1044: 
+1045:       onSave?.('facturasVenta', newFactura);
+1046: 
+1047:       // 2. Descontar Stock de Inventario y Registrar Kardex
+1048:       items.forEach(item => {
+1049:         if (item.producto_id) {
+1050:           const originalProd = products.find(p => p.id === item.producto_id);
+1051:           if (originalProd) {
+1052:             const currentStock = Number(originalProd.stock_actual) || 0;
+1053:             const newStock = Math.max(0, currentStock - (Number(item.cantidad) || 0));
+1054: 
+1055:             onSave?.('products', {
+1056:               ...originalProd,
+1057:               stock_actual: newStock,
+1058:               updated_at: new Date().toISOString()
+1059:             });
+1060: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

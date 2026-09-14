@@ -1,0 +1,159 @@
+Created At: 2026-09-12T18:50:33-04:00
+Completed At: 2026-09-12T18:50:33-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3397
+Total Bytes: 163973
+Showing lines 500 to 650
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+500: 
+501:         if (newCurrency === 'VES') {
+502:           // AL CAMBIAR A BOLÍVARES: Tomar el precio del producto y multiplicarlo por la tasa de cambio
+503:           if (prod && Number(prod.precio_venta) > 0) {
+504:             newUnitPrice = Number(prod.precio_venta) * exchangeRate;
+505:           } else if (newUnitPrice > 0 && exchangeRate > 0) {
+506:             newUnitPrice = newUnitPrice * exchangeRate;
+507:           }
+508:         } else {
+509:           // AL CAMBIAR A DÓLARES: Restaurar el precio base del producto en USD o dividir por la tasa
+510:           if (prod && Number(prod.precio_venta) > 0) {
+511:             newUnitPrice = Number(prod.precio_venta);
+512:           } else if (newUnitPrice > 0 && exchangeRate > 0) {
+513:             newUnitPrice = newUnitPrice / exchangeRate;
+514:           }
+515:         }
+516: 
+517:         newUnitPrice = Number(newUnitPrice.toFixed(2));
+518:         const isExempt = item.exento;
+519:         const lineSubtotal = Number((qty * newUnitPrice).toFixed(2));
+520:         const lineIva = isExempt ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+521: 
+522:         return {
+523:           ...item,
+524:           precio_unitario: newUnitPrice,
+525:           subtotal: lineSubtotal,
+526:           iva_monto: lineIva,
+527:           total: Number((lineSubtotal + lineIva).toFixed(2))
+528:         };
+529:       });
+530:     });
+531: 
+532:     if (showToast) {
+533:       showToast(
+534:         newCurrency === 'VES'
+535:           ? `Precios convertidos a Bolívares (Tasa: Bs. ${exchangeRate.toFixed(2)})`
+536:           : 'Precios convertidos a Dólares ($)',
+537:         'info'
+538:       );
+539:     }
+540:   };
+541: 
+542:   const recalculateItemsInVES = (customRate?: number) => {
+543:     const rate = customRate || exchangeRate;
+544:     if (rate <= 0) return;
+545: 
+546:     setItems(prevItems => {
+547:       return prevItems.map(item => {
+548:         if (!item.producto_id && !item.descripcion && !item.precio_unitario) {
+549:           return item;
+550:         }
+551: 
+552:         const qty = Number(item.cantidad) || 1;
+553:         const prod = products.find(p => p.id === item.producto_id);
+554: 
+555:         let newUnitPrice = Number(item.precio_unitario) || 0;
+556:         if (prod && Number(prod.precio_venta) > 0) {
+557:           newUnitPrice = Number(prod.precio_venta) * rate;
+558:         } else if (currency === 'VES' && newUnitPrice > 0 && exchangeRate > 0) {
+559:           newUnitPrice = (newUnitPrice / exchangeRate) * rate;
+560:         }
+561: 
+562:         newUnitPrice = Number(newUnitPrice.toFixed(2));
+563:         const isExempt = item.exento;
+564:         const lineSubtotal = Number((qty * newUnitPrice).toFixed(2));
+565:         const lineIva = isExempt ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+566: 
+567:         return {
+568:           ...item,
+569:           precio_unitario: newUnitPrice,
+570:           subtotal: lineSubtotal,
+571:           iva_monto: lineIva,
+572:           total: Number((lineSubtotal + lineIva).toFixed(2))
+573:         };
+574:       });
+575:     });
+576: 
+577:     showToast?.(`Precios recalculados a la tasa de Bs. ${rate.toFixed(2)}`, 'success');
+578:   };
+579: 
+580:   const handleOpenNewCustomerModal = () => {
+581:     setCustomerModalForm({
+582:       name: '',
+583:       isCompany: true,
+584:       taxIdPrefix: 'J',
+585:       taxIdNumber: '',
+586:       email: '',
+587:       phone: '',
+588:       personaContacto: '',
+589:       cargo: '',
+590:       address: '',
+591:       debitAccount: '',
+592:       creditAccount: ''
+593:     });
+594:     setCustomerAccountError(null);
+595:     setActiveCustomerModalTab('info');
+596:     setIsNewCustomerModalOpen(true);
+597:   };
+598: 
+599:   const handleSaveCustomerFromModal = (e: React.FormEvent) => {
+600:     e.preventDefault();
+601:     if (!customerModalForm.name.trim()) {
+602:       showToast?.('El nombre o razón social es obligatorio', 'error');
+603:       return;
+604:     }
+605: 
+606:     // Validación obligatoria de cuentas contables vinculadas manualmente
+607:     if (!customerModalForm.debitAccount?.trim() || !customerModalForm.creditAccount?.trim()) {
+608:       setActiveCustomerModalTab('contabilidad');
+609:       const msg = !customerModalForm.debitAccount?.trim() && !customerModalForm.creditAccount?.trim()
+610:         ? 'Debe vincular las cuentas contables (Cuenta por Cobrar y Anticipo) de forma manual antes de registrar el cliente'
+611:         : !customerModalForm.debitAccount?.trim()
+612:           ? 'Debe vincular la Cuenta por Cobrar del cliente de forma manual'
+613:           : 'Debe vincular la Cuenta de Anticipo del cliente de forma manual';
+614:       setCustomerAccountError(msg);
+615:       showToast?.(msg, 'error');
+616:       return;
+617:     }
+618: 
+619:     const fullTaxId = customerModalForm.taxIdNumber.trim()
+620:       ? `${customerModalForm.taxIdPrefix}-${customerModalForm.taxIdNumber.trim().toUpperCase()}`
+621:       : `${customerModalForm.taxIdPrefix}-00000000-0`;
+622: 
+623:     const newContact = {
+624:       id: `ct_${Date.now()}`,
+625:       name: customerModalForm.name.trim(),
+626:       type: 'customer',
+627:       taxId: fullTaxId,
+628:       email: customerModalForm.email.trim(),
+629:       phone: customerModalForm.phone.trim(),
+630:       address: customerModalForm.address.trim(),
+631:       isCompany: customerModalForm.isCompany,
+632:       personaContacto: customerModalForm.personaContacto.trim(),
+633:       cargo: customerModalForm.cargo.trim(),
+634:       debitAccount: customerModalForm.debitAccount,
+635:       creditAccount: customerModalForm.creditAccount,
+636:       saldo: 0,
+637:       activo: true,
+638:       created_at: new Date().toISOString()
+639:     };
+640: 
+641:     onSave?.('contactos', newContact);
+642:     handleSelectCustomer(newContact);
+643:     setIsNewCustomerModalOpen(false);
+644:     showToast?.('Cliente registrado y seleccionado en la factura', 'success');
+645:   };
+646: 
+647:   // Manejo de Items
+648:   const handleAddItem = () => {
+649:     setItems(prev => [
+650:       ...prev,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

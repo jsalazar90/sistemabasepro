@@ -1,0 +1,119 @@
+Created At: 2026-09-12T18:50:37-04:00
+Completed At: 2026-09-12T18:50:37-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3397
+Total Bytes: 163973
+Showing lines 1150 to 1260
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1150:               updated_at: new Date().toISOString()
+1151:             });
+1152: 
+1153:             const fueSinStock = currentStock <= 0 || (currentStock - cantFacturada < 0);
+1154:             onSave?.('movimientosInventario', {
+1155:               id: `mov_vta_${Date.now()}_${item.id}`,
+1156:               empresa_id: '',
+1157:               producto_id: originalProd.id,
+1158:               producto_nombre: originalProd.nombre,
+1159:               producto_codigo: originalProd.codigo,
+1160:               tipo: 'venta',
+1161:               cantidad: cantFacturada,
+1162:               stock_anterior: currentStock,
+1163:               stock_resultante: newStock,
+1164:               costo_unitario: originalProd.costo_unitario,
+1165:               referencia: `Venta Factura ${newFactura.numero}${fueSinStock ? ' [Stock 0 Aut. Master]' : ''}`,
+1166:               fecha: issueDate,
+1167:               usuario: 'Administrador',
+1168:               created_at: new Date().toISOString()
+1169:             });
+1170:           }
+1171:         }
+1172:       });
+1173: 
+1174:       // 3. Crear CxC si es a Crédito asociada al cliente (Moneda base: USD)
+1175:       if (selectedCondition === 'credito') {
+1176:         const montoCxCUSD = Number(totals.netoCobrarUSD.toFixed(2));
+1177:         const montoCxCBs = Number(totals.netoCobrarBs.toFixed(2));
+1178: 
+1179:         onSave?.('cxc', {
+1180:           id: cxcDocId,
+1181:           factura_id: newFactura.numero,
+1182:           factura: newFactura.numero,
+1183:           numero: newFactura.numero,
+1184:           factura_db_id: newFactura.id,
+1185:           cliente_id: effectiveCustomerId || newFactura.cliente_id,
+1186:           cliente: newFactura.cliente_nombre,
+1187:           cliente_nombre: newFactura.cliente_nombre,
+1188:           cliente_rif: newFactura.cliente_rif,
+1189:           taxId: newFactura.cliente_rif,
+1190:           categoria: 'clientes',
+1191:           fecha: issueDate,
+1192:           fecha_emision: issueDate,
+1193:           vencimiento: calculatedDueDate,
+1194:           fecha_vencimiento: calculatedDueDate,
+1195:           descripcion: `Factura de Venta ${newFactura.numero}`,
+1196:           tipo: 'factura',
+1197:           total: montoCxCUSD,
+1198:           monto: montoCxCUSD,
+1199:           monto_total: montoCxCUSD,
+1200:           saldo: montoCxCUSD,
+1201:           saldo_pendiente: montoCxCUSD,
+1202:           monto_bs: montoCxCBs,
+1203:           saldo_bs: montoCxCBs,
+1204:           moneda: 'USD',
+1205:           tasa: exchangeRate,
+1206:           tasa_cambio: exchangeRate,
+1207:           estado: 'pendiente',
+1208:           metadata: {
+1209:             factura_id: newFactura.id,
+1210:             factura_numero: newFactura.numero,
+1211:             control_numero: newFactura.control_numero,
+1212:             moneda: 'USD',
+1213:             moneda_presentacion: currency,
+1214:             tasa_cambio: exchangeRate,
+1215:             cliente_rif: newFactura.cliente_rif,
+1216:             monto_original: montoCxCUSD,
+1217:             monto_bs: montoCxCBs,
+1218:             monto_usd: montoCxCUSD
+1219:           },
+1220:           created_at: new Date().toISOString()
+1221:         });
+1222:       }
+1223: 
+1224:       // 4. Registrar Cobranza y Movimiento Bancario o Lote POS si fue de Contado
+1225:       if (selectedCondition === 'contado') {
+1226:         cobranzaForm.pagos.forEach(async (pago, idx) => {
+1227:           const isPos = pago.metodoPago === 'Punto de Venta';
+1228:           const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
+1229:           const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
+1230: 
+1231:           if (isPos) {
+1232:             // Acumular en el Lote Abierto del Terminal POS
+1233:             const termId = pago.terminalId || (terminalesPos.length > 0 ? terminalesPos[0].id : 'pos_term_1');
+1234:             const termObj = terminalesPos.find(t => t.id === termId);
+1235:             
+1236:             try {
+1237:               const existingLotes = await dbFetchLotesPos();
+1238:               let openLote = existingLotes.find((l: any) => l.terminal_id === termId && l.estado === 'abierto');
+1239:               if (!openLote) {
+1240:                 openLote = {
+1241:                   id: `lote_${Date.now()}_${idx}`,
+1242:                   terminal_id: termId,
+1243:                   terminal_nombre: termObj ? termObj.nombre : 'Punto de Venta',
+1244:                   banco_id: termObj ? termObj.banco_id : (bancos.length > 0 ? bancos[0].id : ''),
+1245:                   lote_numero: 'EN CURSO',
+1246:                   fecha_apertura: issueDate,
+1247:                   total_operaciones: 0,
+1248:                   monto_bruto_sistema: 0,
+1249:                   monto_bruto_ticket: 0,
+1250:                   diferencia: 0,
+1251:                   comision_monto: 0,
+1252:                   monto_neto_banco: 0,
+1253:                   estado: 'abierto',
+1254:                   transacciones: []
+1255:                 };
+1256:               }
+1257: 
+1258:               const newTx: LotePosTransaccion = {
+1259:                 id: `tx_pos_${Date.now()}_${idx}`,
+1260:                 factura_id: newFactura.id,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

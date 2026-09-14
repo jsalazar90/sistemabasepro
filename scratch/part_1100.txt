@@ -1,0 +1,79 @@
+Created At: 2026-09-12T17:38:16-04:00
+Completed At: 2026-09-12T17:38:16-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3003
+Total Bytes: 144602
+Showing lines 1100 to 1170
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1100:           vencimiento: calculatedDueDate,
+1101:           fecha_vencimiento: calculatedDueDate,
+1102:           descripcion: `Factura de Venta ${newFactura.numero}`,
+1103:           tipo: 'factura',
+1104:           total: montoCxCUSD,
+1105:           monto: montoCxCUSD,
+1106:           monto_total: montoCxCUSD,
+1107:           saldo: montoCxCUSD,
+1108:           saldo_pendiente: montoCxCUSD,
+1109:           monto_bs: montoCxCBs,
+1110:           saldo_bs: montoCxCBs,
+1111:           moneda: 'USD',
+1112:           tasa: exchangeRate,
+1113:           tasa_cambio: exchangeRate,
+1114:           estado: 'pendiente',
+1115:           metadata: {
+1116:             factura_id: newFactura.id,
+1117:             factura_numero: newFactura.numero,
+1118:             control_numero: newFactura.control_numero,
+1119:             moneda: 'USD',
+1120:             moneda_presentacion: currency,
+1121:             tasa_cambio: exchangeRate,
+1122:             cliente_rif: newFactura.cliente_rif,
+1123:             monto_original: montoCxCUSD,
+1124:             monto_bs: montoCxCBs,
+1125:             monto_usd: montoCxCUSD
+1126:           },
+1127:           created_at: new Date().toISOString()
+1128:         });
+1129:       }
+1130: 
+1131:       // 4. Registrar Cobranza y Movimiento Bancario si fue de Contado
+1132:       if (selectedCondition === 'contado') {
+1133:         cobranzaForm.pagos.forEach((pago, idx) => {
+1134:           const bank = bancos.find(b => b.id === pago.bancoId);
+1135:           if (bank) {
+1136:             const isBankVES = bank.moneda === 'VES' || bank.moneda === 'Bs';
+1137:             const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
+1138:             const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
+1139: 
+1140:             onSave?.('movimientosBancos', {
+1141:               id: `mov_bnk_${Date.now()}_${idx}`,
+1142:               banco_id: bank.id,
+1143:               fecha: issueDate,
+1144:               ref: pago.referencia || newFactura.numero,
+1145:               descripcion: `Ingreso Cobranza Factura ${newFactura.numero} (${customerName})`,
+1146:               tipo: 'ingreso',
+1147:               monto: isBankVES ? pagoMontoBsNum : pagoMontoNum,
+1148:               tasa: exchangeRate,
+1149:               estado: 'conciliado',
+1150:               comprobante_id: voucherId,
+1151:               created_at: new Date().toISOString()
+1152:             });
+1153:           }
+1154:         });
+1155:       }
+1156: 
+1157:       // 5. Guardar Asiento Contable
+1158:       if (pendingVoucher) {
+1159:         onSave?.('comprobantes', pendingVoucher);
+1160:       }
+1161: 
+1162:       // 6. Incrementar correlativo
+1163:       if (configContable) {
+1164:         const numPart = parseInt(configContable.correlativoFactura || '1', 10);
+1165:         const nextCorrelativo = String(numPart + 1).padStart(5, '0');
+1166:         onSave?.('configContable', {
+1167:           ...configContable,
+1168:           correlativoFactura: nextCorrelativo
+1169:         });
+1170:       }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

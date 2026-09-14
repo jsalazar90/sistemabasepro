@@ -1,0 +1,34 @@
+Created At: 2026-09-12T18:58:20-04:00
+Completed At: 2026-09-12T18:58:21-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3504
+Total Bytes: 168966
+Showing lines 20 to 45
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+20: 
+21: export default function InvoiceForm({
+22:   contactos = [],
+23:   products = [],
+24:   cuentasContables = [],
+25:   bancos = [],
+26:   configContable,
+27:   onSave,
+28:   showToast,
+29:   workingYear,
+30:   isModal = false,
+31:   onClose,
+32:   empresa
+33: }: {
+34:   contactos?: any[];
+35:   products?: ProductModel[];
+36:   cuentasContables?: any[];
+37:   bancos?: any[];
+38:   configContable?: any;
+39:   onSave?: (collection: string, data: any) => void;
+40:   showToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
+41:   workingYear?: string;
+42:   isModal?: boolean;
+43:   onClose?: () => void;
+44:   empresa?: any;
+45: }) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

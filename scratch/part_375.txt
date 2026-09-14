@@ -1,0 +1,49 @@
+Created At: 2026-09-12T16:59:03-04:00
+Completed At: 2026-09-12T16:59:03-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2724
+Total Bytes: 132134
+Showing lines 375 to 415
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+375:         updated.push(newItem);
+376:       }
+377:       return updated;
+378:     });
+379: 
+380:     setIsProductModalOpen(false);
+381:     setActiveItemIndexForProduct(null);
+382:     showToast?.(`Artículo "${prod.nombre}" añadido a la factura`, 'success');
+383:   };
+384: 
+385:   const handleOpenNewCustomerModal = () => {
+386:     setCustomerModalForm({
+387:       name: '',
+388:       isCompany: true,
+389:       taxIdPrefix: 'J',
+390:       taxIdNumber: '',
+391:       email: '',
+392:       phone: '',
+393:       personaContacto: '',
+394:       cargo: '',
+395:       address: '',
+396:       debitAccount: '',
+397:       creditAccount: ''
+398:     });
+399:     setCustomerAccountError(null);
+400:     setActiveCustomerModalTab('info');
+401:     setIsNewCustomerModalOpen(true);
+402:   };
+403: 
+404:   const handleSaveCustomerFromModal = (e: React.FormEvent) => {
+405:     e.preventDefault();
+406:     if (!customerModalForm.name.trim()) {
+407:       showToast?.('El nombre o razón social es obligatorio', 'error');
+408:       return;
+409:     }
+410: 
+411:     // Validación obligatoria de cuentas contables vinculadas manualmente
+412:     if (!customerModalForm.debitAccount?.trim() || !customerModalForm.creditAccount?.trim()) {
+413:       setActiveCustomerModalTab('contabilidad');
+414:       const msg = !customerModalForm.debitAccount?.trim() && !customerModalForm.creditAccount?.trim()
+415:         ? 'Debe vincular las cuentas contables (Cuenta por Cobrar y Anticipo) de forma manual antes de registrar el cliente'
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

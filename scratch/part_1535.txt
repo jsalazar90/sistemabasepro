@@ -1,0 +1,34 @@
+Created At: 2026-09-12T18:57:56-04:00
+Completed At: 2026-09-12T18:57:56-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3542
+Total Bytes: 170575
+Showing lines 1535 to 1560
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1535:           <button
+1536:             type="button"
+1537:             onClick={handleResetForm}
+1538:             className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-rose-400 border border-slate-700 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+1539:             title="Limpiar formulario y reiniciar documento"
+1540:           >
+1541:             <Trash2 size={13} />
+1542:             <span className="hidden sm:inline">Limpiar</span>
+1543:           </button>
+1544:           <button
+1545:             type="submit"
+1546:             form="invoice-main-form"
+1547:             className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-indigo-500/25 transition cursor-pointer"
+1548:           >
+1549:             <Save size={14} />
+1550:             <span>EMITIR FACTURA (F2)</span>
+1551:           </button>
+1552:           {isModal && (
+1553:             <button
+1554:               type="button"
+1555:               onClick={onClose}
+1556:               className="w-7 h-7 rounded-full bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white flex items-center justify-center transition font-bold text-xs cursor-pointer border border-slate-700 hover:border-rose-500 shrink-0 ml-1"
+1557:               title="Cerrar ventana"
+1558:             >
+1559:               <X size={14} />
+1560:             </button>
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

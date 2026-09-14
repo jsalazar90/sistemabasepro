@@ -1,0 +1,38 @@
+Created At: 2026-09-12T17:39:08-04:00
+Completed At: 2026-09-12T17:39:09-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 3097
+Total Bytes: 150001
+Showing lines 2946 to 2975
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+2946:                         <th className="px-3.5 py-2.5">Artículo / Categoría</th>
+2947:                         <th className="px-3.5 py-2.5 w-32 text-center">Stock Actual</th>
+2948:                         <th className="px-3.5 py-2.5 w-32 text-right">Precio Ref. ($)</th>
+2949:                         <th className="px-3.5 py-2.5 w-32 text-right">
+2950:                           Precio ({currency === 'USD' ? '$' : 'Bs.'})
+2951:                         </th>
+2952:                         <th className="px-3.5 py-2.5 w-20 text-center">IVA</th>
+2953:                         <th className="px-3.5 py-2.5 w-28 text-center">Acción</th>
+2954:                       </tr>
+2955:                     </thead>
+2956:                     <tbody className="divide-y divide-slate-100">
+2957:                       {filteredProducts.map(prod => {
+2958:                         const isOutOfStock = (Number(prod.stock_actual) || 0) <= 0;
+2959:                         const isLowStock = !isOutOfStock && (Number(prod.stock_actual) <= (Number(prod.stock_minimo) || 5));
+2960:                         
+2961:                         // Precio en la moneda activa de la factura
+2962:                         let displayPriceInCurrency = prod.precio_venta || 0;
+2963:                         if (currency === 'VES' && exchangeRate > 0) {
+2964:                           displayPriceInCurrency = displayPriceInCurrency * exchangeRate;
+2965:                         }
+2966: 
+2967:                         return (
+2968:                           <tr
+2969:                             key={prod.id}
+2970:                             onClick={() => handleSelectProductFromModal(prod)}
+2971:                             className="hover:bg-indigo-50/60 cursor-pointer transition group"
+2972:                           >
+2973:                             <td className="px-3.5 py-3">
+2974:                               <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+2975:                                 {prod.codigo}
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

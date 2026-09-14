@@ -3,6 +3,7 @@ import { useNavigate, useLocation, Link, useParams } from 'react-router-dom';
 import { useCompany } from '../context/CompanyContext';
 import { PrintPreview } from '../components/PrintPreview';
 import CuentaContableModal from '../components/common/CuentaContableModal';
+import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import BackButton from '../components/common/BackButton';
 import { 
   Landmark, Plus, ArrowRightLeft, BarChart3, PiggyBank, Pencil, X, Save, 
@@ -10,7 +11,8 @@ import {
   Ban, LogOut, LogIn, CheckCircle, FileSpreadsheet, ArrowLeft, ChevronLeft, 
   ChevronRight, Wallet, Activity, Printer, ShieldAlert, UserCheck, Receipt, Search, Check, Trash2,
   Info, Coins, Scale, RefreshCw, HelpCircle, ArrowRight, Image, Eye, User, History,
-  ArrowDownLeft, ArrowUpRight, Inbox, Calendar, Copy, Filter, DollarSign
+  ArrowDownLeft, ArrowUpRight, Inbox, Calendar, Copy, Filter, DollarSign, CreditCard,
+  ChevronDown, ChevronUp, Sparkles
 } from 'lucide-react';
 
 // Utilidad para formatear moneda
@@ -128,346 +130,6 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         <button onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages} className="px-3 md:px-4 py-1.5 text-[10px] md:text-[11px] font-bold uppercase rounded-lg flex items-center gap-1 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-colors">
           Sig <ChevronRight className="w-3.5 h-3.5" />
         </button>
-      </div>
-    </div>
-  );
-};
-
-const VoucherPreviewModal = ({ 
-  isOpen, 
-  onClose, 
-  initialComprobante, 
-  cuentasContables = [], 
-  onConfirm,
-  showToast
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  initialComprobante: any; 
-  cuentasContables: any[]; 
-  onConfirm: (finalComprobante: any) => void; 
-  showToast?: (msg: string, type: string) => void;
-}) => {
-  const [comprobante, setComprobante] = useState<any>(null);
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (initialComprobante) {
-      setComprobante(JSON.parse(JSON.stringify(initialComprobante))); // Deep clone
-    }
-  }, [initialComprobante]);
-
-  if (!isOpen || !comprobante) return null;
-
-  const handleLineChange = (index: number, field: string, value: any) => {
-    const updatedLineas = [...comprobante.lineas];
-    updatedLineas[index] = { ...updatedLineas[index], [field]: value };
-    
-    // Recalculate totals
-    const totalDebe = updatedLineas.reduce((acc, curr) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc, curr) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
-
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const handleAddLine = () => {
-    const newLine = {
-      id: `l-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-      cuentaId: '',
-      descripcion: comprobante.descripcion || 'Línea de Comprobante',
-      debe: 0,
-      haber: 0
-    };
-    setComprobante({
-      ...comprobante,
-      lineas: [...comprobante.lineas, newLine]
-    });
-  };
-
-  const handleRemoveLine = (index: number) => {
-    const updatedLineas = comprobante.lineas.filter((_: any, i: number) => i !== index);
-    const totalDebe = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-    const totalHaber = updatedLineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-    const isBalanced = Math.abs(totalDebe - totalHaber) < 0.01;
-
-    setComprobante({
-      ...comprobante,
-      lineas: updatedLineas,
-      total: Math.max(totalDebe, totalHaber),
-      estado: isBalanced ? 'Contabilizado' : 'Descuadrado'
-    });
-  };
-
-  const totalDebe = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.debe) || 0), 0);
-  const totalHaber = comprobante.lineas.reduce((acc: number, curr: any) => acc + (Number(curr.haber) || 0), 0);
-  const diff = totalDebe - totalHaber;
-  const isBalanced = Math.abs(diff) < 0.01;
-
-  const activeCuentas = cuentasContables
-    .filter(c => c.tipo === 'Movimiento')
-    .sort((a,b)=>(a.codigo||'').localeCompare(b.codigo||''));
-
-  const formatES = (num: number | string) => {
-    if (num === undefined || num === null || num === "") return "0,00";
-    const parsed = typeof num === 'string' ? parseFloat(num) : num;
-    if (isNaN(parsed)) return "0,00";
-    return parsed.toLocaleString('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  };
-
-  const handleConfirmClick = async () => {
-    if (isSaving) return;
-
-    // Validate that all line items have a valid cuentaId selected
-    const hasEmptyCuenta = comprobante.lineas.some((l: any) => !l.cuentaId);
-    if (hasEmptyCuenta) {
-      if (showToast) {
-        showToast('Debe seleccionar una cuenta contable para todas las líneas del asiento.', 'error');
-      }
-      return;
-    }
-
-    // Validate that there are no empty line items with 0 in both columns
-    const hasZeroAmount = comprobante.lineas.some((l: any) => (Number(l.debe) || 0) === 0 && (Number(l.haber) || 0) === 0);
-    if (hasZeroAmount) {
-      if (showToast) {
-        showToast('Todas las líneas del asiento deben tener un monto en el Debe o en el Haber.', 'error');
-      }
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      // Clean up values: force float parsing for debits/credits to store numbers instead of strings in database
-      const cleanLineas = (comprobante.lineas || []).map((l: any) => ({
-        ...l,
-        debe: parseFloat(String(l.debe || 0)) || 0,
-        haber: parseFloat(String(l.haber || 0)) || 0
-      }));
-      const cleanComp = {
-        ...comprobante,
-        lineas: cleanLineas,
-        total: parseFloat(String(comprobante.total || 0)) || 0
-      };
-
-      await onConfirm(cleanComp);
-    } catch (error: any) {
-      console.error("Error confirming voucher:", error);
-      if (showToast) {
-        showToast(`Error: ${error?.message || String(error)}`, 'error');
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
-        <div className="bg-gradient-to-r from-violet-700 to-indigo-700 p-6 text-white flex justify-between items-center shrink-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-indigo-500/30 text-indigo-200 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider">
-                Previsualización de Asiento
-              </span>
-              {!isBalanced && (
-                <span className="bg-red-500 text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider animate-pulse">
-                  Descuadrado
-                </span>
-              )}
-            </div>
-            <h3 className="text-xl font-black mt-1">Revisión de Comprobante Contable</h3>
-            <p className="text-xs text-indigo-200 font-medium mt-0.5">Asigne las cuentas contables correctas para evitar errores de comprobantes.</p>
-          </div>
-          <button 
-            type="button"
-            onClick={onClose} 
-            disabled={isSaving}
-            className="p-2 text-indigo-200 hover:text-white hover:bg-white/10 rounded-lg transition-colors disabled:opacity-50"
-          >
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 space-y-6 overflow-y-auto flex-1 bg-slate-50/50">
-          <div className="bg-white p-4 rounded-xl border border-slate-200/65 shadow-sm grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Número de Comprobante</label>
-              <p className="text-sm font-bold text-slate-800 mt-1">{comprobante.numero}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Fecha de Registro</label>
-              <input
-                type="date"
-                className="w-full px-2 py-1 mt-1 bg-slate-50 border border-slate-200 rounded text-sm font-bold text-slate-700 outline-none"
-                value={comprobante.fecha}
-                onChange={e => setComprobante({ ...comprobante, fecha: e.target.value })}
-                disabled={isSaving}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Referencia Física / ID</label>
-              <p className="text-sm font-mono font-bold text-slate-700 mt-1">{comprobante.referencia}</p>
-            </div>
-            <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Estado Comprobante</label>
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold mt-1 shadow-sm ${isBalanced ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                <span className={`w-2 h-2 rounded-full ${isBalanced ? 'bg-emerald-500' : 'bg-red-500 animate-ping'}`} />
-                {isBalanced ? 'Listo' : 'Por cuadrar'}
-              </span>
-            </div>
-            <div className="col-span-1 md:col-span-4 border-t border-slate-100 pt-3">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Descripción Principal</label>
-              <input
-                type="text"
-                className="w-full px-3 py-1.5 mt-1 bg-slate-50 border border-slate-200 rounded-lg text-sm font-bold text-slate-700 outline-none focus:border-indigo-500"
-                value={comprobante.descripcion}
-                onChange={e => setComprobante({ ...comprobante, descripcion: e.target.value })}
-                disabled={isSaving}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalle del Asiento (Partida Doble)</span>
-              <button
-                type="button"
-                onClick={handleAddLine}
-                disabled={isSaving}
-                className="px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-lg border border-indigo-200 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <Plus size={14} />
-                Agregar Línea
-              </button>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200/80 shadow-md overflow-hidden">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                    <th className="py-3 px-4 w-1/3">Cuenta Contable</th>
-                    <th className="py-3 px-4 w-2/5">Descripción de Línea</th>
-                    <th className="py-3 px-4 text-right w-24">Debe ($)</th>
-                    <th className="py-3 px-4 text-right w-24">Haber ($)</th>
-                    <th className="py-3 px-4 text-center w-10"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {comprobante.lineas.map((line: any, index: number) => (
-                    <tr key={line.id} className="hover:bg-slate-50/50 transition-colors font-medium">
-                      <td className="p-2">
-                        <select
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs font-bold focus:border-indigo-500 outline-none max-w-md disabled:bg-slate-100"
-                          value={line.cuentaId}
-                          onChange={e => handleLineChange(index, 'cuentaId', e.target.value)}
-                          disabled={isSaving}
-                        >
-                          <option value="">Seleccione cuenta...</option>
-                          {activeCuentas.map(c => (
-                            <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          className="w-full p-2 border border-slate-200 rounded-lg text-xs focus:border-indigo-500 outline-none disabled:bg-slate-100"
-                          value={line.descripcion}
-                          onChange={e => handleLineChange(index, 'descripcion', e.target.value)}
-                          disabled={isSaving}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none disabled:bg-slate-100"
-                          value={line.debe || ''}
-                          onChange={e => handleLineChange(index, 'debe', e.target.value)}
-                          disabled={isSaving}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-24 p-2 text-right border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none disabled:bg-slate-100"
-                          value={line.haber || ''}
-                          onChange={e => handleLineChange(index, 'haber', e.target.value)}
-                          disabled={isSaving}
-                        />
-                      </td>
-                      <td className="p-2 text-center text-slate-400">
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveLine(index)}
-                          className="p-1.5 text-slate-400 hover:text-red-500 rounded hover:bg-slate-100/60 transition-colors disabled:opacity-50"
-                          title="Eliminar línea"
-                          disabled={comprobante.lineas.length <= 1 || isSaving}
-                        >
-                          <X size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <div className="bg-slate-50 p-4 border-t border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div className="text-slate-500 flex flex-wrap gap-4 text-xs font-semibold">
-                  <span>Diferencia: 
-                    <span className={`ml-1.5 font-bold ${isBalanced ? 'text-emerald-600' : 'text-red-600'}`}>
-                      $ {formatES(diff)}
-                    </span>
-                  </span>
-                  <span>Líneas: <span className="text-slate-800 font-bold">{comprobante.lineas.length}</span></span>
-                </div>
-                <div className="flex gap-6 text-sm font-bold text-slate-700">
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Debe</p>
-                    <p className="text-base text-indigo-700">$ {formatES(totalDebe)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400 uppercase font-black">Total Haber</p>
-                    <p className="text-base text-violet-700">$ {formatES(totalHaber)}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl text-sm font-bold text-slate-500 hover:bg-slate-200/80 transition-colors disabled:opacity-50"
-          >
-            Cancelar
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirmClick}
-            disabled={!isBalanced || isSaving}
-            className={`px-6 py-2.5 rounded-xl text-sm font-black text-white shadow-sm flex items-center gap-2 transition-colors ${isBalanced && !isSaving ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-300 cursor-not-allowed text-slate-500'}`}
-          >
-            {isSaving ? (
-              <RefreshCw className="w-4 h-4 animate-spin" />
-            ) : (
-              <CheckCircle size={16} />
-            )}
-            {isSaving ? 'Registrando...' : 'Confirmar y Registrar'}
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -671,7 +333,9 @@ export default function BancosView({
         m => m.ref && m.ref.toUpperCase() === `IN-${refCode.toUpperCase()}`
       );
       const comp = (comprobantes || []).find(
-        c => c.referencia && c.referencia.toUpperCase() === `TRF-${refCode.toUpperCase()}`
+        c => (c.referencia && c.referencia.toUpperCase() === `TRF-${refCode.toUpperCase()}`) ||
+             (outMov.comprobanteId && (c.id === outMov.comprobanteId || c.id === outMov.comprobante_id)) ||
+             (inMov?.comprobanteId && (c.id === inMov.comprobanteId || c.id === inMov.comprobante_id))
       );
 
       const bO = bancos.find(b => String(b.id) === String(outMov.banco_id));
@@ -747,7 +411,7 @@ export default function BancosView({
   };
 
   const fechaHoy = new Date().toISOString().split('T')[0];
-  const [cuentaForm, setCuentaForm] = useState({ banco: '', cuenta: '', tipo: 'Corriente', moneda: 'USD', tasa: '1', saldo: '0', saldoBs: '0', cuenta_contable_id: '' });
+  const [cuentaForm, setCuentaForm] = useState({ banco: '', cuenta: '', tipo: 'Corriente', moneda: 'USD', tasa: '1', saldo: '0', saldoBs: '0', cuenta_contable_id: '', es_caja: false, tipo_cuenta: 'nacional' });
   const [movForm, setMovForm] = useState({ tipo: 'ingreso', fecha: fechaHoy, ref: '', desc: '', monto: '', tasa: '1', montoBs: '', cuentaContrapartida: '', isCuarentena: false, soporteImagen: '' });
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [viewingComprobante, setViewingComprobante] = useState<any>(null);
@@ -974,6 +638,10 @@ export default function BancosView({
   const [sapsResult, setSapsResult] = useState(null);
   const [showSapsConfirmModal, setShowSapsConfirmModal] = useState(false);
   const [showSapsPrintOptionModal, setShowSapsPrintOptionModal] = useState(false);
+  const [showSapsGuide, setShowSapsGuide] = useState(false);
+  const [sapsTableSearch, setSapsTableSearch] = useState('');
+  const [sapsCustomConcept, setSapsCustomConcept] = useState('');
+  const [isApplyingSaps, setIsApplyingSaps] = useState(false);
   const [transferForm, setTransferForm] = useState({ origenId: '', destinoId: '', monto: '', concepto: '', tasaOrigen: '1', tasaDestino: '1', showModal: false });
   
   // Estado Modal Cobranza de Cuarentena
@@ -983,6 +651,8 @@ export default function BancosView({
 
   // Estado para busqueda de cuenta contable
   const [searchTerm, setSearchTerm] = useState('');
+  const [filterType, setFilterType] = useState<'todas' | 'bancos' | 'cajas' | 'USD' | 'VES'>('todas');
+  const [viewMode, setViewMode] = useState<'tarjetas' | 'lista'>('tarjetas');
   const [showCuentaModal, setShowCuentaModal] = useState(false);
 
   // Cálculos de Saldos Globales y Bimoneda
@@ -1005,6 +675,31 @@ export default function BancosView({
   }, [bancos, movimientosBancos]);
 
   const totalLiquidez = bancosConSaldos.reduce((acc, b) => acc + b.saldoUSD, 0);
+
+  const bancosOnlyCount = useMemo(() => bancosConSaldos.filter(b => !(b.es_caja || (b.tipo || '').toLowerCase().includes('caja'))).length, [bancosConSaldos]);
+  const cajasOnlyCount = useMemo(() => bancosConSaldos.filter(b => (b.es_caja || (b.tipo || '').toLowerCase().includes('caja'))).length, [bancosConSaldos]);
+
+  const filteredBancos = useMemo(() => {
+    return bancosConSaldos.filter(b => {
+      const q = searchTerm.trim().toLowerCase();
+      const matchSearch = !q || 
+        (b.banco && b.banco.toLowerCase().includes(q)) ||
+        (b.cuenta && b.cuenta.toLowerCase().includes(q)) ||
+        (b.tipo && b.tipo.toLowerCase().includes(q));
+
+      if (!matchSearch) return false;
+
+      const isCaja = !!(b.es_caja || (b.tipo || '').toLowerCase().includes('caja'));
+      const isVES = b.moneda === 'Bolivares';
+
+      if (filterType === 'bancos') return !isCaja;
+      if (filterType === 'cajas') return isCaja;
+      if (filterType === 'USD') return !isVES;
+      if (filterType === 'VES') return isVES;
+
+      return true;
+    });
+  }, [bancosConSaldos, searchTerm, filterType]);
   const totalLiquidezVES = bancosConSaldos.reduce((acc, b) => acc + (b.moneda === 'Bolivares' ? (b.saldoVES || 0) : 0), 0);
   const cuarentenaMovs = useMemo(() => {
     return movimientosBancos.filter(m => m.isCuarentena && m.estado !== 'anulado' && !m.cliente_asignado);
@@ -1033,15 +728,18 @@ export default function BancosView({
 
   const handleEditBanco = (banco) => {
     setEditBancoId(banco.id);
+    const isBox = !!(banco.es_caja || (banco.tipo || '').toLowerCase().includes('caja') || (banco.banco || '').toLowerCase().includes('caja'));
     setCuentaForm({ 
       banco: banco.banco || '', 
-      cuenta: banco.cuenta || '', 
-      tipo: banco.tipo || 'Corriente', 
+      cuenta: banco.cuenta || banco.numero_cuenta || '', 
+      tipo: banco.tipo || (isBox ? 'Caja General' : 'Corriente'), 
       moneda: banco.moneda || 'USD', 
       tasa: banco.tasa?.toString() || '1', 
       saldo: '0', 
       saldoBs: '0',
-      cuenta_contable_id: banco.cuenta_contable_id || '' 
+      cuenta_contable_id: banco.cuenta_contable_id || '',
+      es_caja: isBox,
+      tipo_cuenta: banco.tipo_cuenta || (banco.moneda === 'Bolivares' ? 'nacional' : 'internacional')
     });
     setSubView('nueva_cuenta');
   };
@@ -1049,8 +747,13 @@ export default function BancosView({
   const handleGuardarCuenta = async () => {
     if (!cuentaForm.banco || !cuentaForm.cuenta) return showToast("Faltan datos requeridos.", "error");
     const dataToSave: any = { 
-      banco: cuentaForm.banco, cuenta: cuentaForm.cuenta, tipo: cuentaForm.tipo, 
-      cuenta_contable_id: cuentaForm.cuenta_contable_id || null 
+      banco: cuentaForm.banco,
+      cuenta: cuentaForm.cuenta,
+      numero_cuenta: cuentaForm.cuenta,
+      tipo: cuentaForm.tipo, 
+      cuenta_contable_id: cuentaForm.cuenta_contable_id || null,
+      es_caja: !!cuentaForm.es_caja,
+      tipo_cuenta: cuentaForm.tipo_cuenta || (cuentaForm.moneda === 'Bolivares' ? 'nacional' : 'internacional')
     };
 
     try {
@@ -1058,7 +761,7 @@ export default function BancosView({
         const b = bancos.find(x => x.id === editBancoId);
         if(b.moneda === 'Bolivares') dataToSave.tasa = parseFloat(cuentaForm.tasa.toString()) || 1;
         await onSave('bancos', { ...b, ...dataToSave });
-        showToast("Banco actualizado.", "success");
+        showToast(cuentaForm.es_caja ? "Caja actualizada." : "Banco actualizado.", "success");
       } else {
         const newBancoId = generateId();
         const saldoInicial = parseFloat(cuentaForm.saldo.toString()) || 0;
@@ -1070,10 +773,10 @@ export default function BancosView({
         if (saldoInicial > 0) {
           await onSave('movimientosBancos', { id: generateId(), banco_id: newBancoId, fecha: fechaHoy, ref: "APER", descripcion: "Apertura de Cuenta", tipo: 'ingreso', monto: saldoInicial, tasa: dataToSave.tasa, montoBs: dataToSave.moneda === 'Bolivares' ? (saldoInicial * dataToSave.tasa).toFixed(2) : null, estado: 'activo', createdAt: Date.now() });
         }
-        showToast("Banco creado exitosamente.", "success");
+        showToast(cuentaForm.es_caja ? "Caja creada exitosamente." : "Banco creado exitosamente.", "success");
       }
       setEditBancoId(null); setSubView('cuentas');
-    } catch(e) { showToast("Error al guardar banco.", "error"); }
+    } catch(e) { showToast("Error al guardar cuenta.", "error"); }
   };
 
   // Libro Mayor Analítico
@@ -1320,6 +1023,7 @@ export default function BancosView({
       }))
     };
     await onSave('comprobantes', newComprobante);
+    return newComprobante;
   };
 
   const handleAttachFiles = (files: FileList) => {
@@ -2359,6 +2063,16 @@ export default function BancosView({
     );
   };
 
+  const handleOpenSapsConfirmModal = () => {
+    if (!sapsResult || sapsResult.tipo === 'none') return;
+    const banco = bancos.find(b => String(b.id) === String(sapsResult.bancoId));
+    const defaultDesc = sapsResult.tipo === 'ajuste_ganancia'
+      ? `Revalorización Cambiaria SAPS (FX a Favor) - ${banco?.banco || 'Banco'}`
+      : `Revalorización Cambiaria SAPS (FX en Contra) - ${banco?.banco || 'Banco'}`;
+    setSapsCustomConcept(defaultDesc);
+    setShowSapsConfirmModal(true);
+  };
+
   const handleAplicarSAPS = async () => {
     if(!sapsResult || sapsResult.tipo==='none') return;
 
@@ -2371,6 +2085,7 @@ export default function BancosView({
     }
 
     const banco = bancos.find(b => String(b.id) === String(sapsResult.bancoId));
+    setIsApplyingSaps(true);
     try {
       // Eliminar ajuste SAPS previo de la misma fecha si existe para evitar duplicidad
       const existingSaps = movimientosBancos.find(m => 
@@ -2387,25 +2102,76 @@ export default function BancosView({
       const existingComp = (comprobantes || []).find(c => 
         c.fecha === sapsResult.fecha && 
         c.referencia === 'AUTO-FX' &&
-        (c.descripcion || '').includes(banco.banco)
+        (c.descripcion || '').includes(banco?.banco || '')
       );
       if (existingComp) {
         await onSave('comprobantes', { id: existingComp.id, _delete: true });
       }
 
-      await onSave('movimientosBancos', { id: generateId(), banco_id: sapsResult.bancoId, fecha: sapsResult.fecha, ref: "AUTO-FX", descripcion: "Ajuste Cambiario Automático", tipo: sapsResult.tipo, monto: sapsResult.monto, tasa: sapsResult.tasaCierre || 0, estado: 'activo', createdAt: Date.now() });
+      const asientoDesc = sapsCustomConcept?.trim() || (sapsResult.tipo === 'ajuste_ganancia' 
+        ? `Revalorización Cambiaria SAPS (FX a Favor) - ${banco?.banco || 'Banco'}` 
+        : `Revalorización Cambiaria SAPS (FX en Contra) - ${banco?.banco || 'Banco'}`);
+
+      await onSave('movimientosBancos', { 
+        id: generateId(), 
+        banco_id: sapsResult.bancoId, 
+        fecha: sapsResult.fecha, 
+        ref: "AUTO-FX", 
+        descripcion: asientoDesc, 
+        tipo: sapsResult.tipo, 
+        monto: sapsResult.monto, 
+        tasa: sapsResult.tasaCierre || 0, 
+        estado: 'activo', 
+        createdAt: Date.now() 
+      });
+
       const ctaB = banco?.cuenta_contable_id || '1.1.3';
       const pG = configContable?.cuentaGananciaDiferencialCambiario || cuentasContables.find(c => (c.nombre || '').toLowerCase().includes('ganancia') && (c.nombre || '').toLowerCase().includes('cambio'))?.id || '4.1.1'; 
       const pP = configContable?.cuentaPerdidaDiferencialCambiario || cuentasContables.find(c => (c.nombre || '').toLowerCase().includes('pérdida') && (c.nombre || '').toLowerCase().includes('cambio'))?.id || '5.2.1'; 
 
+      const descLineBanco = sapsResult.tipo === 'ajuste_ganancia'
+        ? `Revalorización de saldo bancario a tasa BCV Bs. ${formatoES(sapsResult.tasaCierre)}`
+        : `Ajuste por devaluación / diferencial cambiario a tasa BCV Bs. ${formatoES(sapsResult.tasaCierre)}`;
+
+      const descLineResultado = sapsResult.tipo === 'ajuste_ganancia'
+        ? `Ganancia en cambio por revalorización de tesorería (SAPS)`
+        : `Pérdida en cambio por ajuste cambiario de tesorería (SAPS)`;
+
+      let compRes: any = null;
       if (sapsResult.tipo === 'ajuste_ganancia') {
-        await handleGenerarAsiento(sapsResult.fecha, 'SAPS', "AUTO-FX", `Ajuste FX Favor - ${banco.banco}`, [{ cuenta_id: ctaB, descripcion: `Revalorización`, debe: sapsResult.monto, haber: 0 }, { cuenta_id: pG, descripcion: `Ganancia Cambio`, debe: 0, haber: sapsResult.monto }]);
+        compRes = await handleGenerarAsiento(
+          sapsResult.fecha, 
+          'SAPS', 
+          "AUTO-FX", 
+          asientoDesc, 
+          [
+            { cuenta_id: ctaB, descripcion: descLineBanco, debe: sapsResult.monto, haber: 0 }, 
+            { cuenta_id: pG, descripcion: descLineResultado, debe: 0, haber: sapsResult.monto }
+          ]
+        );
       } else {
-        await handleGenerarAsiento(sapsResult.fecha, 'SAPS', "AUTO-FX", `Ajuste FX Contra - ${banco.banco}`, [{ cuenta_id: pP, descripcion: `Pérdida Cambio`, debe: sapsResult.monto, haber: 0 }, { cuenta_id: ctaB, descripcion: `Devaluación`, debe: 0, haber: sapsResult.monto }]);
+        compRes = await handleGenerarAsiento(
+          sapsResult.fecha, 
+          'SAPS', 
+          "AUTO-FX", 
+          asientoDesc, 
+          [
+            { cuenta_id: pP, descripcion: descLineResultado, debe: sapsResult.monto, haber: 0 }, 
+            { cuenta_id: ctaB, descripcion: descLineBanco, debe: 0, haber: sapsResult.monto }
+          ]
+        );
       }
-      showToast('Ajuste contable aplicado.', 'success'); 
-      setSapsResult(null); setSelectedBancoId(sapsResult.bancoId); setSubView('mayor_analitico');
-    } catch(e) { showToast('Error al aplicar SAPS.', 'error'); }
+
+      setShowSapsConfirmModal(false);
+      showToast(compRes?.numero ? `Asiento contable ${compRes.numero} registrado exitosamente.` : 'Ajuste contable aplicado.', 'success'); 
+      setSapsResult(null); 
+      setSelectedBancoId(sapsResult.bancoId); 
+      setSubView('mayor_analitico');
+    } catch(e) { 
+      showToast('Error al aplicar SAPS.', 'error'); 
+    } finally {
+      setIsApplyingSaps(false);
+    }
   };
 
   const handleEjecutarTraspaso = async () => {
@@ -2432,26 +2198,125 @@ export default function BancosView({
       return showToast(`Error: El banco destino tiene un cierre SAPS en ${lockDateDestino}. Use una fecha posterior.`, 'error');
     }
 
-    const bO = bancos.find(b=>String(b.id)===String(oId)); const bD = bancos.find(b=>String(b.id)===String(dId));
+    const bO = bancos.find(b => String(b.id) === String(oId));
+    const bD = bancos.find(b => String(b.id) === String(dId));
     const ref = Date.now().toString().slice(-5);
-    const cto = transferForm.concepto || 'Traspaso';
+    const rawConcepto = transferForm.concepto?.trim();
+    const cto = rawConcepto || `Traspaso de ${bO?.banco || 'Banco Origen'} a ${bD?.banco || 'Banco Destino'}`;
 
-    try {
-      const outId = generateId();
-      const inId = generateId();
-      const outMov = { id: outId, banco_id: oId, fecha: fechaHoy, ref: `OUT-${ref}`, descripcion: `Traspaso a ${bD?.banco}: ${cto}`, tipo: 'egreso', monto: m, tasa: bO?.moneda==='Bolivares'?parseFloat(transferForm.tasaOrigen.toString()):1, montoBs: bO?.moneda==='Bolivares' ? (m * (parseFloat(transferForm.tasaOrigen.toString()) || 1)).toFixed(2) : null, estado: 'activo' };
-      const inMov = { id: inId, banco_id: dId, fecha: fechaHoy, ref: `IN-${ref}`, descripcion: `Traspaso de ${bO?.banco}: ${cto}`, tipo: 'ingreso', monto: m, tasa: bD?.moneda==='Bolivares'?parseFloat(transferForm.tasaDestino.toString()):1, montoBs: bD?.moneda==='Bolivares' ? (m * (parseFloat(transferForm.tasaDestino.toString()) || 1)).toFixed(2) : null, estado: 'activo' };
+    const outId = generateId();
+    const inId = generateId();
+    const compId = `comp-${Date.now()}`;
+    const compNumero = `CMP-${Date.now().toString().slice(-6)}`;
 
-      await onSave('movimientosBancos', outMov);
-      await onSave('movimientosBancos', inMov);
-      await handleGenerarAsiento(fechaHoy, 'Tesorería', `TRF-${ref}`, `Traspaso: ${cto}`, [{ cuenta_id: bD?.cuenta_contable_id||'1.1.3', descripcion: `Ingreso Traspaso`, debe: m, haber: 0 }, { cuenta_id: bO?.cuenta_contable_id||'1.1.3', descripcion: `Egreso Traspaso`, debe: 0, haber: m }]);
-      
-      showToast('Traspaso exitoso.', 'success'); 
-      setTransferForm({ origenId: '', destinoId: '', monto: '', concepto: '', tasaOrigen: '1', tasaDestino: '1', showModal: false });
+    const ctaOrigen = bO?.cuenta_contable_id || '1.1.3';
+    const ctaDestino = bD?.cuenta_contable_id || '1.1.3';
 
-      // Navegar al comprobante del egreso (origen)
-      navigate('/reports/comprobante-movimiento-banco', { state: { movimiento: outMov, banco: bO } });
-    } catch(e) { showToast('Error en traspaso.', 'error'); }
+    const outMov = {
+      id: outId,
+      banco_id: oId,
+      fecha: fechaHoy,
+      ref: `OUT-${ref}`,
+      descripcion: cto,
+      tipo: 'egreso',
+      monto: m,
+      tasa: bO?.moneda === 'Bolivares' ? (parseFloat(transferForm.tasaOrigen.toString()) || 1) : 1,
+      montoBs: bO?.moneda === 'Bolivares' ? (m * (parseFloat(transferForm.tasaOrigen.toString()) || 1)).toFixed(2) : null,
+      estado: 'activo',
+      comprobanteId: compId,
+      comprobante_id: compId
+    };
+
+    const inMov = {
+      id: inId,
+      banco_id: dId,
+      fecha: fechaHoy,
+      ref: `IN-${ref}`,
+      descripcion: cto,
+      tipo: 'ingreso',
+      monto: m,
+      tasa: bD?.moneda === 'Bolivares' ? (parseFloat(transferForm.tasaDestino.toString()) || 1) : 1,
+      montoBs: bD?.moneda === 'Bolivares' ? (m * (parseFloat(transferForm.tasaDestino.toString()) || 1)).toFixed(2) : null,
+      estado: 'activo',
+      comprobanteId: compId,
+      comprobante_id: compId
+    };
+
+    const templateComp = {
+      id: compId,
+      fecha: fechaHoy,
+      numero: compNumero,
+      tipo: 'Diario',
+      descripcion: cto,
+      referencia: `TRF-${ref}`,
+      total: m,
+      estado: 'Contabilizado',
+      movimientoBancoId: outId,
+      lineas: [
+        {
+          id: `l0-${Date.now()}`,
+          cuentaId: ctaDestino,
+          descripcion: cto,
+          debe: m,
+          haber: 0
+        },
+        {
+          id: `l1-${Date.now()}`,
+          cuentaId: ctaOrigen,
+          descripcion: cto,
+          debe: 0,
+          haber: m
+        }
+      ]
+    };
+
+    // 1. Cerrar modal de traspaso para abrir la previsualización del asiento
+    setTransferForm(prev => ({ ...prev, showModal: false }));
+
+    // 2. Mostrar la previsualización del asiento contable antes de registrarlo
+    setPendingVoucher({
+      comprobante: templateComp,
+      movimiento: { outMov, inMov, bO, bD },
+      onConfirm: async (finalComprobante: any) => {
+        try {
+          const confirmedCompId = finalComprobante.id || compId;
+          const finalDesc = finalComprobante.descripcion || cto;
+
+          // Guardar Comprobante Contable
+          await onSave('comprobantes', {
+            ...finalComprobante,
+            id: confirmedCompId,
+            movimientoBancoId: outId
+          });
+
+          // Guardar Movimientos Bancarios asegurando que el concepto bancario sea idéntico al contable
+          const finalOut = {
+            ...outMov,
+            descripcion: finalDesc,
+            comprobanteId: confirmedCompId,
+            comprobante_id: confirmedCompId
+          };
+          const finalIn = {
+            ...inMov,
+            descripcion: finalDesc,
+            comprobanteId: confirmedCompId,
+            comprobante_id: confirmedCompId
+          };
+
+          await onSave('movimientosBancos', finalOut);
+          await onSave('movimientosBancos', finalIn);
+
+          showToast('Traspaso exitoso y contabilizado.', 'success');
+          setTransferForm({ origenId: '', destinoId: '', monto: '', concepto: '', tasaOrigen: '1', tasaDestino: '1', showModal: false });
+          setPendingVoucher(null);
+
+          // Navegar al comprobante del egreso (origen)
+          navigate('/reports/comprobante-movimiento-banco', { state: { movimiento: finalOut, banco: bO } });
+        } catch (e) {
+          showToast('Error en traspaso.', 'error');
+        }
+      }
+    });
   };
 
   const exportarMayorCSV = () => {
@@ -2523,6 +2388,14 @@ export default function BancosView({
 
         {subView === 'cuentas' ? (
           <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <Link 
+              to="/banks/pos-lotes"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all border border-slate-200 bg-white shadow-2xs hover:bg-slate-50 text-slate-700 h-8 sm:h-9 px-3 cursor-pointer active:scale-95" 
+              title="Ir al módulo de Puntos de Venta (POS) & Lotes"
+            >
+              <CreditCard className="w-3.5 h-3.5 text-amber-600" /> 
+              <span>Puntos de Venta (POS)</span>
+            </Link>
             <button 
               className="inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all border border-slate-200 bg-white shadow-2xs hover:bg-slate-50 text-slate-700 h-8 sm:h-9 px-3 cursor-pointer active:scale-95" 
               onClick={() => setSubView('historial_traspasos')}
@@ -2539,7 +2412,7 @@ export default function BancosView({
             </button>
             <button 
               className="inline-flex items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition-all bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs shadow-indigo-600/20 h-8 sm:h-9 px-3.5 cursor-pointer active:scale-95" 
-              onClick={() => {setEditBancoId(null); setCuentaForm({banco:'', cuenta:'', tipo:'Corriente', moneda:'USD', tasa:'1', saldo:'0', saldoBs:'0', cuenta_contable_id:''}); setSubView('nueva_cuenta');}}
+              onClick={() => {setEditBancoId(null); setCuentaForm({banco:'', cuenta:'', tipo:'Corriente', moneda:'USD', tasa:'1', saldo:'0', saldoBs:'0', cuenta_contable_id:'', es_caja: false, tipo_cuenta: 'nacional'}); setSubView('nueva_cuenta');}}
             >
               <Plus className="w-3.5 h-3.5" /> 
               <span>Añadir Cuenta</span>
@@ -2635,6 +2508,120 @@ export default function BancosView({
           </div>
         </div>
       )}
+
+      {/* Barra de Filtros y Búsqueda Estilo Foto 2 (Limpio & Profesional) */}
+      {subView === 'cuentas' && (
+        <div className="bg-white p-2.5 sm:px-4 sm:py-2.5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-wrap items-center justify-between gap-3 animate-in fade-in duration-300">
+          {/* Input de Búsqueda */}
+          <div className="relative flex-1 min-w-[200px] sm:max-w-xs">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text"
+              placeholder="Buscar banco, caja o cuenta..."
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-semibold text-slate-800 placeholder-slate-400 outline-none transition"
+            />
+            {searchTerm && (
+              <button 
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Pastillas de Filtro */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setFilterType('todas')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                filterType === 'todas'
+                  ? 'bg-slate-900 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Todas ({bancosConSaldos.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('bancos')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                filterType === 'bancos'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Bancos ({bancosOnlyCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('cajas')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                filterType === 'cajas'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              Cajas ({cajasOnlyCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('USD')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                filterType === 'USD'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              USD ($)
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilterType('VES')}
+              className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                filterType === 'VES'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+            >
+              VES (Bs.)
+            </button>
+          </div>
+
+          {/* Conmutador de Vista: Lista vs Tarjetas */}
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200/80">
+            <button
+              type="button"
+              onClick={() => setViewMode('lista')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'lista'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Vista tabular estilo administrativo"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Lista</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('tarjetas')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                viewMode === 'tarjetas'
+                  ? 'bg-white text-slate-900 shadow-2xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Vista en tarjetas ejecutivas"
+            >
+              <Activity className="w-3.5 h-3.5" />
+              <span>Tarjetas</span>
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 
@@ -2647,8 +2634,42 @@ export default function BancosView({
           <div className="space-y-6">
             <div className="flex flex-col"><label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Institución Bancaria</label><input type="text" className="text-xl md:text-3xl font-black text-slate-800 border border-slate-200 bg-slate-50 hover:bg-white focus:bg-white focus:border-indigo-600 outline-none p-3 md:p-4 w-full transition-colors rounded-xl placeholder-slate-300 shadow-sm" placeholder="Ej. Banco Banesco" value={cuentaForm.banco} onChange={e=>setCuentaForm({...cuentaForm, banco: e.target.value})} /></div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Checkbox / Tilde: ¿Es una Caja? */}
+              <div className="flex items-start gap-3 p-3.5 bg-indigo-50/60 border border-indigo-200/80 rounded-2xl md:col-span-2">
+                <input
+                  type="checkbox"
+                  id="es_caja"
+                  checked={!!cuentaForm.es_caja}
+                  onChange={e => {
+                    const isChecked = e.target.checked;
+                    setCuentaForm({
+                      ...cuentaForm,
+                      es_caja: isChecked,
+                      tipo: isChecked ? (cuentaForm.tipo.includes('Caja') ? cuentaForm.tipo : 'Caja General') : (cuentaForm.tipo.includes('Caja') ? 'Corriente' : cuentaForm.tipo)
+                    });
+                  }}
+                  className="w-5 h-5 rounded mt-0.5 text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                />
+                <label htmlFor="es_caja" className="cursor-pointer select-none flex-1">
+                  <span className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                    <span>Esta cuenta bancaria es una CAJA (Efectivo)</span>
+                    <span className="text-[10px] bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-bold">Control de Efectivo</span>
+                  </span>
+                  <span className="text-[11px] text-slate-500 block mt-0.5">
+                    Marque esta casilla si la cuenta corresponde a una caja física de efectivo (USD o Bolívares). Al seleccionarla en Facturación de Ventas o Compras, únicamente se habilitará el método de pago en <b>Efectivo</b>.
+                  </span>
+                </label>
+              </div>
+
               <div className="flex flex-col"><label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">N° de Cuenta</label><input type="text" className="input-modern font-mono" placeholder="0134-xxxx..." value={cuentaForm.cuenta} onChange={e=>setCuentaForm({...cuentaForm, cuenta: e.target.value})} /></div>
-              <div className="flex flex-col"><label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipo</label><select className="input-modern" value={cuentaForm.tipo} onChange={e=>setCuentaForm({...cuentaForm, tipo: e.target.value})}><option>Corriente</option><option>Ahorro</option><option>Custodia</option><option>Caja Chica</option><option>Caja General</option></select></div>
+              <div className="flex flex-col"><label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Tipo</label><select className="input-modern" value={cuentaForm.tipo} onChange={e=>{
+                const newTipo = e.target.value;
+                setCuentaForm({
+                  ...cuentaForm, 
+                  tipo: newTipo,
+                  es_caja: newTipo.includes('Caja') ? true : cuentaForm.es_caja
+                });
+              }}><option>Corriente</option><option>Ahorro</option><option>Custodia</option><option>Caja Chica</option><option>Caja General</option></select></div>
               <div className="flex flex-col">
                 <label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Moneda</label>
                 <select 
@@ -2661,13 +2682,28 @@ export default function BancosView({
                       moneda: nextMoneda,
                       tasa: nextMoneda === 'Bolivares' ? '36.00' : '1',
                       saldo: '0',
-                      saldoBs: '0'
+                      saldoBs: '0',
+                      tipo_cuenta: nextMoneda === 'Bolivares' ? 'nacional' : cuentaForm.tipo_cuenta
                     });
                   }} 
                   disabled={!!editBancoId}
                 >
                   <option value="USD">Dólares (USD)</option>
                   <option value="Bolivares">Bolívares (VES)</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col">
+                <label className="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                  Ámbito de la Cuenta
+                </label>
+                <select
+                  className="input-modern font-semibold"
+                  value={cuentaForm.tipo_cuenta}
+                  onChange={e => setCuentaForm({ ...cuentaForm, tipo_cuenta: e.target.value as any })}
+                >
+                  <option value="nacional">Cuenta Nacional (Maneja Tasa BCV)</option>
+                  <option value="internacional">Cuenta Internacional USD (Sin Tasa de Cambio)</option>
                 </select>
               </div>
 
@@ -4045,439 +4081,606 @@ export default function BancosView({
       return Math.round(val * 100) / 100;
     };
 
+    const rawDetalles = sapsResult?.detalles || [];
+    const filteredDetalles = sapsTableSearch.trim()
+      ? rawDetalles.filter((d: any) =>
+          (d.referencia || '').toLowerCase().includes(sapsTableSearch.toLowerCase().trim()) ||
+          (d.descripcion || '').toLowerCase().includes(sapsTableSearch.toLowerCase().trim()) ||
+          (d.fecha || '').toLowerCase().includes(sapsTableSearch.toLowerCase().trim()) ||
+          String(d.montoUSD || '').includes(sapsTableSearch.trim()) ||
+          String(d.montoVES || '').includes(sapsTableSearch.trim())
+        )
+      : rawDetalles;
+
     return (
-      <div className="px-3 sm:px-6 pt-1 pb-6 animate-in slide-in-from-right-4 duration-300 w-full max-w-7xl mx-auto font-sans">
-        {/* Encabezado */}
-        <div className="mb-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <BackButton onClick={() => { setSapsResult(null); setSubView('cuentas'); }} label="Volver a Cuentas" />
-          <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-purple-600 to-indigo-600 text-white p-3 rounded-2xl shadow-md">
-              <RefreshCw className="w-6 h-6 animate-spin-slow" />
-            </div>
-            <div>
-              <h3 className="text-2xl font-black text-slate-800 tracking-tight">Análisis SAPS (FX)</h3>
-              <p className="text-xs text-slate-500 uppercase tracking-widest font-extrabold">Revalorización & Diferencial Cambiario Automático</p>
-            </div>
-          </div>
-        </div>
-
-        {/* Panel Explicativo del Proceso */}
-        <div className="bg-radial from-slate-50 to-slate-100/50 border border-slate-200/60 rounded-2xl p-6 mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Info className="w-5 h-5 text-indigo-500" />
-            <h4 className="text-sm font-bold text-slate-700 uppercase tracking-wider">¿Cómo funciona el ajuste de diferencial cambiario SAPS?</h4>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="relative bg-white p-4 rounded-xl border border-slate-100 shadow-2xs">
-              <div className="absolute top-4 right-4 text-xs font-black text-slate-200 bg-slate-100 w-6 h-6 rounded-full flex items-center justify-center">1</div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><Activity className="w-4 h-4" /></div>
-                <h5 className="font-bold text-slate-800 text-sm">Historial de Operaciones</h5>
+      <div className="px-4 sm:px-8 py-6 animate-in fade-in duration-200 w-full max-w-7xl mx-auto font-sans space-y-6">
+        {/* Header Superior Moderno */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-4">
+            <BackButton onClick={() => { setSapsResult(null); setSubView('cuentas'); }} label="Volver a Bancos" />
+            <div className="h-9 w-px bg-slate-200 hidden sm:block" />
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100/80 flex items-center justify-center text-indigo-600 shadow-xs">
+                <RefreshCw className="w-6 h-6 text-indigo-600" />
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                El sistema totaliza todos los ingresos y egresos registrados en Bolívares (VES) y calcula un <strong>Saldo Teórico en USD</strong> aplicando la tasa fijada en cada transacción desde su último punto de cierre.
-              </p>
-            </div>
-
-            <div className="relative bg-white p-4 rounded-xl border border-slate-100 shadow-2xs">
-              <div className="absolute top-4 right-4 text-xs font-black text-slate-200 bg-slate-100 w-6 h-6 rounded-full flex items-center justify-center">2</div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-amber-50 text-amber-600 rounded-lg"><Coins className="w-4 h-4" /></div>
-                <h5 className="font-bold text-slate-800 text-sm">Valoración de Cierre</h5>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Tomamos el saldo contable consolidado de la cuenta en Bolívares y lo dividimos entre la <strong>Tasa BCV de cierre</strong> provista. Esto determina el <strong>Saldo Real equivalente en USD</strong> al día de hoy.
-              </p>
-            </div>
-
-            <div className="relative bg-white p-4 rounded-xl border border-slate-100 shadow-2xs">
-              <div className="absolute top-4 right-4 text-xs font-black text-slate-200 bg-slate-100 w-6 h-6 rounded-full flex items-center justify-center">3</div>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><Scale className="w-4 h-4" /></div>
-                <h5 className="font-bold text-slate-800 text-sm">Ajuste de Partida Doble</h5>
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Si el Saldo Real difiere del Teórico, se genera un asiento diario automático de <strong>Ganancia / Pérdida por Diferencial Cambiario</strong> para revalorizar o devaluar contablemente la cuenta del banco.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Formulario de Parámetros */}
-          <div className="lg:col-span-1">
-            <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6 space-y-6">
               <div>
-                <h4 className="text-md font-extrabold text-slate-800 mb-1">Parámetros del Análisis</h4>
-                <p className="text-xs text-slate-400">Configure los valores límites del corte</p>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    Revalorización SAPS (FX)
+                  </h2>
+                  <span className="hidden sm:inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                    NIC 21 / NIIF
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Ajuste de diferencial cambiario automático para cuentas bancarias en moneda nacional (VES)
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 self-end lg:self-center">
+            <button
+              type="button"
+              onClick={() => setShowSapsGuide(!showSapsGuide)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                showSapsGuide
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 shadow-xs'
+                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+              }`}
+            >
+              <Info className="w-4 h-4 text-indigo-500" />
+              <span>¿Cómo funciona?</span>
+              {showSapsGuide ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+
+            {sapsResult && (
+              <button
+                type="button"
+                onClick={handlePrintSapsReport}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow transition-all active:scale-98 cursor-pointer"
+                title="Imprimir el reporte analítico auditado de SAPS (PDF)"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Imprimir Reporte PDF</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Guía Explicativa Plegable */}
+        {showSapsGuide && (
+          <div className="bg-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-800 animate-in slide-in-from-top-3 duration-200">
+            <div className="flex items-center justify-between pb-4 mb-4 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <h4 className="text-sm font-black uppercase tracking-wider text-slate-200">Metodología de Cálculo SAPS (Diferencial FX)</h4>
+              </div>
+              <button onClick={() => setShowSapsGuide(false)} className="text-slate-400 hover:text-white text-xs font-bold cursor-pointer">Cerrar guía ✕</button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-slate-800/70 p-4 rounded-2xl border border-slate-700/60">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-7 h-7 rounded-xl bg-indigo-500/20 text-indigo-300 font-black text-xs flex items-center justify-center border border-indigo-500/30">1</div>
+                  <h5 className="font-bold text-sm text-slate-100">Flujo Histórico Transaccional</h5>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Totaliza ingresos y egresos en Bolívares y calcula el <strong>Saldo Teórico en USD</strong> con la tasa de cada operación desde el último cierre.
+                </p>
               </div>
 
-              <div className="space-y-4">
-                <div className="flex flex-col">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Banco a Revalorizar (VES)</label>
-                  <select 
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all font-semibold bg-slate-50/50" 
-                    value={sapsForm.bancoId} 
-                    onChange={e => setSapsForm({...sapsForm, bancoId: e.target.value})}
-                  >
-                    <option value="">Seleccione cuenta en Bs...</option>
-                    {bancos.filter(b => b.moneda === 'Bolivares').map(b => (
-                      <option key={b.id} value={b.id}>{b.banco} — {b.cuenta} ({b.moneda})</option>
-                    ))}
-                  </select>
+              <div className="bg-slate-800/70 p-4 rounded-2xl border border-slate-700/60">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-7 h-7 rounded-xl bg-amber-500/20 text-amber-300 font-black text-xs flex items-center justify-center border border-amber-500/30">2</div>
+                  <h5 className="font-bold text-sm text-slate-100">Valoración al Cierre (BCV)</h5>
                 </div>
-
-                <div className="flex flex-col">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Fecha de Corte</label>
-                  <input 
-                    type="date" 
-                    className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all font-semibold bg-slate-50/50" 
-                    value={sapsForm.fecha} 
-                    onChange={e => setSapsForm({...sapsForm, fecha: e.target.value})} 
-                  />
-                  <span className="text-[10px] text-slate-400 mt-1">Se analizarán movimientos hasta esta fecha inclusive.</span>
-                </div>
-
-                <div className="flex flex-col">
-                  <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Tasa Oficial de Cierre (BCV)</label>
-                  <div className="relative">
-                    <input 
-                      type="number" 
-                      step="0.0001" 
-                      className="w-full px-3 py-2 pr-12 border border-slate-200 rounded-xl text-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all font-mono font-bold bg-slate-50/50" 
-                      value={sapsForm.tasa} 
-                      onChange={e => setSapsForm({...sapsForm, tasa: e.target.value})} 
-                      placeholder="Ej. 39.85" 
-                    />
-                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">Bs/$</div>
-                  </div>
-                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Toma el saldo en Bolívares consolidado y lo divide entre la <strong>Tasa BCV de corte</strong>, obteniendo el <strong>Valor Real equivalente en USD</strong> hoy.
+                </p>
               </div>
 
+              <div className="bg-slate-800/70 p-4 rounded-2xl border border-slate-700/60">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-7 h-7 rounded-xl bg-emerald-500/20 text-emerald-300 font-black text-xs flex items-center justify-center border border-emerald-500/30">3</div>
+                  <h5 className="font-bold text-sm text-slate-100">Ajuste de Partida Doble</h5>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Calcula el diferencial neto y genera el asiento contable balanceado: <strong>Ganancia / Pérdida Cambiaria</strong> contra la cuenta del banco.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Barra Unificada de Parámetros */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
+          <div className="flex items-center gap-2 mb-4">
+            <Calculator className="w-4 h-4 text-indigo-600" />
+            <span className="text-xs font-black uppercase tracking-wider text-slate-700">Parámetros del Análisis</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+            {/* Banco selector */}
+            <div className="md:col-span-4 flex flex-col">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <Landmark className="w-3.5 h-3.5 text-slate-400" /> Banco a Revalorizar (VES)
+              </label>
+              <select 
+                className="w-full h-11 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 outline-none transition-all"
+                value={sapsForm.bancoId} 
+                onChange={e => {
+                  const bId = e.target.value;
+                  const bObj = bancos.find(b => String(b.id) === String(bId));
+                  setSapsForm({
+                    ...sapsForm,
+                    bancoId: bId,
+                    tasa: sapsForm.tasa || (bObj?.tasa ? String(bObj.tasa) : '')
+                  });
+                }}
+              >
+                <option value="">Seleccione cuenta en Bolívares...</option>
+                {bancos.filter(b => b.moneda === 'Bolivares').map(b => (
+                  <option key={b.id} value={b.id}>{b.banco} — {b.cuenta || b.numero_cuenta} (VES)</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Fecha de corte */}
+            <div className="md:col-span-3 flex flex-col">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" /> Fecha de Corte
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setSapsForm({ ...sapsForm, fecha: fechaHoy })}
+                  className="text-[10px] font-extrabold text-indigo-600 hover:text-indigo-800 uppercase cursor-pointer"
+                >
+                  Hoy
+                </button>
+              </div>
+              <input 
+                type="date" 
+                className="w-full h-11 px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 outline-none transition-all" 
+                value={sapsForm.fecha} 
+                onChange={e => setSapsForm({...sapsForm, fecha: e.target.value})} 
+              />
+            </div>
+
+            {/* Tasa BCV */}
+            <div className="md:col-span-2 flex flex-col">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+                <Coins className="w-3.5 h-3.5 text-slate-400" /> Tasa BCV Cierre
+              </label>
+              <div className="relative">
+                <input 
+                  type="number" 
+                  step="0.0001" 
+                  className="w-full h-11 pl-3.5 pr-14 bg-slate-50 border border-slate-200 rounded-xl text-sm font-mono font-bold text-slate-800 focus:bg-white focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 outline-none transition-all" 
+                  value={sapsForm.tasa} 
+                  onChange={e => setSapsForm({...sapsForm, tasa: e.target.value})} 
+                  placeholder="0.00" 
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-black text-slate-400 uppercase">Bs/$</div>
+              </div>
+            </div>
+
+            {/* Botón de Cálculo */}
+            <div className="md:col-span-3">
               <button 
-                className="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:from-purple-700 hover:to-indigo-700 font-bold text-sm shadow-md transition-all duration-200 flex items-center justify-center gap-2 hover:shadow-lg active:scale-98" 
+                type="button"
+                className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer" 
                 onClick={handleCalcularSAPS}
               >
                 <Calculator className="w-4 h-4"/>
-                Calcular Ajuste Cambiario
+                <span>Calcular Ajuste FX</span>
               </button>
             </div>
           </div>
+        </div>
 
-          {/* Panel de Resultados / Guía de Acción */}
-          <div className="lg:col-span-2 space-y-6">
-            {!sapsResult ? (
-              <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center flex flex-col items-center justify-center h-full min-h-[350px]">
-                <div className="w-16 h-16 bg-slate-50 text-indigo-500 rounded-full flex items-center justify-center mb-4 border border-slate-100 shadow-2xs">
-                  <Calculator className="w-8 h-8 animate-pulse text-indigo-400" />
-                </div>
-                <h4 className="text-base font-bold text-slate-800 mb-1">Esperando Parámetros</h4>
-                <p className="text-xs text-slate-400 max-w-sm mb-6 leading-relaxed">
-                  Por favor, seleccione una cuenta bancaria en Bolívares (VES), fije una fecha de corte de análisis y la tasa cambiaria del BCV para simular el diferencial.
-                </p>
-
-                <div className="w-full max-w-md border border-slate-100 rounded-xl p-4 bg-slate-50/50 text-left">
-                  <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1.5">Consistencia de datos</span>
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    SAPS busca automáticamente transacciones de revalorización previas para acotar los períodos ya cerrados, evitando duplicar ajustes por devaluación.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-6 animate-in zoom-in-95 duration-200">
-                {/* Cuadro de Comparación Visual */}
-                <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 mb-6 gap-3">
-                    <div>
-                      <h4 className="text-md font-extrabold text-slate-800">Resultado de la Revalorización</h4>
-                      <p className="text-xs text-slate-400">Banco: <span className="font-bold text-slate-600">{selectedBankObj?.banco || 'Bancario'}</span></p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold px-2.5 py-1.5 bg-slate-100 text-slate-600 rounded-xl">Tasa BCV: {sapsResult.fecha}</span>
-                      <button
-                        type="button"
-                        onClick={handlePrintSapsReport}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 hover:text-indigo-800 rounded-xl text-xs font-black shadow-3xs border border-indigo-100 transition-all active:scale-95"
-                        title="Imprimir el reporte analítico auditado de SAPS (PDF)"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        Imprimir Reporte SAPS (PDF)
-                      </button>
-                    </div>
+        {/* Estado Vacío o Resultados */}
+        {!sapsResult ? (
+          <div className="bg-white border border-dashed border-slate-200 rounded-3xl p-12 text-center flex flex-col items-center justify-center min-h-[300px]">
+            <div className="w-16 h-16 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center mb-4 border border-indigo-100 shadow-xs">
+              <Calculator className="w-8 h-8 text-indigo-600" />
+            </div>
+            <h4 className="text-base font-bold text-slate-800 mb-1">Esperando Parámetros de Análisis</h4>
+            <p className="text-xs text-slate-500 max-w-md leading-relaxed mb-4">
+              Seleccione la cuenta bancaria en Bolívares (VES), fije la fecha de corte y la tasa oficial del BCV para generar la cédula analítica y el cálculo del diferencial.
+            </p>
+            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 font-medium">
+              <ShieldAlert className="w-3.5 h-3.5 text-indigo-500" />
+              <span>SAPS respeta los cierres previos y procesa transacciones no consolidadas.</span>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6 animate-in fade-in duration-200">
+            {/* HERO BANNER: Resultado Diferencial Cambiario */}
+            <div className={`p-6 rounded-3xl border shadow-xs transition-all ${
+              sapsResult.tipo === 'ajuste_ganancia' 
+                ? 'bg-gradient-to-br from-emerald-50 via-white to-emerald-50/30 border-emerald-200' 
+                : sapsResult.tipo === 'ajuste_perdida' 
+                ? 'bg-gradient-to-br from-rose-50 via-white to-rose-50/30 border-rose-200' 
+                : 'bg-white border-slate-200'
+            }`}>
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                <div className="flex items-start gap-4">
+                  <div className={`p-3.5 rounded-2xl shrink-0 ${
+                    sapsResult.tipo === 'ajuste_ganancia' 
+                      ? 'bg-emerald-100 text-emerald-700' 
+                      : sapsResult.tipo === 'ajuste_perdida' 
+                      ? 'bg-rose-100 text-rose-700' 
+                      : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {sapsResult.tipo === 'ajuste_ganancia' ? <TrendingUp className="w-7 h-7" /> : sapsResult.tipo === 'ajuste_perdida' ? <TrendingDown className="w-7 h-7" /> : <Scale className="w-7 h-7" />}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    {/* Tarjeta A. Saldo Teórico en Dólares */}
-                    <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200 shadow-3xs hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[9px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wide">Paso A</span>
-                          <h5 className="text-[11px] font-bold text-slate-700 mt-1.5">A. Saldo Teórico en Dólares (Libros Contables)</h5>
-                        </div>
-                        <HelpCircle className="w-4 h-4 text-slate-400 cursor-help" title="Saldo acumulado directo en USD que debería existir en el sistema según transacciones de ingresos y egresos." />
-                      </div>
-                      <p className="text-xl font-black text-slate-800 font-mono mt-2">$ {formatoES(sapsResult.sTeoricoUSD)}</p>
-                      <div className="mt-2 pt-2 border-t border-slate-200/50 text-[10px] text-slate-500 font-mono">
-                        <span className="text-slate-400 font-bold block mb-0.5">Fórmula:</span>
-                        Arrastre USD (${formatoES(sapsResult.arrUSD)}) + Ingresos USD (${formatoES(sapsResult.ingUSD)}) - Egresos USD (${formatoES(sapsResult.egrUSD)})
-                      </div>
+                  <div>
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                        Resultado del Análisis FX
+                      </span>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        sapsResult.tipo === 'ajuste_ganancia' 
+                          ? 'bg-emerald-100 text-emerald-800' 
+                          : sapsResult.tipo === 'ajuste_perdida' 
+                          ? 'bg-rose-100 text-rose-800' 
+                          : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {sapsResult.tipo === 'ajuste_ganancia' ? 'Ganancia Cambiaria' : sapsResult.tipo === 'ajuste_perdida' ? 'Pérdida Cambiaria' : 'Saldos Sincronizados'}
+                      </span>
                     </div>
 
-                    {/* Tarjeta B. Saldo Real en Bolívares */}
-                    <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200 shadow-3xs hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[9px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wide">Paso B</span>
-                          <h5 className="text-[11px] font-bold text-slate-700 mt-1.5">B. Saldo Real en Bolívares (Moneda Local)</h5>
-                        </div>
-                        <HelpCircle className="w-4 h-4 text-slate-400 cursor-help" title="Saldo total de la cuenta en bolívares. Cada movimiento se multiplica por la tasa original de registro." />
-                      </div>
-                      <p className="text-xl font-black text-indigo-600 font-mono mt-2">Bs. {formatoES(sapsResult.sFinalVES)}</p>
-                      <div className="mt-2 pt-2 border-t border-slate-200/50 text-[10px] text-slate-500 font-mono">
-                        <span className="text-slate-400 font-bold block mb-0.5">Fórmula:</span>
-                        Arrastre VES (Bs. {formatoES(sapsResult.arrVES)}) + Ingresos VES (Bs. {formatoES(sapsResult.ingVES)}) - Egresos VES (Bs. {formatoES(sapsResult.egrVES)})
-                      </div>
-                    </div>
+                    <h3 className={`text-2xl sm:text-3xl font-black font-mono mt-1 ${
+                      sapsResult.tipo === 'ajuste_ganancia' 
+                        ? 'text-emerald-700' 
+                        : sapsResult.tipo === 'ajuste_perdida' 
+                        ? 'text-rose-700' 
+                        : 'text-slate-800'
+                    }`}>
+                      {sapsResult.tipo === 'ajuste_ganancia' ? '+' : sapsResult.tipo === 'ajuste_perdida' ? '-' : ''}$ {formatoES(sapsResult.monto)}
+                    </h3>
 
-                    {/* Tarjeta C. Valor Real en Dólares */}
-                    <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200 shadow-3xs hover:bg-slate-50 transition-colors">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="text-[9px] font-extrabold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wide">Paso C</span>
-                          <h5 className="text-[11px] font-bold text-slate-700 mt-1.5">C. Valor Real en Dólares (Ajustado)</h5>
-                        </div>
-                        <HelpCircle className="w-4 h-4 text-slate-400 cursor-help" title="Conversión del saldo real en bolívares a dólares usando la tasa de cierre actual (Tc)." />
-                      </div>
-                      <p className="text-xl font-black text-slate-800 font-mono mt-2">$ {formatoES(sapsResult.valorRealUSD)}</p>
-                      <div className="mt-2 pt-2 border-t border-slate-200/50 text-[10px] text-slate-500 font-mono">
-                        <span className="text-slate-400 font-bold block mb-0.5">Fórmula:</span>
-                        Saldo Final VES (Bs. {formatoES(sapsResult.sFinalVES)}) / Tasa Cierre ({formatoES(sapsResult.tasaCierre)})
-                      </div>
-                    </div>
-
-                    {/* Tarjeta D. Diferencial Cambiario */}
-                    <div className={`p-4 rounded-xl border shadow-3xs hover:opacity-95 transition-all ${sapsResult.tipo === 'ajuste_ganancia' ? 'bg-emerald-50/50 border-emerald-200 text-emerald-950' : sapsResult.tipo === 'ajuste_perdida' ? 'bg-rose-50/50 border-rose-200 text-rose-950' : 'bg-slate-50/60 border-slate-200 text-slate-850'}`}>
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded uppercase tracking-wide ${sapsResult.tipo === 'ajuste_ganancia' ? 'bg-emerald-100 text-emerald-800' : sapsResult.tipo === 'ajuste_perdida' ? 'bg-rose-100 text-rose-800' : 'bg-slate-200 text-slate-600'}`}>Paso D</span>
-                          <h5 className="text-[11px] font-extrabold mt-1.5">D. Diferencial Cambiario</h5>
-                        </div>
-                        <HelpCircle className="w-4 h-4 text-slate-400 cursor-help" title="Compara el valor real ajustado frente al saldo teórico directo que dictan los libros." />
-                      </div>
-                      <p className={`text-xl font-black font-mono mt-2 ${sapsResult.tipo === 'ajuste_ganancia' ? 'text-emerald-700' : sapsResult.tipo === 'ajuste_perdida' ? 'text-rose-700' : 'text-slate-700'}`}>
-                        {sapsResult.diferencial >= 0 ? '+' : '-'}$ {formatoES(Math.abs(sapsResult.diferencial))}
-                      </p>
-                      <div className="mt-2 pt-2 border-t border-slate-200/50 text-[10px] text-slate-500 font-mono">
-                        <span className="text-slate-400 font-bold block mb-0.5">Fórmula:</span>
-                        Valor Real USD (${formatoES(sapsResult.valorRealUSD)}) - Saldo Teórico USD (${formatoES(sapsResult.sTeoricoUSD)})
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Comparación de Ganancia o Pérdida */}
-                  <div className={`p-5 rounded-2xl border ${sapsResult.tipo === 'ajuste_ganancia' ? 'bg-emerald-50/60 border-emerald-100 text-emerald-800' : sapsResult.tipo === 'ajuste_perdida' ? 'bg-rose-50/60 border-rose-100 text-rose-800' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-2.5 rounded-xl ${sapsResult.tipo === 'ajuste_ganancia' ? 'bg-emerald-100 text-emerald-600' : sapsResult.tipo === 'ajuste_perdida' ? 'bg-rose-100 text-rose-600' : 'bg-slate-200 text-slate-600'}`}>
-                          {sapsResult.tipo === 'ajuste_ganancia' ? <TrendingUp className="w-5 h-5" /> : sapsResult.tipo === 'ajuste_perdida' ? <TrendingDown className="w-5 h-5" /> : <Scale className="w-5 h-5" />}
-                        </div>
-                        <div>
-                          <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500 mb-0.5">Diferencial Resultante</p>
-                          <h5 className="text-lg font-black font-mono">
-                            {sapsResult.tipo === 'ajuste_ganancia' ? 'Ganancia Cambiaria' : sapsResult.tipo === 'ajuste_perdida' ? 'Pérdida Cambiaria' : 'Saldos Sincronizados'} 
-                            {sapsResult.tipo !== 'none' && ` ($ ${formatoES(sapsResult.monto)})`}
-                          </h5>
-                        </div>
-                      </div>
-                      
-                      {sapsResult.tipo !== 'none' && (
-                        <button 
-                          className="px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-sm transition-all" 
-                          onClick={() => setShowSapsConfirmModal(true)}
-                        >
-                          <CheckCircle className="w-4 h-4"/> Aplicar Ajuste Contable
-                        </button>
-                      )}
-                    </div>
-
-                    <p className="text-xs mt-3 text-slate-500 leading-relaxed border-t border-slate-100 pt-3">
+                    <p className="text-xs text-slate-600 mt-1 leading-relaxed max-w-2xl">
                       {sapsResult.tipo === 'ajuste_ganancia' 
-                        ? 'El poder adquisitivo real en dólares es mayor al teórico de los libros. Aplicar este ajuste aumentará el saldo oficial en USD de su banco en libros.'
+                        ? 'El poder adquisitivo real en dólares supera al registrado en libros. Aplicar este ajuste aumentará el saldo oficial en USD de su banco en libros contables.'
                         : sapsResult.tipo === 'ajuste_perdida'
-                        ? 'Debido al incremento del tipo de cambio, sus bolívares ahora representan menos dólares en libros. Se debitará por pérdida cambiaria y disminuirá el valor de su cuenta bancaria.'
-                        : 'La diferencia es menor a 0.05 USD. No es necesario realizar ningún movimiento contable de ajuste en este corte.'
+                        ? 'Debido al incremento del tipo de cambio BCV, los bolívares representan menos dólares en libros contables. Se generará un débito a Gasto por Pérdida Cambiaria y se ajustará la cuenta de banco.'
+                        : 'La diferencia es menor a 0.05 USD. Los saldos se encuentran sincronizados y no se requiere asiento contable.'
                       }
                     </p>
                   </div>
                 </div>
 
-                {/* Vista Previa del Asiento Diario (Proyectado) */}
                 {sapsResult.tipo !== 'none' && (
-                  <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                      <div className="flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-purple-600" />
-                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">Asiento Contable Proyectado</h4>
-                      </div>
-                      <span className="text-[10px] font-black text-purple-700 uppercase tracking-widest bg-purple-50 px-2 py-0.5 rounded border border-purple-100/60">Borrador SAPS</span>
-                    </div>
+                  <button 
+                    type="button"
+                    onClick={handleOpenSapsConfirmModal}
+                    className={`px-6 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center gap-2.5 shadow-md hover:shadow-lg transition-all active:scale-98 shrink-0 text-white cursor-pointer ${
+                      sapsResult.tipo === 'ajuste_ganancia'
+                        ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25'
+                        : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/25'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4" />
+                    <span>Ver y Registrar Asiento Contable</span>
+                  </button>
+                )}
+              </div>
+            </div>
 
-                    <div className="overflow-hidden border border-slate-100 rounded-xl">
-                      <table className="w-full text-left text-xs border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 font-extrabold border-b border-slate-100">
-                            <th className="p-3">Código</th>
-                            <th className="p-3">Nombre de Cuenta</th>
-                            <th className="p-3 text-right">Debe ($)</th>
-                            <th className="p-3 text-right">Haber ($)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                          {sapsResult.tipo === 'ajuste_ganancia' ? (
-                            <>
-                              <tr className="hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-600">{ctaBankObj?.codigo || ctaB}</td>
-                                <td className="p-3 text-slate-800">{ctaBankObj ? `${ctaBankObj.nombre} (${selectedBankObj?.banco})` : `Banco: ${selectedBankObj?.banco}`} <span className="text-[10px] text-emerald-600 font-extrabold bg-emerald-50 px-1.5 py-0.5 rounded ml-1.5">(Revalorización)</span></td>
-                                <td className="p-3 text-right font-bold text-slate-800">$ {formatoES(sapsResult.monto)}</td>
-                                <td className="p-3 text-right text-slate-400">0,00</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-600">{ctaPGObj?.codigo || '4.1.1'}</td>
-                                <td className="p-3 text-slate-800">{ctaPGObj?.nombre || 'Ingreso por Diferencial Cambiario'} <span className="text-[10px] text-indigo-600 font-extrabold bg-indigo-50 px-1.5 py-0.5 rounded ml-1.5">(Ganancia Cambio)</span></td>
-                                <td className="p-3 text-right text-slate-400">0,00</td>
-                                <td className="p-3 text-right font-bold text-slate-800">$ {formatoES(sapsResult.monto)}</td>
-                              </tr>
-                            </>
-                          ) : (
-                            <>
-                              <tr className="hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-600">{ctaPPObj?.codigo || '5.2.1'}</td>
-                                <td className="p-3 text-slate-800 text-left">{ctaPPObj?.nombre || 'Gasto por Diferencial Cambiario'} <span className="text-[10px] text-rose-600 font-extrabold bg-rose-50 px-1.5 py-0.5 rounded ml-1.5">(Pérdida Cambio)</span></td>
-                                <td className="p-3 text-right font-bold text-slate-800">$ {formatoES(sapsResult.monto)}</td>
-                                <td className="p-3 text-right text-slate-400">0,00</td>
-                              </tr>
-                              <tr className="hover:bg-slate-50/50">
-                                <td className="p-3 font-semibold text-slate-600">{ctaBankObj?.codigo || ctaB}</td>
-                                <td className="p-3 text-slate-800 text-left">{ctaBankObj ? `${ctaBankObj.nombre} (${selectedBankObj?.banco})` : `Banco: ${selectedBankObj?.banco}`} <span className="text-[10px] text-slate-600 font-extrabold bg-slate-100 px-1.5 py-0.5 rounded ml-1.5">(Devaluación)</span></td>
-                                <td className="p-3 text-right text-slate-400">0,00</td>
-                                <td className="p-3 text-right font-bold text-slate-800">$ {formatoES(sapsResult.monto)}</td>
-                              </tr>
-                            </>
-                          )}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-slate-50 border-t border-slate-100 font-black text-slate-800">
-                            <td colSpan={2} className="p-3 text-right">Totales:</td>
-                            <td className="p-3 text-right font-mono">$ {formatoES(sapsResult.monto)}</td>
-                            <td className="p-3 text-right font-mono">$ {formatoES(sapsResult.monto)}</td>
-                          </tr>
-                        </tfoot>
-                      </table>
+            {/* 4 CARDS FINANCIERAS (KPIS EJECUTIVOS) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Tarjeta 1: Saldo Teórico en Dólares */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700">Libros Contables</span>
+                    <HelpCircle className="w-4 h-4 text-slate-300 cursor-help" title="Saldo acumulado en USD que debería existir en libros según los registros individuales de ingresos y egresos." />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Saldo Teórico (USD)</h4>
+                  <p className="text-2xl font-black text-slate-900 font-mono mt-1.5">$ {formatoES(sapsResult.sTeoricoUSD)}</p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-mono leading-tight">
+                  <span className="text-slate-400 font-bold block mb-0.5">Composición:</span>
+                  Arrastre (${formatoES(sapsResult.arrUSD)}) + Ing. (${formatoES(sapsResult.ingUSD)}) - Egr. (${formatoES(sapsResult.egrUSD)})
+                </div>
+              </div>
+
+              {/* Tarjeta 2: Saldo Físico en Bolívares */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700">Moneda Local</span>
+                    <HelpCircle className="w-4 h-4 text-slate-300 cursor-help" title="Saldo total disponible en la cuenta bancaria expresado en Bolívares." />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Saldo Físico (VES)</h4>
+                  <p className="text-2xl font-black text-indigo-700 font-mono mt-1.5">Bs. {formatoES(sapsResult.sFinalVES)}</p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-mono leading-tight">
+                  <span className="text-slate-400 font-bold block mb-0.5">Composición:</span>
+                  Arrastre (Bs. {formatoES(sapsResult.arrVES)}) + Ing. (Bs. {formatoES(sapsResult.ingVES)}) - Egr. (Bs. {formatoES(sapsResult.egrVES)})
+                </div>
+              </div>
+
+              {/* Tarjeta 3: Valor Real a Tasa BCV */}
+              <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-xs hover:border-indigo-200 transition-all flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700">Tasa: {formatoES(sapsResult.tasaCierre)}</span>
+                    <HelpCircle className="w-4 h-4 text-slate-300 cursor-help" title="Conversión del saldo en bolívares a dólares usando la tasa BCV de corte seleccionada." />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Valor Real al Cierre (USD)</h4>
+                  <p className="text-2xl font-black text-slate-900 font-mono mt-1.5">$ {formatoES(sapsResult.valorRealUSD)}</p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-100 text-[10px] text-slate-500 font-mono leading-tight">
+                  <span className="text-slate-400 font-bold block mb-0.5">Cálculo:</span>
+                  Bs. {formatoES(sapsResult.sFinalVES)} ÷ {formatoES(sapsResult.tasaCierre)} Bs/$
+                </div>
+              </div>
+
+              {/* Tarjeta 4: Diferencial Cambiario */}
+              <div className={`p-5 rounded-3xl border shadow-xs transition-all flex flex-col justify-between ${
+                sapsResult.tipo === 'ajuste_ganancia'
+                  ? 'bg-emerald-50/50 border-emerald-200'
+                  : sapsResult.tipo === 'ajuste_perdida'
+                  ? 'bg-rose-50/50 border-rose-200'
+                  : 'bg-white border-slate-200/80'
+              }`}>
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider ${
+                      sapsResult.tipo === 'ajuste_ganancia'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : sapsResult.tipo === 'ajuste_perdida'
+                        ? 'bg-rose-100 text-rose-800'
+                        : 'bg-slate-100 text-slate-700'
+                    }`}>
+                      Diferencia Neta
+                    </span>
+                    <HelpCircle className="w-4 h-4 text-slate-300 cursor-help" title="Variación entre el valor real ajustado y el saldo teórico que reflejan los libros." />
+                  </div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wide">Diferencial FX</h4>
+                  <p className={`text-2xl font-black font-mono mt-1.5 ${
+                    sapsResult.tipo === 'ajuste_ganancia'
+                      ? 'text-emerald-700'
+                      : sapsResult.tipo === 'ajuste_perdida'
+                      ? 'text-rose-700'
+                      : 'text-slate-800'
+                  }`}>
+                    {sapsResult.diferencial >= 0 ? '+' : '-'}$ {formatoES(Math.abs(sapsResult.diferencial))}
+                  </p>
+                </div>
+                <div className="mt-3 pt-3 border-t border-slate-200/60 text-[10px] text-slate-500 font-mono leading-tight">
+                  <span className="text-slate-400 font-bold block mb-0.5">Diferencia:</span>
+                  USD Real (${formatoES(sapsResult.valorRealUSD)}) - USD Teórico (${formatoES(sapsResult.sTeoricoUSD)})
+                </div>
+              </div>
+            </div>
+
+            {/* Asiento Contable Proyectado */}
+            {sapsResult.tipo !== 'none' && (
+              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 mb-4 border-b border-slate-100 gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                      <BookOpen className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900 uppercase tracking-wide">Asiento Contable Proyectado</h4>
+                      <p className="text-xs text-slate-500 font-medium">Comprobante de Diario generado automáticamente bajo la referencia <span className="font-mono font-bold text-slate-700">AUTO-FX</span></p>
                     </div>
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/60 w-max">
+                      Borrador Automático SAPS
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleOpenSapsConfirmModal}
+                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition active:scale-98 cursor-pointer"
+                    >
+                      <CheckCircle className="w-3.5 h-3.5" />
+                      <span>Registrar Asiento</span>
+                    </button>
+                  </div>
+                </div>
 
-                {/* Reporte Analítico de Movimientos SAPS */}
-                {sapsResult.detalles && sapsResult.detalles.length > 0 && (
-                  <div className="bg-white border border-slate-200 shadow-sm rounded-2xl p-6 overflow-hidden">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-4 h-4 text-indigo-600" />
-                        <h4 className="text-sm font-black uppercase tracking-wider text-slate-800">Cédula Analítica de Movimientos Bancarios (SAPS)</h4>
-                      </div>
+                <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-500 font-black border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <th className="p-3.5 w-28">Código</th>
+                        <th className="p-3.5">Cuenta Contable</th>
+                        <th className="p-3.5 text-right w-32">Debe ($)</th>
+                        <th className="p-3.5 text-right w-32">Haber ($)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {sapsResult.tipo === 'ajuste_ganancia' ? (
+                        <>
+                          <tr className="hover:bg-slate-50/60 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-indigo-700">{ctaBankObj?.codigo || ctaB}</td>
+                            <td className="p-3.5 text-slate-800">
+                              <span className="font-bold">{ctaBankObj ? ctaBankObj.nombre : `Banco: ${selectedBankObj?.banco}`}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/50">Revalorización Bancaria</span>
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-bold text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                            <td className="p-3.5 text-right font-mono text-slate-400">0,00</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50/60 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-indigo-700">{ctaPGObj?.codigo || '4.1.1'}</td>
+                            <td className="p-3.5 text-slate-800">
+                              <span className="font-bold">{ctaPGObj?.nombre || 'Ingreso por Diferencial Cambiario'}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/50">Ganancia Cambiaria</span>
+                            </td>
+                            <td className="p-3.5 text-right font-mono text-slate-400">0,00</td>
+                            <td className="p-3.5 text-right font-mono font-bold text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                          </tr>
+                        </>
+                      ) : (
+                        <>
+                          <tr className="hover:bg-slate-50/60 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-indigo-700">{ctaPPObj?.codigo || '5.2.1'}</td>
+                            <td className="p-3.5 text-slate-800">
+                              <span className="font-bold">{ctaPPObj?.nombre || 'Gasto por Diferencial Cambiario'}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/50">Pérdida Cambiaria</span>
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-bold text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                            <td className="p-3.5 text-right font-mono text-slate-400">0,00</td>
+                          </tr>
+                          <tr className="hover:bg-slate-50/60 transition-colors">
+                            <td className="p-3.5 font-mono font-bold text-indigo-700">{ctaBankObj?.codigo || ctaB}</td>
+                            <td className="p-3.5 text-slate-800">
+                              <span className="font-bold">{ctaBankObj ? ctaBankObj.nombre : `Banco: ${selectedBankObj?.banco}`}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Devaluación en Libros</span>
+                            </td>
+                            <td className="p-3.5 text-right font-mono text-slate-400">0,00</td>
+                            <td className="p-3.5 text-right font-mono font-bold text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 border-t-2 border-slate-200 font-black text-slate-800">
+                        <td colSpan={2} className="p-3.5 text-right uppercase tracking-wider text-[11px]">Totales Balanceados:</td>
+                        <td className="p-3.5 text-right font-mono text-sm text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                        <td className="p-3.5 text-right font-mono text-sm text-slate-900">$ {formatoES(sapsResult.monto)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* CÉDULA ANALÍTICA DE MOVIMIENTOS BANCARIOS */}
+            {sapsResult.detalles && sapsResult.detalles.length > 0 && (
+              <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
+                      <Activity className="w-4 h-4" />
                     </div>
-                    
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs border-collapse font-sans">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 font-extrabold border-b border-slate-200">
-                            <th className="p-3 text-center">Fecha</th>
-                            <th className="p-3">Ref/Descripción</th>
-                            <th className="p-3 text-center">Tipo</th>
-                            <th className="p-3 text-right">Tasa Aplicada</th>
-                            <th className="p-3 text-right">Ingreso/Egreso USD</th>
-                            <th className="p-3 text-right">Monto Contable VES</th>
-                            <th className="p-3 text-right bg-slate-100/50">Saldo Acum. USD</th>
-                            <th className="p-3 text-right bg-indigo-50/50 text-indigo-950">Saldo Acum. VES</th>
-                            <th className="p-3 text-right bg-slate-50 text-slate-600 font-bold">USD Cierre</th>
-                            <th className="p-3 text-right bg-indigo-50/50 text-indigo-950 font-black">Diferencial FX</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                          {sapsResult.detalles.map((d: any, idx: number) => {
-                            const diffRow = getDiferencialFila(d, sapsResult.tasaCierre);
-                            const usdCierreVal = Math.round((d.tipo === 'arrastre' ? (d.saldoVES / sapsResult.tasaCierre) : (d.montoVES / sapsResult.tasaCierre)) * 100) / 100;
-                            return (
-                              <tr key={`${d.id}-${idx}`} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-3 text-center whitespace-nowrap text-[10px] uppercase font-bold text-slate-500">{d.fecha !== '-' ? d.fecha : 'S/F'}</td>
-                                <td className="p-3">
-                                  <span className="font-bold text-slate-850">{d.referencia}</span>
-                                  {d.descripcion && d.descripcion !== '-' && <span className="block text-[10px] text-slate-400 font-medium">{d.descripcion}</span>}
-                                </td>
-                                <td className="p-3 text-center text-[10px] font-black uppercase">
-                                  {d.tipo === 'arrastre' ? <span className="text-slate-500 bg-slate-100 px-2 py-0.5 rounded">Previo</span> :
-                                   d.tipo === 'ingreso' ? <span className="text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">Ingreso</span> :
-                                   <span className="text-rose-600 bg-rose-50 px-2 py-0.5 rounded">Egreso</span>}
-                                </td>
-                                <td className="p-3 text-right font-mono font-bold text-slate-600 tracking-tight">{d.tasa ? formatoES(d.tasa) : '-'}</td>
-                                <td className={`p-3 text-right font-mono tracking-tight font-bold ${d.tipo === 'ingreso' ? 'text-emerald-700' : d.tipo === 'egreso' ? 'text-rose-700' : 'text-slate-700'}`}>
-                                  {d.tipo === 'egreso' ? '-' : ''}${formatoES(d.montoUSD)}
-                                </td>
-                                <td className="p-3 text-right font-mono text-indigo-700 font-extrabold tracking-tight">
-                                  Bs. {formatoES(d.montoVES)}
-                                </td>
-                                <td className="p-3 text-right font-mono bg-slate-50/50 font-black text-slate-800 tracking-tight">
-                                  ${formatoES(d.saldoUSD)}
-                                </td>
-                                <td className="p-3 text-right font-mono bg-indigo-50/30 font-black text-indigo-800 tracking-tight border-l border-indigo-50/50">
-                                  Bs. {formatoES(d.saldoVES)}
-                                </td>
-                                <td className="p-3 text-right font-mono text-slate-600 bg-slate-50/30 font-bold">
-                                  ${formatoES(usdCierreVal)}
-                                </td>
-                                <td className={`p-3 text-right font-mono font-bold bg-slate-50/30 tracking-tight ${diffRow > 0.005 ? 'text-emerald-700 bg-emerald-50/40' : diffRow < -0.005 ? 'text-rose-700 bg-rose-50/40' : 'text-slate-500'}`}>
-                                  {diffRow >= 0 ? '+' : '-'}${formatoES(Math.abs(diffRow))}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                        <tfoot>
-                          <tr className="bg-slate-100 border-t-2 border-slate-200">
-                            <td colSpan={6} className="p-3 text-right font-black text-slate-800 text-xs uppercase tracking-widest">Saldo Teórico SAPS Final:</td>
-                            <td className="p-3 text-right font-mono font-black text-slate-900 text-sm">
-                              ${formatoES(sapsResult.sTeoricoUSD)}
-                            </td>
-                            <td className="p-3 text-right font-mono font-black text-slate-900 text-sm">
-                              Bs. {formatoES(sapsResult.sFinalVES)}
-                            </td>
-                            <td className="p-3 text-right font-mono text-slate-400 font-bold">-</td>
-                            <td className="p-3 text-right font-mono text-slate-400 font-bold">-</td>
-                          </tr>
-                          <tr className="bg-indigo-50 border-t border-slate-200">
-                            <td colSpan={6} className="p-3 text-right font-black text-indigo-800 text-xs uppercase tracking-widest">Saldo Real a Tasa BCV ({formatoES(sapsResult.tasaCierre)}):</td>
-                            <td className="p-3 text-right font-mono font-black text-indigo-900 text-sm">
-                              ${formatoES(sapsResult.valorRealUSD)}
-                            </td>
-                            <td className="p-3 text-right font-mono font-black text-indigo-900 text-sm">
-                              Bs. {formatoES(sapsResult.sFinalVES)}
-                            </td>
-                            <td className="p-3 text-right font-mono font-bold text-slate-700 bg-slate-50">
-                              Tasa: {formatoES(sapsResult.tasaCierre)}
-                            </td>
-                            <td className={`p-3 text-right font-mono font-black text-sm bg-indigo-100 ${sapsResult.diferencial >= 0 ? 'text-emerald-700 bg-emerald-50' : 'text-rose-700 bg-rose-50'}`}>
-                              {sapsResult.diferencial >= 0 ? '+' : '-'}${formatoES(Math.abs(sapsResult.diferencial))}
-                            </td>
-                          </tr>
-                        </tfoot>
-                      </table>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-black text-slate-900 uppercase tracking-wide">Cédula Analítica de Movimientos (SAPS)</h4>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                          {filteredDetalles.length} {filteredDetalles.length === 1 ? 'registro' : 'registros'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 font-medium">Auditoría cronológica de ingresos, egresos y tasas cambiarias de cada movimiento</p>
                     </div>
                   </div>
-                )}
+
+                  {/* Buscador de la cédula */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative w-full sm:w-64">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input 
+                        type="text" 
+                        placeholder="Buscar referencia o concepto..." 
+                        value={sapsTableSearch}
+                        onChange={e => setSapsTableSearch(e.target.value)}
+                        className="w-full pl-9 pr-3.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-2xl border border-slate-200 max-h-[500px] overflow-y-auto">
+                  <table className="w-full text-left text-xs border-collapse font-sans">
+                    <thead className="sticky top-0 bg-slate-100/95 backdrop-blur-xs z-10">
+                      <tr className="text-slate-600 font-black border-b border-slate-200 uppercase tracking-wider text-[10px]">
+                        <th className="p-3 text-center w-24">Fecha</th>
+                        <th className="p-3">Ref / Descripción</th>
+                        <th className="p-3 text-center w-20">Tipo</th>
+                        <th className="p-3 text-right w-24">Tasa Aplicada</th>
+                        <th className="p-3 text-right w-28">Movimiento USD</th>
+                        <th className="p-3 text-right w-32">Importe VES</th>
+                        <th className="p-3 text-right bg-slate-200/50 w-28">Saldo USD</th>
+                        <th className="p-3 text-right bg-indigo-50/60 text-indigo-950 w-32 border-l border-indigo-100">Saldo VES</th>
+                        <th className="p-3 text-right w-24">USD Cierre</th>
+                        <th className="p-3 text-right bg-indigo-50/60 text-indigo-950 font-black w-24">Dif. FX</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {filteredDetalles.map((d: any, idx: number) => {
+                        const diffRow = getDiferencialFila(d, sapsResult.tasaCierre);
+                        const usdCierreVal = Math.round((d.tipo === 'arrastre' ? (d.saldoVES / sapsResult.tasaCierre) : (d.montoVES / sapsResult.tasaCierre)) * 100) / 100;
+                        return (
+                          <tr key={`${d.id}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="p-3 text-center whitespace-nowrap text-[10px] font-bold text-slate-500">
+                              {d.fecha !== '-' ? d.fecha : 'INICIAL'}
+                            </td>
+                            <td className="p-3">
+                              <span className="font-bold text-slate-900">{d.referencia}</span>
+                              {d.descripcion && d.descripcion !== '-' && d.descripcion !== d.referencia && (
+                                <span className="block text-[10px] text-slate-400 font-medium truncate max-w-xs">{d.descripcion}</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-center">
+                              {d.tipo === 'arrastre' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-slate-100 text-slate-600">Previo</span>
+                              ) : d.tipo === 'ingreso' ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-emerald-50 text-emerald-700 border border-emerald-200/60">Ingreso</span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase bg-rose-50 text-rose-700 border border-rose-200/60">Egreso</span>
+                              )}
+                            </td>
+                            <td className="p-3 text-right font-mono font-bold text-slate-600">{d.tasa ? formatoES(d.tasa) : '-'}</td>
+                            <td className={`p-3 text-right font-mono font-bold ${
+                              d.tipo === 'ingreso' ? 'text-emerald-700' : d.tipo === 'egreso' ? 'text-rose-700' : 'text-slate-600'
+                            }`}>
+                              {d.tipo === 'arrastre' ? '-' : `${d.tipo === 'egreso' ? '-' : ''}$${formatoES(d.montoUSD)}`}
+                            </td>
+                            <td className="p-3 text-right font-mono text-indigo-700 font-extrabold">
+                              {d.tipo === 'arrastre' ? '-' : `Bs. ${formatoES(d.montoVES)}`}
+                            </td>
+                            <td className="p-3 text-right font-mono bg-slate-50/50 font-black text-slate-900">
+                              ${formatoES(d.saldoUSD)}
+                            </td>
+                            <td className="p-3 text-right font-mono bg-indigo-50/30 font-black text-indigo-900 border-l border-indigo-100">
+                              Bs. {formatoES(d.saldoVES)}
+                            </td>
+                            <td className="p-3 text-right font-mono text-slate-600 font-bold">
+                              ${formatoES(usdCierreVal)}
+                            </td>
+                            <td className={`p-3 text-right font-mono font-black ${
+                              diffRow > 0.005 ? 'text-emerald-700 bg-emerald-50/40' : diffRow < -0.005 ? 'text-rose-700 bg-rose-50/40' : 'text-slate-400'
+                            }`}>
+                              {diffRow >= 0 ? '+' : '-'}${formatoES(Math.abs(diffRow))}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot className="sticky bottom-0 bg-slate-100 border-t-2 border-slate-300 z-10">
+                      <tr className="border-b border-slate-200">
+                        <td colSpan={6} className="p-3 text-right font-black text-slate-700 text-xs uppercase tracking-wider">Saldo Teórico SAPS Final:</td>
+                        <td className="p-3 text-right font-mono font-black text-slate-900 text-sm">${formatoES(sapsResult.sTeoricoUSD)}</td>
+                        <td className="p-3 text-right font-mono font-black text-indigo-900 text-sm border-l border-indigo-200">Bs. {formatoES(sapsResult.sFinalVES)}</td>
+                        <td className="p-3 text-right font-mono text-slate-400 font-bold">-</td>
+                        <td className="p-3 text-right font-mono text-slate-400 font-bold">-</td>
+                      </tr>
+                      <tr className="bg-indigo-50/80">
+                        <td colSpan={6} className="p-3 text-right font-black text-indigo-900 text-xs uppercase tracking-wider">Saldo Real a Tasa BCV ({formatoES(sapsResult.tasaCierre)}):</td>
+                        <td className="p-3 text-right font-mono font-black text-indigo-900 text-sm">${formatoES(sapsResult.valorRealUSD)}</td>
+                        <td className="p-3 text-right font-mono font-black text-indigo-900 text-sm border-l border-indigo-200">Bs. {formatoES(sapsResult.sFinalVES)}</td>
+                        <td className="p-3 text-right font-mono font-bold text-slate-600">Tc: {formatoES(sapsResult.tasaCierre)}</td>
+                        <td className={`p-3 text-right font-mono font-black text-sm ${
+                          sapsResult.diferencial >= 0 ? 'text-emerald-700 bg-emerald-100/60' : 'text-rose-700 bg-rose-100/60'
+                        }`}>
+                          {sapsResult.diferencial >= 0 ? '+' : '-'}${formatoES(Math.abs(sapsResult.diferencial))}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
               </div>
             )}
           </div>
-        </div>
+        )}
         
         <PrintPreview 
           isOpen={printModalOpen}
@@ -4560,36 +4763,320 @@ export default function BancosView({
           </div>
         )}
 
-        {/* Modal Confirmación SAPS */}
+        {/* MODAL EJECUTIVO: CONFIRMAR Y REGISTRAR ASIENTO CONTABLE SAPS (FX) */}
         {showSapsConfirmModal && sapsResult && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowSapsConfirmModal(false)}>
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                  <ShieldAlert className="w-6 h-6 text-purple-600" /> Confirmar Ajuste
-                </h3>
-                <button className="text-slate-400 hover:text-red-500 bg-white p-2 rounded-full shadow-sm" onClick={() => setShowSapsConfirmModal(false)}>
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-6">
-                <p className="text-slate-600 mb-4">
-                  ¿Está seguro de que desea aplicar este ajuste contable por <strong>$ {formatoES(sapsResult.monto)}</strong>?
-                </p>
-                <p className="text-sm text-slate-500 mb-6">
-                  Esta acción generará un movimiento bancario y un asiento contable automático.
-                </p>
-                <div className="flex justify-end gap-3">
-                  <button className="btn-secondary" onClick={() => setShowSapsConfirmModal(false)}>
-                    Cancelar
-                  </button>
-                  <button className="btn-primary !bg-purple-600 hover:!bg-purple-700" onClick={() => {
-                    setShowSapsConfirmModal(false);
-                    handleAplicarSAPS();
-                  }}>
-                    Confirmar y Aplicar
+          <div 
+            className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-[110] flex items-center justify-center p-3 sm:p-5 overflow-y-auto" 
+            onClick={() => !isApplyingSaps && setShowSapsConfirmModal(false)}
+          >
+            <div 
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150 my-auto" 
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header con Membrete y Estilo de Comprobante */}
+              <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-6 relative overflow-hidden">
+                <div className="absolute -right-8 -bottom-8 w-40 h-40 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="flex items-start justify-between relative z-10 gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center text-indigo-300 shadow-inner">
+                      <BookOpen className="w-6 h-6 text-indigo-300" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                          Comprobante de Diario • SAPS FX
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-300 font-bold">
+                          Ref: AUTO-FX
+                        </span>
+                      </div>
+                      <h3 className="text-lg sm:text-xl font-black text-white mt-1 tracking-tight">
+                        Confirmación de Asiento Contable
+                      </h3>
+                      <p className="text-xs text-slate-300 font-medium">
+                        Revalorización por Diferencial Cambiario al Cierre (NIC 21 / NIIF)
+                      </p>
+                    </div>
+                  </div>
+
+                  <button 
+                    disabled={isApplyingSaps}
+                    className="text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-full transition cursor-pointer" 
+                    onClick={() => setShowSapsConfirmModal(false)}
+                  >
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
+              </div>
+
+              {/* Cuerpo del Modal */}
+              <div className="p-6 space-y-5 max-h-[calc(85vh-130px)] overflow-y-auto">
+                {/* 4 Cards con Metadatos Clave */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Fecha Contable</span>
+                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5 font-mono">
+                      <Calendar className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                      {sapsResult.fecha}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Tasa BCV Cierre</span>
+                    <span className="text-xs font-black text-indigo-700 flex items-center gap-1.5 font-mono">
+                      <Coins className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      Bs. {formatoES(sapsResult.tasaCierre)}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200/80">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Banco Objeto</span>
+                    <span className="text-xs font-black text-slate-800 truncate block" title={selectedBankObj?.banco}>
+                      {selectedBankObj?.banco || 'Banco'}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono block truncate">
+                      {selectedBankObj?.cuenta || 'Moneda VES'}
+                    </span>
+                  </div>
+
+                  <div className={`p-3 rounded-2xl border ${
+                    sapsResult.tipo === 'ajuste_ganancia' 
+                      ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900' 
+                      : 'bg-rose-50/80 border-rose-200 text-rose-900'
+                  }`}>
+                    <span className="text-[10px] uppercase font-bold opacity-75 block mb-0.5">
+                      {sapsResult.tipo === 'ajuste_ganancia' ? 'Ganancia Neta' : 'Pérdida Neta'}
+                    </span>
+                    <span className="text-sm font-black font-mono block">
+                      {sapsResult.tipo === 'ajuste_ganancia' ? '+' : '-'}$ {formatoES(sapsResult.monto)}
+                    </span>
+                    <span className="text-[10px] font-mono opacity-80 block">
+                      Bs. {formatoES(sapsResult.monto * sapsResult.tasaCierre)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Glosa / Concepto Editable */}
+                <div className="bg-slate-50/60 p-3.5 rounded-2xl border border-slate-200">
+                  <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wide block mb-1.5">
+                    Concepto / Glosa del Asiento:
+                  </label>
+                  <input
+                    type="text"
+                    value={sapsCustomConcept}
+                    onChange={(e) => setSapsCustomConcept(e.target.value)}
+                    placeholder="Descripción para el libro diario..."
+                    className="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:border-indigo-600 outline-none transition"
+                  />
+                </div>
+
+                {/* Tabla del Asiento Contable (Partida Doble) */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                  <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Scale className="w-3.5 h-3.5 text-indigo-600" />
+                      Detalle de Partidas (Débitos & Créditos)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      Balanceado (100% Cuadrado)
+                    </span>
+                  </div>
+
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-3.5">Cuenta Contable</th>
+                        <th className="py-2.5 px-3.5">Descripción de la Partida</th>
+                        <th className="py-2.5 px-3.5 text-right">Debe ($)</th>
+                        <th className="py-2.5 px-3.5 text-right">Haber ($)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                      {sapsResult.tipo === 'ajuste_ganancia' ? (
+                        <>
+                          {/* Fila 1: Banco (Débito) */}
+                          <tr className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <span className="font-mono font-black text-indigo-600 block">
+                                {ctaBankObj?.codigo || ctaB}
+                              </span>
+                              <span className="font-bold text-slate-900 block text-xs">
+                                {ctaBankObj ? ctaBankObj.nombre : `Banco: ${selectedBankObj?.banco}`}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-slate-800 block">
+                                Revalorización de saldo bancario a tasa BCV Bs. {formatoES(sapsResult.tasaCierre)}
+                              </span>
+                              <span className="text-[10px] text-emerald-600 font-bold">
+                                [Activo • Aumento de valor contable en USD]
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900">
+                              <div>$ {formatoES(sapsResult.monto)}</div>
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Bs. {formatoES(sapsResult.monto * sapsResult.tasaCierre)}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-300 font-bold">
+                              $ 0,00
+                            </td>
+                          </tr>
+
+                          {/* Fila 2: Ganancia Cambiaria (Crédito) */}
+                          <tr className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <span className="font-mono font-black text-indigo-600 block">
+                                {ctaPGObj?.codigo || '4.1.1'}
+                              </span>
+                              <span className="font-bold text-slate-900 block text-xs">
+                                {ctaPGObj?.nombre || 'Ganancia en Diferencial Cambiario'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-slate-800 block">
+                                Ingreso por ganancia cambiaria no realizada (Ajuste SAPS)
+                              </span>
+                              <span className="text-[10px] text-indigo-600 font-bold">
+                                [Ingreso • Ganancia neta por tipo de cambio]
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-300 font-bold">
+                              $ 0,00
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900">
+                              <div>$ {formatoES(sapsResult.monto)}</div>
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Bs. {formatoES(sapsResult.monto * sapsResult.tasaCierre)}
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      ) : (
+                        <>
+                          {/* Fila 1: Pérdida Cambiaria (Débito) */}
+                          <tr className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <span className="font-mono font-black text-indigo-600 block">
+                                {ctaPPObj?.codigo || '5.2.1'}
+                              </span>
+                              <span className="font-bold text-slate-900 block text-xs">
+                                {ctaPPObj?.nombre || 'Pérdida en Diferencial Cambiario'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-slate-800 block">
+                                Gasto por pérdida cambiaria por incremento de tasa BCV
+                              </span>
+                              <span className="text-[10px] text-rose-600 font-bold">
+                                [Gasto • Pérdida por depreciación cambiaria]
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900">
+                              <div>$ {formatoES(sapsResult.monto)}</div>
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Bs. {formatoES(sapsResult.monto * sapsResult.tasaCierre)}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-300 font-bold">
+                              $ 0,00
+                            </td>
+                          </tr>
+
+                          {/* Fila 2: Banco (Crédito) */}
+                          <tr className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3 px-3.5">
+                              <span className="font-mono font-black text-indigo-600 block">
+                                {ctaBankObj?.codigo || ctaB}
+                              </span>
+                              <span className="font-bold text-slate-900 block text-xs">
+                                {ctaBankObj ? ctaBankObj.nombre : `Banco: ${selectedBankObj?.banco}`}
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5">
+                              <span className="text-slate-800 block">
+                                Ajuste por devaluación / diferencial cambiario a tasa BCV Bs. {formatoES(sapsResult.tasaCierre)}
+                              </span>
+                              <span className="text-[10px] text-slate-500 font-bold">
+                                [Activo • Disminución de saldo contable en USD]
+                              </span>
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono text-slate-300 font-bold">
+                              $ 0,00
+                            </td>
+                            <td className="py-3 px-3.5 text-right font-mono font-black text-slate-900">
+                              <div>$ {formatoES(sapsResult.monto)}</div>
+                              <div className="text-[10px] text-slate-400 font-normal">
+                                Bs. {formatoES(sapsResult.monto * sapsResult.tasaCierre)}
+                              </div>
+                            </td>
+                          </tr>
+                        </>
+                      )}
+                    </tbody>
+                    <tfoot className="bg-slate-100/90 font-black border-t-2 border-slate-200 text-xs">
+                      <tr>
+                        <td colSpan={2} className="py-3 px-3.5 text-right uppercase tracking-wider text-slate-700 text-[11px]">
+                          Totales Cuadrados:
+                        </td>
+                        <td className="py-3 px-3.5 text-right font-mono text-slate-900">
+                          $ {formatoES(sapsResult.monto)}
+                        </td>
+                        <td className="py-3 px-3.5 text-right font-mono text-slate-900">
+                          $ {formatoES(sapsResult.monto)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+
+                {/* Nota NIIF Informativa */}
+                <div className="p-3.5 rounded-2xl bg-indigo-50/70 border border-indigo-100 flex items-start gap-2.5 text-xs text-indigo-900">
+                  <CheckCircle className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed text-[11px]">
+                    <strong>Garantía de Cuadre:</strong> Al confirmar, se creará el movimiento bancario con referencia 
+                    <span className="font-mono font-bold text-indigo-700 mx-1">AUTO-FX</span> y el Asiento en el Libro Diario. 
+                    El saldo físico en Bolívares (<span className="font-mono font-bold">Bs. {formatoES(sapsResult.sFinalVES)}</span>) se mantendrá 100% inalterado.
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones de Acción al Pie */}
+              <div className="p-5 bg-slate-50 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button 
+                  type="button"
+                  disabled={isApplyingSaps}
+                  onClick={() => setShowSapsConfirmModal(false)}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold text-xs transition cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button 
+                  type="button"
+                  disabled={isApplyingSaps}
+                  onClick={handleAplicarSAPS}
+                  className={`w-full sm:w-auto px-6 py-2.5 rounded-xl text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-98 cursor-pointer ${
+                    isApplyingSaps
+                      ? 'bg-slate-400 cursor-not-allowed'
+                      : sapsResult.tipo === 'ajuste_ganancia'
+                      ? 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
+                      : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20'
+                  }`}
+                >
+                  {isApplyingSaps ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Registrando Asiento...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      <span>Confirmar y Registrar Asiento</span>
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -4881,122 +5368,219 @@ export default function BancosView({
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 animate-in slide-in-from-bottom-4">
-         {bancosConSaldos.map(b => {
-           const isVES = b.moneda === 'Bolivares';
-           const isOverdraft = b.saldoUSD < 0;
-           return (
-             <div 
-               key={b.id} 
-               className={`bg-white border rounded-2xl flex flex-col justify-between transition-all duration-200 hover:shadow-lg cursor-pointer group relative overflow-hidden ${
-                 isOverdraft 
-                   ? 'border-rose-200 hover:border-rose-300 shadow-sm shadow-rose-50' 
-                   : 'border-slate-200/90 hover:border-indigo-300 shadow-xs'
-               }`}
-               onClick={()=>{setSelectedBancoId(b.id); setSubView('mayor_analitico');}}
-             >
-               {/* Card Top Accent Line */}
-               <div className={`h-1.5 w-full bg-gradient-to-r ${
-                 isOverdraft 
-                   ? 'from-rose-500 to-red-600' 
-                   : isVES 
-                     ? 'from-blue-600 to-cyan-500' 
-                     : 'from-indigo-600 to-purple-600'
-               }`} />
+      {/* Renderizado de Cuentas: Modo Tarjetas (Foto 2) o Modo Lista */}
+      {viewMode === 'tarjetas' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-in slide-in-from-bottom-4">
+          {filteredBancos.map(b => {
+            const isVES = b.moneda === 'Bolivares';
+            const isOverdraft = b.saldoUSD < 0;
+            const isCaja = (b.tipo || '').toLowerCase().includes('caja');
 
-               <div className="p-5 flex-1 flex flex-col justify-between gap-4">
-                 {/* Bank Header Info */}
-                 <div className="flex justify-between items-start gap-3">
-                   <div className="flex items-center gap-3 min-w-0">
-                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-white shrink-0 shadow-md ${
-                       isVES 
-                         ? 'bg-gradient-to-br from-blue-600 to-cyan-600 shadow-blue-500/20' 
-                         : 'bg-gradient-to-br from-indigo-600 to-purple-600 shadow-indigo-500/20'
-                     }`}>
-                       {(b.tipo || '').includes('Ahorro') ? <PiggyBank className="w-5 h-5" /> : <Landmark className="w-5 h-5" />}
-                     </div>
-                     <div className="min-w-0">
-                       <h4 className="text-sm font-black text-slate-900 leading-tight truncate" title={b.banco}>
-                         {b.banco}
-                       </h4>
-                       <span className="inline-block font-mono text-[11px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md mt-1 truncate">
-                         {b.cuenta || 'Cuenta Principal'}
-                       </span>
-                     </div>
-                   </div>
+            return (
+              <div 
+                key={b.id} 
+                className="bg-white border border-slate-200/90 hover:border-indigo-300 rounded-2xl p-4 sm:p-5 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between group relative overflow-hidden"
+                onClick={() => { setSelectedBancoId(b.id); setSubView('mayor_analitico'); }}
+              >
+                {/* Cabecera: Icono, Nombre, N° Cuenta y Acciones */}
+                <div>
+                  <div className="flex items-start justify-between gap-2 mb-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200/60 text-slate-700 flex items-center justify-center shrink-0 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors">
+                        {isCaja ? <Wallet className="w-4 h-4" /> : <Landmark className="w-4 h-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <h4 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight truncate leading-tight">
+                          {b.banco}
+                        </h4>
+                        <span className="font-mono text-[11px] font-bold text-slate-400 block truncate mt-0.5">
+                          {b.cuenta ? `N° ${b.cuenta}` : 'Cuenta Operativa'}
+                        </span>
+                      </div>
+                    </div>
 
-                   {/* Action Icons */}
-                   <div className="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-                     <button 
-                       className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" 
-                       title="Editar Banco" 
-                       onClick={()=>handleEditBanco(b)}
-                     >
-                       <Pencil className="w-3.5 h-3.5"/>
-                     </button>
-                     <button 
-                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
-                       title="Eliminar Banco" 
-                       onClick={() => handleDeleteBanco(b.id, b.banco)}
-                     >
-                       <Trash2 className="w-3.5 h-3.5"/>
-                     </button>
-                   </div>
-                 </div>
+                    {/* Botones de Edición y Eliminación */}
+                    <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                      <button 
+                        type="button"
+                        className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer" 
+                        title="Editar Banco / Cuenta" 
+                        onClick={() => handleEditBanco(b)}
+                      >
+                        <Pencil className="w-3.5 h-3.5"/>
+                      </button>
+                      <button 
+                        type="button"
+                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer" 
+                        title="Eliminar Banco" 
+                        onClick={() => handleDeleteBanco(b.id, b.banco)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5"/>
+                      </button>
+                    </div>
+                  </div>
 
-                 {/* Balance & Currency Details Box */}
-                 <div className="bg-slate-50/80 p-4 rounded-xl border border-slate-100/80">
-                   <div className="flex justify-between items-center mb-1">
-                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">
-                       Saldo Disponible
-                     </span>
-                     <span className={`inline-flex items-center text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                       isVES 
-                         ? 'bg-blue-50 text-blue-700 border border-blue-200/80' 
-                         : 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
-                     }`}>
-                       {b.tipo} • {isVES ? 'VES' : 'USD'}
-                     </span>
-                   </div>
+                  {/* Sección Central de Saldo */}
+                  <div className="my-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-medium text-slate-500">Saldo Disponible</span>
+                      <span className={`inline-flex items-center text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                        isVES 
+                          ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {isVES ? 'VES' : 'USD'}
+                      </span>
+                    </div>
 
-                   <p className={`text-2xl font-black tracking-tight ${isOverdraft ? 'text-rose-600' : 'text-slate-900'}`}>
-                     {isOverdraft ? '-' : ''}$ {formatoES(Math.abs(b.saldoUSD))}
-                   </p>
+                    <div className={`text-xl sm:text-2xl font-black tracking-tight font-mono ${
+                      isOverdraft ? 'text-rose-600' : 'text-slate-900'
+                    }`}>
+                      <>{isOverdraft ? '-' : ''}$ {formatoES(Math.abs(b.saldoUSD))}</>
+                    </div>
 
-                   {isVES && (
-                     <div className="mt-2 flex items-center justify-between pt-2 border-t border-slate-200/60 text-xs">
-                       <span className="font-bold text-slate-500">Monto VES:</span>
-                       <span className="font-black text-slate-800 font-mono">
-                         {b.saldoVES < 0 ? '-' : ''}Bs. {formatoES(Math.abs(b.saldoVES))}
-                       </span>
-                     </div>
-                   )}
-                 </div>
-               </div>
+                    {isVES && (
+                      <div className="text-[10px] text-slate-400 font-bold font-mono mt-0.5">
+                        Equiv: {isOverdraft ? '-' : ''}Bs. {formatoES(Math.abs(b.saldoVES))}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-               {/* Card CTA Footer */}
-               <div className="px-5 py-3 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between text-xs font-bold text-slate-600 group-hover:text-indigo-600 group-hover:bg-indigo-50/50 transition-colors">
-                 <span>Ver Mayor Analítico & Movimientos</span>
-                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-               </div>
-             </div>
-           );
-         })}
+                {/* Footer Link de Movimientos */}
+                <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs font-medium text-slate-500 group-hover:text-indigo-600 transition-colors">
+                  <span>Ver movimientos</span>
+                  <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            );
+          })}
 
-         {/* Quick Add Bank Account Card */}
-         <div 
-           onClick={() => {setEditBancoId(null); setCuentaForm({banco:'', cuenta:'', tipo:'Corriente', moneda:'USD', tasa:'1', saldo:'0', saldoBs:'0', cuenta_contable_id:''}); setSubView('nueva_cuenta');}}
-           className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl bg-white hover:bg-indigo-50/30 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center p-8 min-h-[220px] group shadow-2xs hover:shadow-sm"
-         >
-           <div className="w-12 h-12 bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white text-slate-500 rounded-xl flex items-center justify-center mb-3 transition-all shadow-xs group-hover:scale-105">
-             <Plus className="w-6 h-6" />
-           </div>
-           <h4 className="font-bold text-slate-800 group-hover:text-indigo-900 text-sm">Añadir Nueva Cuenta Bancaria</h4>
-           <p className="text-xs text-slate-400 mt-1 max-w-[200px]">
-             Registra cuentas corrientes o de ahorro en USD o Bolívares.
-           </p>
-         </div>
-      </div>
+          {/* Tarjeta Rápida de Añadir Cuenta */}
+          <div 
+            onClick={() => {
+              setEditBancoId(null); 
+              setCuentaForm({banco:'', cuenta:'', tipo:'Corriente', moneda:'USD', tasa:'1', saldo:'0', saldoBs:'0', cuenta_contable_id:''}); 
+              setSubView('nueva_cuenta');
+            }}
+            className="border-2 border-dashed border-slate-200 hover:border-indigo-400 rounded-2xl bg-white hover:bg-indigo-50/20 transition-all duration-200 cursor-pointer flex flex-col items-center justify-center text-center p-6 min-h-[190px] group shadow-2xs hover:shadow-xs"
+          >
+            <div className="w-10 h-10 bg-slate-100 group-hover:bg-indigo-600 group-hover:text-white text-slate-500 rounded-xl flex items-center justify-center mb-2.5 transition-all group-hover:scale-105">
+              <Plus className="w-5 h-5" />
+            </div>
+            <h4 className="font-bold text-slate-800 group-hover:text-indigo-900 text-xs sm:text-sm">Añadir Nueva Cuenta</h4>
+            <p className="text-[11px] text-slate-400 mt-0.5 max-w-[190px]">
+              Cuentas corrientes, de ahorro o cajas en divisas / Bs.
+            </p>
+          </div>
+        </div>
+      ) : (
+        /* Vista en Lista (Estilo Saint / Gálac) */
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden animate-in fade-in">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-100/80 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3">Institución / Banco</th>
+                  <th className="px-4 py-3">N° Cuenta / Tipo</th>
+                  <th className="px-3 py-3 text-center">Moneda</th>
+                  <th className="px-4 py-3 text-right">Saldo Disponible (USD)</th>
+                  <th className="px-4 py-3 text-right">Saldo Disponible (VES)</th>
+                  <th className="px-4 py-3 text-center">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {filteredBancos.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="text-center py-8 text-slate-400">
+                      No se encontraron cuentas que coincidan con la búsqueda.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBancos.map(b => {
+                    const isVES = b.moneda === 'Bolivares';
+                    const isOverdraft = b.saldoUSD < 0;
+                    const isCaja = (b.tipo || '').toLowerCase().includes('caja');
+
+                    return (
+                      <tr 
+                        key={b.id} 
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        onClick={() => { setSelectedBancoId(b.id); setSubView('mayor_analitico'); }}
+                      >
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-700 shrink-0">
+                              {isCaja ? <Wallet className="w-4 h-4" /> : <Landmark className="w-4 h-4" />}
+                            </div>
+                            <div>
+                              <div className="font-black text-slate-900 uppercase">{b.banco}</div>
+                              <div className="text-[10px] text-slate-400">{b.tipo}</div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-3 font-mono font-bold text-slate-700">
+                          {b.cuenta || 'Cuenta Operativa'}
+                        </td>
+
+                        <td className="px-3 py-3 text-center">
+                          <span className={`inline-flex items-center text-[10px] font-black uppercase px-2 py-0.5 rounded-full border ${
+                            isVES 
+                              ? 'bg-blue-50 text-blue-700 border-blue-200' 
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          }`}>
+                            {isVES ? 'VES' : 'USD'}
+                          </span>
+                        </td>
+
+                        <td className={`px-4 py-3 text-right font-mono font-bold ${
+                          isOverdraft ? 'text-rose-600' : 'text-slate-900'
+                        }`}>
+                          {isOverdraft ? '-' : ''}$ {formatoES(Math.abs(b.saldoUSD))}
+                        </td>
+
+                        <td className="px-4 py-3 text-right font-mono font-bold text-slate-600">
+                          {isVES ? `Bs. ${formatoES(Math.abs(b.saldoVES))}` : '-'}
+                        </td>
+
+                        <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBancoId(b.id); setSubView('mayor_analitico'); }}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                              title="Ver Mayor Analítico"
+                            >
+                              <ArrowRight className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleEditBanco(b)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                              title="Editar"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBanco(b.id, b.banco)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

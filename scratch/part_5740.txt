@@ -1,0 +1,45 @@
+Created At: 2026-09-12T19:22:58-04:00
+Completed At: 2026-09-12T19:22:59-04:00
+File Path: `file:///C:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 5776
+Total Bytes: 295236
+Showing lines 5740 to 5776
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+5740:           showToast?.(`Tasa BCV guardada: Bs. ${t.toFixed(2)}`, 'success');
+5741:         }}
+5742:       />
+5743: 
+5744:       {/* Modal de Autorización Master para Stock 0 */}
+5745:       <MasterAuthModal
+5746:         isOpen={isMasterAuthModalOpen}
+5747:         onClose={() => setIsMasterAuthModalOpen(false)}
+5748:         title="Autorización Especial de Operaciones"
+5749:         subtitle="Se requiere Clave Especial de Operaciones para proceder con la facturación de productos en stock 0"
+5750:         actionName="Facturación con Stock Cero / Insuficiente"
+5751:         actionDetails={
+5752:           zeroStockItems.map(item => {
+5753:             const p = products.find(prod => prod.id === item.producto_id);
+5754:             const stock = Number(p?.stock_actual) || 0;
+5755:             return `• ${item.codigo || p?.codigo || 'ART'} - ${item.descripcion || p?.nombre} | Stock: ${stock} | Cantidad a facturar: ${item.cantidad}`;
+5756:           }).join('\n')
+5757:         }
+5758:         onSuccess={() => {
+5759:           setIsZeroStockAuthorized(true);
+5760:           showToast?.('Autorización Master aprobada para facturar productos con stock 0', 'success');
+5761:           setIsConditionModalOpen(true);
+5762:         }}
+5763:       />
+5764: 
+5765:       {/* Modal de Impresión de Factura Emitida */}
+5766:       <InvoicePrintModal
+5767:         isOpen={isPrintModalOpen}
+5768:         onClose={() => setIsPrintModalOpen(false)}
+5769:         factura={lastEmittedInvoice}
+5770:         empresa={empresa}
+5771:       />
+5772: 
+5773:     </div>
+5774:   );
+5775: }
+5776: 
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.

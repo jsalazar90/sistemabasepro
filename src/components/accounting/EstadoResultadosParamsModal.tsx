@@ -7,7 +7,6 @@ import {
   Search, 
   ExternalLink, 
   FileSpreadsheet, 
-  Sparkles,
   TrendingUp
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -107,15 +106,21 @@ export default function EstadoResultadosParamsModal({
   const [hideZero, setHideZero] = useState<boolean>(true);
   const [showVerticalAnalysis, setShowVerticalAnalysis] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [useFullDemoPL, setUseFullDemoPL] = useState<boolean>(true);
+  const useFullDemoPL = false;
 
   if (!isOpen) return null;
 
   // Cálculo de cuentas de resultados según período y comprobantes
   const computeData = () => {
-    // Si se activa demo o si no hay suficientes cuentas/comprobantes
-    const hasLiveComps = comprobantes.some(c => c.estado === 'Contabilizado');
-    const isDemo = useFullDemoPL || !hasLiveComps;
+    const isContabilizado = (c: any) => {
+      if (!c.estado) return true;
+      const e = String(c.estado).toLowerCase().trim();
+      return e === 'contabilizado' || e === 'aprobado' || e === 'registrado';
+    };
+
+    const hasLiveComps = comprobantes.some(isContabilizado);
+    const hasAccounts = cuentasContables && cuentasContables.length > 0;
+    const isDemo = useFullDemoPL || (!hasLiveComps && !hasAccounts);
 
     if (isDemo) {
       let filtered = SAMPLE_PL_CUENTAS;
@@ -165,12 +170,12 @@ export default function EstadoResultadosParamsModal({
 
     // Datos Reales
     const periodComps = comprobantes.filter(
-      c => c.estado === 'Contabilizado' && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate
+      c => isContabilizado(c) && (c.fecha || '').split('T')[0] >= localStartDate && (c.fecha || '').split('T')[0] <= localEndDate
     );
 
     const cuentasMov = cuentasContables.filter(c => {
       const first = c.codigo?.charAt(0);
-      return (c.tipo === 'Movimiento' || !c.tipo) && first >= '4' && first <= '9';
+      return first >= '4' && first <= '9';
     });
 
     const saldos: Record<string, { debe: number; haber: number }> = {};
@@ -180,10 +185,16 @@ export default function EstadoResultadosParamsModal({
 
     periodComps.forEach(comp => {
       (comp.lineas || []).forEach((linea: any) => {
-        const cId = String(linea.cuentaId);
-        if (saldos[cId]) {
-          saldos[cId].debe += Number(linea.debe) || 0;
-          saldos[cId].haber += Number(linea.haber) || 0;
+        const cId = String(linea.cuentaId || linea.cuenta_id || '').trim();
+        if (!cId) return;
+        const matched = cuentasMov.find(item => 
+          String(item.id) === cId || 
+          String(item.codigo) === cId ||
+          (item.codigo && item.codigo.replace(/\./g, '') === cId.replace(/\./g, ''))
+        );
+        if (matched && saldos[matched.id]) {
+          saldos[matched.id].debe += Number(linea.debe) || 0;
+          saldos[matched.id].haber += Number(linea.haber) || 0;
         }
       });
     });
@@ -661,45 +672,7 @@ export default function EstadoResultadosParamsModal({
           </div>
         </div>
 
-        {/* CUERPO: OPCIONES */}
         <div className="p-6 space-y-6 bg-slate-50/50">
-          {/* Banner Demostración P&L */}
-          <div className="bg-gradient-to-r from-slate-900 via-emerald-950 to-slate-900 rounded-2xl p-4 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-md border border-emerald-900/50">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xs md:text-sm font-black uppercase tracking-wide">
-                    P&L Paginado Multi-Hoja Carta
-                  </h3>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                    UTILIDAD NETA: ${formatoES(previewData.utilidadNeta)}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/30">
-                    INGRESOS: ${formatoES(previewData.totalIngresos)}
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-1 leading-relaxed">
-                  Cálculo jerárquico NIIF: Margen Bruto, EBITDA Operacional y Utilidad Neta con sobregiros/pérdidas en rojo entre paréntesis.
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 w-full md:w-auto shrink-0 justify-end">
-              <label className="flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer bg-white/10 px-3 py-1.5 rounded-xl hover:bg-white/20 transition-all border border-white/10">
-                <input 
-                  type="checkbox"
-                  checked={useFullDemoPL}
-                  onChange={(e) => setUseFullDemoPL(e.target.checked)}
-                  className="rounded text-emerald-500 cursor-pointer"
-                />
-                <span>Usar Catálogo Modelo P&L</span>
-              </label>
-            </div>
-          </div>
-
           {/* Formato de Presentación */}
           <div>
             <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-2.5">

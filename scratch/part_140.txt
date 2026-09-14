@@ -1,0 +1,59 @@
+Created At: 2026-09-12T16:30:28-04:00
+Completed At: 2026-09-12T16:30:28-04:00
+File Path: `file:///c:/Users/Portal%20De%20trabajo/Desktop/sistema%20base%20pro/src/pages/InvoiceForm.tsx`
+Total Lines: 2576
+Total Bytes: 124528
+Showing lines 140 to 190
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+140:     setControlNumber(`00-${Math.floor(100000 + Math.random() * 900000)}`);
+141:   }, [configContable, docType]);
+142: 
+143:   // Recalcular vencimiento al cambiar días de crédito o fecha de emisión
+144:   useEffect(() => {
+145:     const base = new Date(issueDate);
+146:     base.setDate(base.getDate() + Number(creditDays || 0));
+147:     setCalculatedDueDate(base.toISOString().split('T')[0]);
+148:   }, [issueDate, creditDays]);
+149: 
+150:   // Lista filtrada de clientes
+151:   const customersList = useMemo(() => {
+152:     const term = customerSearchTerm.toLowerCase();
+153:     return contactos.filter(c => {
+154:       const isCust = c.type === 'customer' || c.type === 'both';
+155:       const match = !term || 
+156:         (c.name || '').toLowerCase().includes(term) ||
+157:         (c.taxId || '').toLowerCase().includes(term);
+158:       return isCust && match;
+159:     });
+160:   }, [contactos, customerSearchTerm]);
+161: 
+162:   // Totales calculados en tiempo real (con Retenciones e IGTF de acuerdo a leyes venezolanas)
+163:   const totals = useMemo(() => {
+164:     let subtotal = 0;
+165:     let montoExento = 0;
+166:     let baseImponible = 0;
+167:     let ivaMonto = 0;
+168: 
+169:     items.forEach(item => {
+170:       const lineSubtotal = (Number(item.cantidad) || 0) * (Number(item.precio_unitario) || 0);
+171:       subtotal += lineSubtotal;
+172:       if (item.exento) {
+173:         montoExento += lineSubtotal;
+174:       } else {
+175:         baseImponible += lineSubtotal;
+176:         ivaMonto += lineSubtotal * 0.16;
+177:       }
+178:     });
+179: 
+180:     // 1. IGTF 3% (Ley de Reforma del IGTF: Percepción por cobro en divisas o moneda extranjera)
+181:     const igtfMonto = applyIgtf ? (subtotal + ivaMonto) * (igtfPercent / 100) : 0;
+182: 
+183:     // Total de la Factura (Subtotal + IVA + IGTF si aplica)
+184:     const totalFactura = subtotal + ivaMonto + igtfMonto;
+185: 
+186:     // 2. Retención de IVA (Providencia SNAT/2015/0049: 75% o 100% sobre el IVA facturado)
+187:     const retIvaMonto = applyRetIva ? ivaMonto * (retIvaPercent / 100) : 0;
+188: 
+189:     // 3. Retención de ISLR (Decreto 1808: 2%, 5%, 1% o 3% sobre la Base Imponible)
+190:     const retIslrMonto = applyRetIslr ? baseImponible * (retIslrPercent / 100) : 0;
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
