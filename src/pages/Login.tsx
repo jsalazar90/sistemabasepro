@@ -77,7 +77,6 @@ export default function Login() {
       setRecoveryLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col justify-center items-center p-4 sm:p-6 relative overflow-hidden select-none font-sans">
       {/* Background Ambient Mesh */}
