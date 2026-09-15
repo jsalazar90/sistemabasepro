@@ -199,20 +199,78 @@ function AppContent() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
 
-  const [empresa, setEmpresa] = useState({
-    nombre: "Empresa",
-    rif: "J-00000000-0",
-    direccion: "",
-    telefono: "",
-    email: "",
-    monedaPrincipal: "USD",
-    monedaSecundaria: "VES",
-    tipoContribuyente: "ordinario",
-    tipoEmpresa: "comercial",
-    habilitarPOS: true,
-    habilitarVendedores: true,
-    habilitarPedidos: true,
+  const [empresa, setEmpresa] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem("erp_cached_active_company");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.name || parsed.nombre)) {
+          return {
+            id: parsed.id,
+            nombre: parsed.name || parsed.nombre,
+            rif: parsed.taxId || parsed.rif || 'J-00000000-0',
+            direccion: parsed.direccion || '',
+            telefono: parsed.telefono || '',
+            email: parsed.email || '',
+            logo: parsed.logo || '',
+            monedaPrincipal: parsed.monedaPrincipal || parsed.moneda_principal || 'USD',
+            monedaSecundaria: parsed.monedaSecundaria || parsed.moneda_secundaria || 'VES',
+            tipoContribuyente: parsed.tipoContribuyente || parsed.tipo_contribuyente || 'ordinario',
+            tipoEmpresa: parsed.tipoEmpresa || parsed.tipo_empresa || 'comercial',
+            habilitarPOS: parsed.habilitarPOS ?? parsed.habilitar_pos ?? true,
+            habilitarVendedores: parsed.habilitarVendedores ?? parsed.habilitar_vendedores ?? true,
+            habilitarPedidos: parsed.habilitarPedidos ?? parsed.habilitar_pedidos ?? true,
+            habilitarTasaReferencial: parsed.habilitarTasaReferencial ?? parsed.habilitar_tasa_referencial ?? false,
+            ...parsed,
+          };
+        }
+      }
+    } catch {}
+    return {
+      nombre: "Halley ERP",
+      rif: "J-00000000-0",
+      direccion: "",
+      telefono: "",
+      email: "",
+      monedaPrincipal: "USD",
+      monedaSecundaria: "VES",
+      tipoContribuyente: "ordinario",
+      tipoEmpresa: "comercial",
+      habilitarPOS: true,
+      habilitarVendedores: true,
+      habilitarPedidos: true,
+    };
   });
+
+  // Mantener sincronizado empresa con availableCompanies y activeCompanyId en todo momento
+  useEffect(() => {
+    if (!activeCompanyId || availableCompanies.length === 0) return;
+    const found = availableCompanies.find((c) => c.id === activeCompanyId);
+    if (found) {
+      const synched = {
+        id: found.id,
+        nombre: found.name || (found as any).nombre || 'Halley ERP',
+        rif: found.taxId || (found as any).rif || 'J-00000000-0',
+        direccion: (found as any).direccion || '',
+        telefono: (found as any).telefono || '',
+        email: (found as any).email || '',
+        logo: (found as any).logo || '',
+        monedaPrincipal: (found as any).monedaPrincipal || (found as any).moneda_principal || 'USD',
+        monedaSecundaria: (found as any).monedaSecundaria || (found as any).moneda_secundaria || 'VES',
+        tipoContribuyente: (found as any).tipoContribuyente || (found as any).tipo_contribuyente || 'ordinario',
+        tipoEmpresa: (found as any).tipoEmpresa || (found as any).tipo_empresa || 'comercial',
+        habilitarPOS: (found as any).habilitarPOS ?? (found as any).habilitar_pos ?? true,
+        habilitarVendedores: (found as any).habilitarVendedores ?? (found as any).habilitar_vendedores ?? true,
+        habilitarPedidos: (found as any).habilitarPedidos ?? (found as any).habilitar_pedidos ?? true,
+        habilitarTasaReferencial: (found as any).habilitarTasaReferencial ?? (found as any).habilitar_tasa_referencial ?? false,
+        ...(found as any),
+      };
+      setEmpresa(synched);
+      try {
+        localStorage.setItem("erp_cached_active_company", JSON.stringify(synched));
+      } catch {}
+    }
+  }, [availableCompanies, activeCompanyId]);
 
   // Cargar datos operativos de la empresa activa desde Supabase
   useEffect(() => {
@@ -236,29 +294,6 @@ function AppContent() {
       setFacturasVenta([]);
       setFacturasCompra([]);
       return;
-    }
-
-    // Sincronizar datos de la empresa activa
-    const found = availableCompanies.find((c) => c.id === activeCompanyId);
-    if (found) {
-      setEmpresa({
-        id: found.id,
-        nombre: found.name || (found as any).nombre || 'Empresa',
-        rif: found.taxId || (found as any).rif || 'J-00000000-0',
-        direccion: (found as any).direccion || '',
-        telefono: (found as any).telefono || '',
-        email: (found as any).email || '',
-        logo: (found as any).logo || '',
-        monedaPrincipal: (found as any).monedaPrincipal || (found as any).moneda_principal || 'USD',
-        monedaSecundaria: (found as any).monedaSecundaria || (found as any).moneda_secundaria || 'VES',
-        tipoContribuyente: (found as any).tipoContribuyente || (found as any).tipo_contribuyente || 'ordinario',
-        tipoEmpresa: (found as any).tipoEmpresa || (found as any).tipo_empresa || 'comercial',
-        habilitarPOS: (found as any).habilitarPOS ?? (found as any).habilitar_pos ?? true,
-        habilitarVendedores: (found as any).habilitarVendedores ?? (found as any).habilitar_vendedores ?? true,
-        habilitarPedidos: (found as any).habilitarPedidos ?? (found as any).habilitar_pedidos ?? true,
-        habilitarTasaReferencial: (found as any).habilitarTasaReferencial ?? (found as any).habilitar_tasa_referencial ?? false,
-        ...(found as any),
-      });
     }
 
     // Resetear inmediatamente estados para evitar contaminación de la empresa previa

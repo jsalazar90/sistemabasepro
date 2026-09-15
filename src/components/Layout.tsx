@@ -295,7 +295,7 @@ export default function Layout({
             </Link>
             <div className="flex flex-col">
               <Link to="/" className="text-base sm:text-lg font-black tracking-tight text-slate-900 flex items-center leading-none hover:opacity-90">
-                {empresa?.nombre || activeCompany?.name || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
+                {activeCompany?.name || (activeCompany as any)?.nombre || (empresa?.nombre && empresa?.nombre !== 'Empresa' ? empresa?.nombre : '') || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
               </Link>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />

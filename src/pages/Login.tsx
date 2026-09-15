@@ -24,19 +24,18 @@ export default function Login() {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      const result = login(email, password);
-      if (!result.success) {
-        setError(result.error || 'Credenciales inválidas');
+    setTimeout(async () => {
+      try {
+        const result = await login(email, password);
+        if (!result.success) {
+          setError(result.error || 'Credenciales inválidas');
+          setIsLoading(false);
+        }
+      } catch (err: any) {
+        setError(err?.message || 'Error al procesar el inicio de sesión');
         setIsLoading(false);
       }
     }, 300);
-  };
-
-  const setDemoCredentials = (demoEmail: string, demoPass: string) => {
-    setEmail(demoEmail);
-    setPassword(demoPass);
-    setError(null);
   };
 
   return (
@@ -115,7 +114,7 @@ export default function Login() {
                 <input
                   type="email"
                   required
-                  placeholder="usuario@empresa.com"
+                  placeholder="jhoansg@gmail.com"
                   className="w-full pl-10 pr-4 py-3 bg-slate-50 hover:bg-slate-100/60 focus:bg-white border border-slate-200 rounded-2xl text-xs sm:text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:border-indigo-600 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -165,26 +164,6 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          {/* Acceso Demo / Master */}
-          <div className="pt-3 border-t border-slate-100">
-            <button
-              type="button"
-              onClick={() => setDemoCredentials('jefe@halleyerp.com', '19072828')}
-              className="w-full px-3.5 py-2.5 bg-indigo-50/70 hover:bg-indigo-100/70 border border-indigo-200/80 rounded-2xl text-left transition-all cursor-pointer flex items-center justify-between group active:scale-98"
-            >
-              <div className="flex items-center gap-2.5">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-emerald-200 animate-pulse" />
-                <div className="flex flex-col">
-                  <span className="text-[11px] font-black text-indigo-950">Acceso Master</span>
-                  <span className="text-[10px] text-slate-500 font-mono">jefe@halleyerp.com</span>
-                </div>
-              </div>
-              <span className="text-[10px] font-extrabold text-indigo-600 bg-white border border-indigo-200 px-2 py-1 rounded-lg group-hover:bg-indigo-600 group-hover:text-white transition-colors shadow-2xs">
-                Autocompletar
-              </span>
-            </button>
-          </div>
 
           {/* Nota de Seguridad */}
           <div className="pt-1 text-center">

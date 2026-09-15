@@ -23,12 +23,10 @@ export interface UserSession {
 
 export const INITIAL_DEFAULT_USERS: UserSession[] = [
   {
-    id: "u-master-1",
-    email: "jefe@halleyerp.com",
-    name: "Administrador Master",
+    id: "u-master-jhoan",
+    email: "jhoansg@gmail.com",
+    name: "Jhoan SG",
     role: "Master",
-    password: "19072828",
-    claveOperaciones: "19072828",
     activo: true,
     companyRoles: { "*": "Master" },
     companyConfigs: {}

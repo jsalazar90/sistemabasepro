@@ -97,17 +97,25 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
   }, [activeCompanyId]);
 
-  // Estado de Sesión de Usuario en memoria (con fallback al usuario Master por defecto)
+  // Estado de Sesión de Usuario en memoria
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
     const saved = sessionStorage.getItem("erp_active_user") || localStorage.getItem("erp_active_user");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email) {
+          if (parsed.email.toLowerCase() === 'jefe@halleyerp.com') {
+            sessionStorage.removeItem("erp_active_user");
+            localStorage.removeItem("erp_active_user");
+            return null;
+          }
+          return parsed;
+        }
       } catch (e) {
-        return INITIAL_DEFAULT_USERS[0];
+        return null;
       }
     }
-    return INITIAL_DEFAULT_USERS[0];
+    return null;
   });
 
   const refreshCompanies = async (userParam?: UserSession | null) => {
@@ -143,8 +151,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
           localStorage.setItem("erp_active_company_id", selected);
         }
         const found = userPermittedCompanies.find(c => c.id === selected);
-        if (found && ((found as any).workingYear || (found as any).anoInicio)) {
-          setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+        if (found) {
+          try {
+            localStorage.setItem("erp_cached_active_company", JSON.stringify(found));
+          } catch {}
+          if ((found as any).workingYear || (found as any).anoInicio) {
+            setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+          }
         }
         return selected;
       });
@@ -179,6 +192,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
+    if (cleanEmail === 'jefe@halleyerp.com') {
+      sessionStorage.removeItem("erp_active_user");
+      localStorage.removeItem("erp_active_user");
+      return { 
+        success: false, 
+        error: "El usuario jefe@halleyerp.com ha sido revocado y eliminado permanentemente del sistema. Inicie sesión con jhoansg@gmail.com." 
+      };
+    }
+
     try {
       const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
       
@@ -206,8 +228,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
           return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
         }
 
-        // Si el usuario es el administrador principal, forzar rol Master para que vea todas las empresas
-        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com' || cleanEmail === 'jefe@halleyerp.com';
+        // Si el usuario es el administrador principal legal, forzar rol Master para que vea todas las empresas
+        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com';
         const assignedRole = isSuperAdmin ? 'Master' : (userData?.role || 'Operador');
 
         // Auto-registrar al Master en la base de datos pública si es su primera vez
@@ -216,7 +238,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             await supabase.from('usuarios').upsert({
               id: authData.user?.id || `u-${Date.now()}`,
               email: cleanEmail,
-              nombre: cleanEmail === 'jhoansg@gmail.com' ? 'Jhoan SG' : 'Master',
+              nombre: 'Jhoan SG',
               role: 'Master',
               activo: true
             });
@@ -258,13 +280,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
 
     let user = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-    if (!user && (cleanEmail === "jefe@halleyerp.com" || cleanEmail === "jhoansg@gmail.com") && cleanPass === "19072828") {
-      user = INITIAL_DEFAULT_USERS[0];
-      user.email = cleanEmail;
-    }
 
     if (!user) {
-      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado localmente." };
+      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado en el sistema." };
     }
 
     if (user.activo === false) {
