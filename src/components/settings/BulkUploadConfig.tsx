@@ -970,7 +970,7 @@ export default function BulkUploadConfig({
 
           if (!voucherMap.has(num)) {
             voucherMap.set(num, {
-              id: `voucher-${Date.now()}-${num.replace(/[^a-zA-Z0-9]/g, "-")}`,
+              id: crypto.randomUUID(),
               numero: num,
               fecha,
               tipo,

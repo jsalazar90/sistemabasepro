@@ -17,7 +17,7 @@ import { ProductModel, MovimientoInventarioModel, AlmacenModel, CategoriaProduct
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
 import { getTodayLocalDate } from '../utils/dateUtils';
 import { useCompany } from '../context/CompanyContext';
-import { dbFetchAlmacenes, dbSaveAlmacen, dbDeleteAlmacen } from '../services/db';
+import { dbFetchAlmacenes, dbSaveAlmacen, dbDeleteAlmacen, isUUID } from '../services/db';
 
 const DEFAULT_ALMACENES: AlmacenModel[] = [
   { id: '00000000-0000-4000-8000-000000000001', empresa_id: '', codigo: 'DEP-01', nombre: 'Almacén Principal (Central)', ubicacion: 'Galpón Central A', responsable: 'Administración', es_principal: true, activo: true }
@@ -205,7 +205,7 @@ export default function Inventory({
     stock_actual: '0',
     stock_minimo: '5',
     punto_reorden: '10',
-    almacen_id: 'alm_01',
+    almacen_id: DEFAULT_ALMACENES[0].id,
     aplica_iva: true,
     alicuota_iva: 'general',
     cuenta_inventario_id: '',
@@ -229,8 +229,8 @@ export default function Inventory({
   // Formulario Transferencia
   const [transferForm, setTransferForm] = useState({
     producto_id: '',
-    almacen_origen_id: 'alm_01',
-    almacen_destino_id: 'alm_02',
+    almacen_origen_id: DEFAULT_ALMACENES[0].id,
+    almacen_destino_id: DEFAULT_ALMACENES[0].id,
     cantidad: '',
     referencia: ''
   });
@@ -456,8 +456,8 @@ export default function Inventory({
     onSave?.('products', updatedProd);
 
     const movement: MovimientoInventarioModel = {
-      id: `mov_audit_${Date.now()}`,
-      empresa_id: product.empresa_id || '',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId || product.empresa_id || '',
       producto_id: product.id,
       producto_nombre: product.nombre,
       producto_codigo: product.codigo,
@@ -476,7 +476,8 @@ export default function Inventory({
     const diffCost = Math.abs(diff) * (product.costo_unitario || 0);
     if (diffCost > 0) {
       const voucher = {
-        id: `comp_audit_${Date.now()}`,
+        id: crypto.randomUUID(),
+        empresa_id: activeCompanyId,
         numero: `AUD-${Date.now().toString().slice(-6)}`,
         fecha: getTodayLocalDate(),
         descripcion: `Ajuste de Auditoría: ${product.nombre} (${diff > 0 ? 'Sobrante' : 'Faltante'})`,
@@ -529,7 +530,8 @@ export default function Inventory({
     }
 
     const batchVoucher = {
-      id: `comp_batch_${Date.now()}`,
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       numero: `ABATCH-${Date.now().toString().slice(-6)}`,
       fecha: getTodayLocalDate(),
       descripcion: `Ajuste Masivo de Auditoría`,
@@ -537,7 +539,7 @@ export default function Inventory({
       detalles: [] as any[]
     };
 
-    itemsToAdjust.forEach((p, idx) => {
+    itemsToAdjust.forEach((p) => {
       const physical = parseFloat(auditCounts[p.id]);
       const system = Number(p.stock_actual) || 0;
       const diff = physical - system;
@@ -551,8 +553,8 @@ export default function Inventory({
 
       // 2. Registrar movimiento de auditoría
       onSave?.('movimientosInventario', {
-        id: `mov_batch_${Date.now()}_${idx}`,
-        empresa_id: p.empresa_id || '',
+        id: crypto.randomUUID(),
+        empresa_id: activeCompanyId || p.empresa_id || '',
         producto_id: p.id,
         producto_nombre: p.nombre,
         producto_codigo: p.codigo,
@@ -603,12 +605,12 @@ export default function Inventory({
     const stockActual = parseFloat(productForm.stock_actual) || 0;
     const stockMinimo = parseFloat(productForm.stock_minimo) || 0;
     const puntoReorden = parseFloat(productForm.punto_reorden) || 10;
-    const prodId = editingProduct ? editingProduct.id : `prod_${Date.now()}`;
+    const prodId = (editingProduct && isUUID(editingProduct.id)) ? editingProduct.id : crypto.randomUUID();
     const targetAlmacen = almacenes.find(a => a.id === productForm.almacen_id) || almacenes[0];
 
     const newProd: ProductModel = {
       id: prodId,
-      empresa_id: '',
+      empresa_id: activeCompanyId,
       codigo: productForm.codigo.trim().toUpperCase(),
       codigo_barra: productForm.codigo_barra.trim(),
       referencia_fabrica: productForm.referencia_fabrica.trim().toUpperCase(),
@@ -642,8 +644,8 @@ export default function Inventory({
 
     if (!editingProduct && stockActual > 0) {
       onSave?.('movimientosInventario', {
-        id: `mov_init_${Date.now()}`,
-        empresa_id: '',
+        id: crypto.randomUUID(),
+        empresa_id: activeCompanyId,
         producto_id: prodId,
         producto_nombre: newProd.nombre,
         producto_codigo: newProd.codigo,
@@ -661,7 +663,8 @@ export default function Inventory({
       const totalCost = stockActual * costo;
       if (totalCost > 0) {
         onSave?.('comprobantes', {
-          id: `comp_init_${Date.now()}`,
+          id: crypto.randomUUID(),
+          empresa_id: activeCompanyId,
           numero: `INV-${Date.now().toString().slice(-6)}`,
           fecha: getTodayLocalDate(),
           descripcion: `Inventario Inicial: ${newProd.nombre}`,
@@ -740,7 +743,7 @@ export default function Inventory({
       stock_actual: String(prod.stock_actual ?? 0),
       stock_minimo: String(prod.stock_minimo ?? 5),
       punto_reorden: String(prod.punto_reorden ?? 10),
-      almacen_id: prod.almacen_id || 'alm_01',
+      almacen_id: prod.almacen_id || almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
       aplica_iva: prod.aplica_iva ?? true,
       alicuota_iva: prod.alicuota_iva || (prod.aplica_iva ? 'general' : 'exento'),
       cuenta_inventario_id: prod.cuenta_inventario_id || '',
@@ -771,7 +774,7 @@ export default function Inventory({
       stock_actual: '0',
       stock_minimo: '5',
       punto_reorden: '10',
-      almacen_id: almacenes[0]?.id || 'alm_01',
+      almacen_id: almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
       aplica_iva: true,
       alicuota_iva: 'general',
       cuenta_inventario_id: '',
@@ -845,6 +848,7 @@ export default function Inventory({
 
       const newCat: CategoriaProductoModel = {
         id: genId,
+        empresa_id: activeCompanyId,
         codigo: code,
         nombre: cleanNombre,
         descripcion: categoryForm.descripcion.trim(),
@@ -933,7 +937,7 @@ export default function Inventory({
 
     const code = almacenForm.codigo.trim() || `DEP-${String(almacenes.length + 1).padStart(2, '0')}`;
     const newAlm: AlmacenModel = {
-      id: editingAlmacen?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `alm_${Date.now()}`),
+      id: (editingAlmacen && isUUID(editingAlmacen.id)) ? editingAlmacen.id : crypto.randomUUID(),
       empresa_id: activeCompanyId || '',
       codigo: code,
       nombre: cleanNombre,
@@ -1008,8 +1012,8 @@ export default function Inventory({
     const almDestino = almacenes.find(a => a.id === transferForm.almacen_destino_id);
 
     onSave?.('movimientosInventario', {
-      id: `mov_trans_${Date.now()}`,
-      empresa_id: '',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       producto_id: prod.id,
       producto_nombre: prod.nombre,
       producto_codigo: prod.codigo,
@@ -1105,8 +1109,8 @@ export default function Inventory({
               setTransferProduct(products[0] || null);
               setTransferForm({
                 producto_id: products[0]?.id || '',
-                almacen_origen_id: 'alm_01',
-                almacen_destino_id: 'alm_02',
+                almacen_origen_id: almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
+                almacen_destino_id: almacenes[1]?.id || almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
                 cantidad: '',
                 referencia: ''
               });

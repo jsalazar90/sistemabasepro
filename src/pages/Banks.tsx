@@ -30,12 +30,15 @@ const isBankIngreso = (tipo?: string) => {
   return t === 'ingreso' || t === 'ingreso_directo' || t === 'deposito' || t === 'cobro' || t === 'cobranza' || t === 'transferencia_recibida' || t === 'ajuste_ganancia';
 };
 
-// Helper para generar IDs únicos
+// Helper para generar IDs únicos (UUID v4 estándar)
 const generateId = () => {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }
-  return Date.now().toString(36) + Math.random().toString(36).substring(2);
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
 };
 
 // Helpers para ordenar movimientos cronológicamente según orden de registro
@@ -760,7 +763,7 @@ export default function BancosView({
       if (editBancoId) {
         const b = bancos.find(x => x.id === editBancoId);
         if(b.moneda === 'Bolivares') dataToSave.tasa = parseFloat(cuentaForm.tasa.toString()) || 1;
-        await onSave('bancos', { ...b, ...dataToSave });
+        await onSave('bancos', { ...b, ...dataToSave, empresa_id: b?.empresa_id || activeCompanyId });
         showToast(cuentaForm.es_caja ? "Caja actualizada." : "Banco actualizado.", "success");
       } else {
         const newBancoId = generateId();
@@ -768,10 +771,10 @@ export default function BancosView({
         dataToSave.moneda = cuentaForm.moneda;
         dataToSave.tasa = cuentaForm.moneda === 'Bolivares' ? (parseFloat(cuentaForm.tasa.toString()) || 1) : 1;
         dataToSave.saldo = 0; 
-        await onSave('bancos', { id: newBancoId, createdAt: Date.now(), ...dataToSave });
+        await onSave('bancos', { id: newBancoId, empresa_id: activeCompanyId, createdAt: Date.now(), ...dataToSave });
 
         if (saldoInicial > 0) {
-          await onSave('movimientosBancos', { id: generateId(), banco_id: newBancoId, fecha: fechaHoy, ref: "APER", descripcion: "Apertura de Cuenta", tipo: 'ingreso', monto: saldoInicial, tasa: dataToSave.tasa, montoBs: dataToSave.moneda === 'Bolivares' ? (saldoInicial * dataToSave.tasa).toFixed(2) : null, estado: 'activo', createdAt: Date.now() });
+          await onSave('movimientosBancos', { id: generateId(), empresa_id: activeCompanyId, banco_id: newBancoId, fecha: fechaHoy, ref: "APER", descripcion: "Apertura de Cuenta", tipo: 'ingreso', monto: saldoInicial, tasa: dataToSave.tasa, montoBs: dataToSave.moneda === 'Bolivares' ? (saldoInicial * dataToSave.tasa).toFixed(2) : null, estado: 'activo', createdAt: Date.now() });
         }
         showToast(cuentaForm.es_caja ? "Caja creada exitosamente." : "Banco creado exitosamente.", "success");
       }
@@ -1006,7 +1009,8 @@ export default function BancosView({
     const estado = (!isBalanced || hasInvalidLines) ? 'Descuadrado' : 'Contabilizado';
 
     const newComprobante = {
-      id: `comp-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: generateId(),
+      empresa_id: activeCompanyId,
       fecha,
       numero: `CMP-${Date.now().toString().slice(-6)}`,
       tipo: 'Diario',
@@ -1014,8 +1018,8 @@ export default function BancosView({
       referencia: ref,
       total: totalDebe,
       estado: estado,
-      lineas: (detalles || []).map((d, i) => ({
-        id: `l${i}-${Date.now()}`,
+      lineas: (detalles || []).map((d) => ({
+        id: generateId(),
         cuentaId: d.cuenta_id || '',
         descripcion: d.descripcion || desc,
         debe: Number(d.debe) || 0,
@@ -1147,19 +1151,19 @@ export default function BancosView({
         }
       }
       const newId = editMovId || generateId();
-      const compId = editMovId ? (oldMov?.comprobanteId || oldMov?.comprobante_id || existingComp?.id || `comp-${newId}`) : `comp-${newId}`;
+      const compId = editMovId ? (oldMov?.comprobanteId || oldMov?.comprobante_id || existingComp?.id || generateId()) : generateId();
 
       if (!templateComp) {
         const lineas = movForm.tipo === 'ingreso' ? [
           {
-            id: `l0-${Date.now()}`,
+            id: generateId(),
             cuentaId: cB,
             descripcion: `Ingreso Banco ${b?.banco || ''} - ${movForm.desc}`,
             debe: monto,
             haber: 0
           },
           {
-            id: `l1-${Date.now()}`,
+            id: generateId(),
             cuentaId: ctaDestino,
             descripcion: movForm.desc,
             debe: 0,
@@ -1167,14 +1171,14 @@ export default function BancosView({
           }
         ] : [
           {
-            id: `l0-${Date.now()}`,
+            id: generateId(),
             cuentaId: ctaDestino,
             descripcion: movForm.desc,
             debe: monto,
             haber: 0
           },
           {
-            id: `l1-${Date.now()}`,
+            id: generateId(),
             cuentaId: cB,
             descripcion: `Egreso Banco ${b?.banco || ''} - ${movForm.desc}`,
             debe: 0,
@@ -1184,6 +1188,7 @@ export default function BancosView({
 
         templateComp = {
           id: compId,
+          empresa_id: activeCompanyId,
           fecha: movForm.fecha,
           numero: existingComp?.numero || `CMP-${Date.now().toString().slice(-6)}`,
           tipo: 'Diario',
@@ -1196,11 +1201,13 @@ export default function BancosView({
         };
       } else {
         templateComp.id = compId;
+        templateComp.empresa_id = templateComp.empresa_id || activeCompanyId;
         templateComp.movimientoBancoId = newId;
       }
 
       const newMov = editMovId ? {
         id: editMovId, 
+        empresa_id: oldMov?.empresa_id || activeCompanyId,
         banco_id: selectedBancoId, 
         fecha: movForm.fecha, 
         ref, 
@@ -1218,6 +1225,7 @@ export default function BancosView({
         comprobante_id: compId
       } : {
         id: newId, 
+        empresa_id: activeCompanyId,
         createdAt: timestamp, 
         banco_id: selectedBancoId, 
         fecha: movForm.fecha, 
@@ -1263,6 +1271,7 @@ export default function BancosView({
               await onSave('comprobantes', {
                 ...finalComprobante,
                 id: compId,
+                empresa_id: activeCompanyId,
                 movimientoBancoId: newMov.id
               });
 
@@ -1310,6 +1319,7 @@ export default function BancosView({
               await onSave('comprobantes', {
                 ...finalComprobante,
                 id: compId,
+                empresa_id: activeCompanyId,
                 movimientoBancoId: newMov.id
               });
               
@@ -1357,6 +1367,7 @@ export default function BancosView({
 
       const updatedMov = { 
         ...mov, 
+        empresa_id: mov.empresa_id || activeCompanyId,
         cuarentenaStatus: 'asignado', 
         cliente_asignado: asignarModal.clienteId,
         descripcion: `${mov.descripcion} (Asignado a: ${clienteNombre})`
@@ -1369,6 +1380,7 @@ export default function BancosView({
       const bancoObj = bancos.find(b => String(b.id) === String(mov.banco_id));
       await onSave('cxc', { 
         id: generateId(), 
+        empresa_id: activeCompanyId,
         createdAt: Date.now(), 
         fecha: fechaHoy,
         vencimiento: fechaHoy,
@@ -2114,6 +2126,7 @@ export default function BancosView({
 
       await onSave('movimientosBancos', { 
         id: generateId(), 
+        empresa_id: activeCompanyId,
         banco_id: sapsResult.bancoId, 
         fecha: sapsResult.fecha, 
         ref: "AUTO-FX", 
@@ -2206,7 +2219,7 @@ export default function BancosView({
 
     const outId = generateId();
     const inId = generateId();
-    const compId = `comp-${Date.now()}`;
+    const compId = generateId();
     const compNumero = `CMP-${Date.now().toString().slice(-6)}`;
 
     const ctaOrigen = bO?.cuenta_contable_id || '1.1.3';
@@ -2214,6 +2227,7 @@ export default function BancosView({
 
     const outMov = {
       id: outId,
+      empresa_id: activeCompanyId,
       banco_id: oId,
       fecha: fechaHoy,
       ref: `OUT-${ref}`,
@@ -2229,6 +2243,7 @@ export default function BancosView({
 
     const inMov = {
       id: inId,
+      empresa_id: activeCompanyId,
       banco_id: dId,
       fecha: fechaHoy,
       ref: `IN-${ref}`,
@@ -2244,6 +2259,7 @@ export default function BancosView({
 
     const templateComp = {
       id: compId,
+      empresa_id: activeCompanyId,
       fecha: fechaHoy,
       numero: compNumero,
       tipo: 'Diario',
@@ -2254,14 +2270,14 @@ export default function BancosView({
       movimientoBancoId: outId,
       lineas: [
         {
-          id: `l0-${Date.now()}`,
+          id: generateId(),
           cuentaId: ctaDestino,
           descripcion: cto,
           debe: m,
           haber: 0
         },
         {
-          id: `l1-${Date.now()}`,
+          id: generateId(),
           cuentaId: ctaOrigen,
           descripcion: cto,
           debe: 0,
@@ -2286,6 +2302,7 @@ export default function BancosView({
           await onSave('comprobantes', {
             ...finalComprobante,
             id: confirmedCompId,
+            empresa_id: activeCompanyId,
             movimientoBancoId: outId
           });
 

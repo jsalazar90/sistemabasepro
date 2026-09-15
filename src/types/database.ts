@@ -99,7 +99,7 @@ export interface ContactoModel {
   empresa_id: string;
   name: string;
   tax_id: string;
-  type: 'aliados' | 'customer' | 'freelance' | 'supplier' | 'airline' | 'employee' | 'empleados' | 'agentes' | 'travel_agent' | 'intercompany' | 'shareholder' | 'both';
+  type: 'customer' | 'supplier' | 'employee' | 'empleados' | 'intercompany' | 'shareholder' | 'both' | 'aliados' | 'freelance';
   email?: string;
   phone?: string;
   address?: string;
@@ -111,10 +111,6 @@ export interface ContactoModel {
   expense_account?: string;
   employee_type?: string;
   comision_porcentaje?: number;
-  codigo_iata?: string;
-  codigo_dos_letras?: string;
-  terminal_agente?: string;
-  terminalAgente?: string;
   activo: boolean;
   created_at?: string;
 }
@@ -618,35 +614,6 @@ export interface SolicitudBancoModel {
   updated_at?: string;
 }
 
-export interface EmisionBoletoModel {
-  id: string;
-  empresa_id: string;
-  numero_ticket: string;
-  fare: number;
-  tax: number;
-  fee: number;
-  comision: number;
-  net: number;
-  metodo_pago?: string;
-  transaccion?: string;
-  localizador: string;
-  ruta: string;
-  pasajero: string;
-  categoria?: string;
-  grupo_tarifario?: string;
-  aerolinea?: string;
-  clase?: string;
-  telefono?: string;
-  correo?: string;
-  tipo_transaccion?: string;
-  agencia_emisor?: string;
-  agente_emisor?: string;
-  terminal_agente?: string;
-  fecha: string;
-  estado?: 'emitido' | 'anulado' | 'reembolsado' | 'procesado';
-  created_at?: string;
-  updated_at?: string;
-}
 
 export interface TerminalPosModel {
   id: string;

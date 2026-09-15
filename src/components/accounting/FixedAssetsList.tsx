@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Plus, Search, Filter, Edit2, Trash2, X, FileText, AlertTriangle } from 'lucide-react';
 import VoucherPreviewModal from '../common/VoucherPreviewModal';
+import { useCompany } from '../../context/CompanyContext';
 
 interface FixedAssetsListProps {
   activosFijos: any[];
@@ -29,6 +30,7 @@ export default function FixedAssetsList({
   onSave, 
   showToast 
 }: FixedAssetsListProps) {
+  const { activeCompanyId } = useCompany();
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -199,6 +201,7 @@ export default function FixedAssetsList({
 
     const proposedVoucher = {
       id: voucherId,
+      empresa_id: activeCompanyId,
       numero: voucherNum,
       comprobante: voucherNum,
       fecha: formData.fechaAdquisicion || new Date().toISOString().split('T')[0],
@@ -210,7 +213,7 @@ export default function FixedAssetsList({
       estado: 'Contabilizado',
       lineas: [
         {
-          id: `l1-${timestamp}`,
+          id: crypto.randomUUID(),
           cuentaId: cuentaActivoObj ? cuentaActivoObj.id : (categoria?.cuentaActivo || ''),
           nombreCuenta: cuentaActivoObj ? `${cuentaActivoObj.codigo} - ${cuentaActivoObj.nombre}` : 'Activo Fijo',
           descripcion: `Activo Fijo: ${formData.descripcion}`,
@@ -218,7 +221,7 @@ export default function FixedAssetsList({
           haber: 0
         },
         {
-          id: `l2-${timestamp}`,
+          id: crypto.randomUUID(),
           cuentaId: cuentaCreditoObj ? cuentaCreditoObj.id : provCreditCode,
           nombreCuenta: cuentaCreditoObj ? `${cuentaCreditoObj.codigo} - ${cuentaCreditoObj.nombre}` : 'Cuentas por Pagar Proveedores',
           descripcion: `Cuentas por Pagar: ${proveedor?.name || 'Proveedor'}`,
@@ -231,6 +234,7 @@ export default function FixedAssetsList({
     const newAssetData = {
       ...formData,
       id: assetId,
+      empresa_id: activeCompanyId,
       categoriaNombre: categoria?.nombre || '',
       cuentaActivo: cuentaActivoObj?.id || categoria?.cuentaActivo || '',
       cuentaGastoDeprec: categoria?.cuentaGastoDeprec || '',
@@ -246,7 +250,7 @@ export default function FixedAssetsList({
 
   const handleConfirmVoucher = async (finalComprobante: any) => {
     if (isViewingExistingVoucher) {
-      onSave('comprobantes', finalComprobante);
+      onSave('comprobantes', { ...finalComprobante, empresa_id: finalComprobante.empresa_id || activeCompanyId });
       setShowVoucherModal(false);
       setPendingVoucher(null);
       setPendingAssetData(null);
@@ -259,13 +263,15 @@ export default function FixedAssetsList({
     // 1. Guardar Asiento Contable confirmado por el usuario
     const voucherToSave = {
       ...finalComprobante,
-      id: finalComprobante.id || crypto.randomUUID()
+      id: finalComprobante.id || crypto.randomUUID(),
+      empresa_id: activeCompanyId
     };
     onSave('comprobantes', voucherToSave);
 
     // 2. Guardar Activo Fijo con el ID del comprobante
     const assetToSave = {
       ...pendingAssetData,
+      empresa_id: activeCompanyId,
       comprobante_id: voucherToSave.id
     };
     onSave('activosFijos', assetToSave);
@@ -276,6 +282,7 @@ export default function FixedAssetsList({
       const valorNum = Number(pendingAssetData.valorInicial) || 0;
       const newCxp = {
         id: crypto.randomUUID(),
+        empresa_id: activeCompanyId,
         categoria: 'proveedores',
         proveedor: proveedor?.name || '',
         proveedor_id: proveedor?.taxId || '',
@@ -362,7 +369,7 @@ export default function FixedAssetsList({
         estado: 'Contabilizado',
         lineas: [
           {
-            id: `l1-${Date.now()}`,
+            id: crypto.randomUUID(),
             cuentaId: cuentaActivoObj ? cuentaActivoObj.id : (categoria?.cuentaActivo || ''),
             nombreCuenta: cuentaActivoObj ? `${cuentaActivoObj.codigo} - ${cuentaActivoObj.nombre}` : 'Activo Fijo',
             descripcion: `Activo Fijo: ${activo.descripcion}`,
@@ -370,7 +377,7 @@ export default function FixedAssetsList({
             haber: 0
           },
           {
-            id: `l2-${Date.now()}`,
+            id: crypto.randomUUID(),
             cuentaId: cuentaCreditoObj ? cuentaCreditoObj.id : provCreditCode,
             nombreCuenta: cuentaCreditoObj ? `${cuentaCreditoObj.codigo} - ${cuentaCreditoObj.nombre}` : 'Cuentas por Pagar Proveedores',
             descripcion: `Cuentas por Pagar: ${proveedor?.name || 'Proveedor'}`,

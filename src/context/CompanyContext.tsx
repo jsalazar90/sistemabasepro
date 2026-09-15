@@ -97,17 +97,25 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
   }, [activeCompanyId]);
 
-  // Estado de Sesión de Usuario en memoria (con fallback al usuario Master por defecto)
+  // Estado de Sesión de Usuario en memoria
   const [currentUser, setCurrentUser] = useState<UserSession | null>(() => {
     const saved = sessionStorage.getItem("erp_active_user") || localStorage.getItem("erp_active_user");
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.email) {
+          if (parsed.email.toLowerCase() === 'jefe@halleyerp.com') {
+            sessionStorage.removeItem("erp_active_user");
+            localStorage.removeItem("erp_active_user");
+            return null;
+          }
+          return parsed;
+        }
       } catch (e) {
-        return INITIAL_DEFAULT_USERS[0];
+        return null;
       }
     }
-    return INITIAL_DEFAULT_USERS[0];
+    return null;
   });
 
   const refreshCompanies = async (userParam?: UserSession | null) => {
@@ -143,8 +151,13 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
           localStorage.setItem("erp_active_company_id", selected);
         }
         const found = userPermittedCompanies.find(c => c.id === selected);
-        if (found && ((found as any).workingYear || (found as any).anoInicio)) {
-          setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+        if (found) {
+          try {
+            localStorage.setItem("erp_cached_active_company", JSON.stringify(found));
+          } catch {}
+          if ((found as any).workingYear || (found as any).anoInicio) {
+            setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+          }
         }
         return selected;
       });
@@ -155,10 +168,96 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // Cargar empresas y usuarios directamente de Supabase
+  // Sincronización continua de sesión y persistencia en Supabase Auth
   useEffect(() => {
-    refreshCompanies(currentUser);
+    let isMounted = true;
+
+    async function syncAuthSession() {
+      try {
+        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
+        if (!isSupabaseConfigured || !supabase) {
+          refreshCompanies(currentUser);
+          return;
+        }
+
+        // 1. Obtener la sesión activa persistida de Supabase Auth
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (session?.user && isMounted) {
+          const email = session.user.email?.toLowerCase();
+          if (email) {
+            const { data: userData } = await supabase.from('usuarios').select('*').eq('email', email).maybeSingle();
+            const isSuperAdmin = email === 'jhoansg@gmail.com';
+            const user: UserSession = {
+              id: userData?.id || session.user.id,
+              email: email,
+              name: userData?.nombre || session.user.user_metadata?.nombre || email.split('@')[0],
+              role: isSuperAdmin ? 'Master' : (userData?.role || 'Operador'),
+              activo: true,
+              companyRoles: {},
+              companyConfigs: {}
+            };
+            setCurrentUser(user);
+            sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+            await refreshCompanies(user);
+          } else {
+            await refreshCompanies(currentUser);
+          }
+        } else {
+          await refreshCompanies(currentUser);
+        }
+
+        // 2. Suscribirse reactivamente a cambios de sesión de Supabase Auth
+        const { data: authListener } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+          if (!isMounted) return;
+          if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+            if (currentSession?.user) {
+              const email = currentSession.user.email?.toLowerCase();
+              if (email) {
+                const { data: userData } = await supabase.from('usuarios').select('*').eq('email', email).maybeSingle();
+                const isSuperAdmin = email === 'jhoansg@gmail.com';
+                const user: UserSession = {
+                  id: userData?.id || currentSession.user.id,
+                  email: email,
+                  name: userData?.nombre || currentSession.user.user_metadata?.nombre || email.split('@')[0],
+                  role: isSuperAdmin ? 'Master' : (userData?.role || 'Operador'),
+                  activo: true,
+                  companyRoles: {},
+                  companyConfigs: {}
+                };
+                setCurrentUser(user);
+                sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+                await refreshCompanies(user);
+              }
+            }
+          } else if (event === 'SIGNED_OUT') {
+            setCurrentUser(null);
+            sessionStorage.removeItem("erp_active_user");
+            localStorage.removeItem("erp_active_user");
+            setAvailableCompanies([]);
+            setActiveCompanyId(null);
+          }
+        });
+
+        return () => {
+          authListener?.subscription?.unsubscribe();
+        };
+      } catch (err) {
+        console.warn("Error en syncAuthSession:", err);
+      }
+    }
+
+    syncAuthSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Cargar lista de usuarios cuando el usuario activo es Master
+  useEffect(() => {
     async function loadUsers() {
+      if (!currentUser) return;
       try {
         const { dbFetchUsuarios } = await import("../services/db");
         const list = await dbFetchUsuarios();
@@ -172,51 +271,79 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       }
     }
     loadUsers();
-  }, [currentUser?.id, currentUser?.email]);
+  }, [currentUser?.id, currentUser?.email, currentUser?.role]);
 
   // Autenticación Login contra base de datos
   const login = async (email: string, password: string) => {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPass = password.trim();
 
+    if (cleanEmail === 'jefe@halleyerp.com') {
+      sessionStorage.removeItem("erp_active_user");
+      localStorage.removeItem("erp_active_user");
+      return { 
+        success: false, 
+        error: "El usuario jefe@halleyerp.com ha sido revocado y eliminado permanentemente del sistema. Inicie sesión con jhoansg@gmail.com." 
+      };
+    }
+
     try {
       const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
       
       if (isSupabaseConfigured && supabase) {
         // 1. Autenticación Segura con Supabase Auth
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: cleanPass
         });
 
         if (authError) {
+          // Si el usuario no ha sido provisionado en auth.users, intentar signUp
+          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password: cleanPass
+          });
+
+          if (!signUpError && signUpData.user) {
+            const retry = await supabase.auth.signInWithPassword({
+              email: cleanEmail,
+              password: cleanPass
+            });
+            if (retry.data?.user) {
+              authData = retry.data;
+              authError = null;
+            }
+          }
+        }
+
+        if (authError || !authData?.user) {
            return { 
              success: false, 
-             error: authError.message.includes('credentials') 
-               ? 'Contraseña incorrecta o usuario no registrado en el nuevo sistema de seguridad.' 
-               : authError.message 
+             error: authError?.message?.includes('credentials') 
+               ? 'Contraseña incorrecta o usuario no registrado en el sistema de seguridad.' 
+               : (authError?.message || 'Error de autenticación.')
            };
         }
 
         // 2. Obtener metadatos del usuario desde public.usuarios
-        const { data: userData, error: fetchError } = await supabase.from('usuarios').select('*').eq('email', cleanEmail).maybeSingle();
+        const { data: userData } = await supabase.from('usuarios').select('*').eq('email', cleanEmail).maybeSingle();
         
         if (userData && userData.activo === false) {
           await supabase.auth.signOut();
           return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
         }
 
-        // Si el usuario es el administrador principal, forzar rol Master para que vea todas las empresas
-        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com' || cleanEmail === 'jefe@halleyerp.com';
+        // Si el usuario es el administrador principal legal, forzar rol Master para que vea todas las empresas
+        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com';
         const assignedRole = isSuperAdmin ? 'Master' : (userData?.role || 'Operador');
 
         // Auto-registrar al Master en la base de datos pública si es su primera vez
         if (isSuperAdmin && !userData) {
           try {
             await supabase.from('usuarios').upsert({
-              id: authData.user?.id || `u-${Date.now()}`,
+              id: authData.user.id,
               email: cleanEmail,
-              nombre: cleanEmail === 'jhoansg@gmail.com' ? 'Jhoan SG' : 'Master',
+              nombre: 'Jhoan SG',
               role: 'Master',
               activo: true
             });
@@ -226,7 +353,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         }
 
         const user: UserSession = {
-          id: userData?.id || authData.user?.id || `u-${Date.now()}`,
+          id: userData?.id || authData.user.id,
           email: cleanEmail,
           name: userData?.nombre || cleanEmail.split('@')[0],
           role: assignedRole,
@@ -258,13 +385,9 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
 
     let user = usersList.find(u => u.email.toLowerCase() === cleanEmail);
-    if (!user && (cleanEmail === "jefe@halleyerp.com" || cleanEmail === "jhoansg@gmail.com") && cleanPass === "19072828") {
-      user = INITIAL_DEFAULT_USERS[0];
-      user.email = cleanEmail;
-    }
 
     if (!user) {
-      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado localmente." };
+      return { success: false, error: "El correo electrónico ingresado no se encuentra registrado en el sistema." };
     }
 
     if (user.activo === false) {
@@ -342,13 +465,13 @@ const defaultFallbackContext: CompanyContextType = {
   availableCompanies: [
     {
       id: '00000000-0000-0000-0000-000000000001',
-      name: 'Agencia de Viajes y Turismo Halley, C.A.',
+      name: 'Corporación Halley, C.A.',
       taxId: 'J-12345678-0',
-      nombre: 'Agencia de Viajes y Turismo Halley, C.A.',
+      nombre: 'Corporación Halley, C.A.',
       rif: 'J-12345678-0',
       direccion: 'Av. Principal, Edificio Torre Empresarial, Piso 5',
       telefono: '+58 212 555-0100',
-      email: 'administracion@agenciaprincipal.com',
+      email: 'administracion@corporacionhalley.com',
       monedaPrincipal: 'USD',
       monedaSecundaria: 'VES'
     }

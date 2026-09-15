@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import { createServer as createHttpServer } from 'http';
 import https from 'https';
 import path from 'path';
 
-const PORT = 3000;
+const PORT = Number(process.env.PORT) || 3000;
 const app = express();
 
 app.use(express.json());

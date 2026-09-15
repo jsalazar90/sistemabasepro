@@ -8,10 +8,8 @@ import {
   UserCheck, 
   ArrowLeft, 
   Contact2, 
-  Plane, 
   Briefcase,
-  ShieldCheck,
-  Globe
+  ShieldCheck
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
 

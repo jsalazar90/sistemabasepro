@@ -10,7 +10,7 @@ import {
 
 async function testConfig() {
   console.log('Testing Accounting Config, Series, Correlatives and Tax Regime...');
-  const testCompanyId = 'comp_test_config_' + Date.now();
+  const testCompanyId = crypto.randomUUID();
 
   // 1. Create company
   const empRes = await dbSaveEmpresa({

@@ -43,7 +43,7 @@ export const DEFAULT_LOCAL_COMPANY: Company = {
   monedaPrincipal: 'USD',
   monedaSecundaria: 'VES',
   tipoContribuyente: 'ordinario',
-  tipoEmpresa: 'turismo',
+  tipoEmpresa: 'comercial',
   anoInicio: String(new Date().getFullYear()),
   workingYear: String(new Date().getFullYear()),
   habilitarPOS: true,
@@ -59,31 +59,35 @@ export const DEFAULT_LOCAL_COMPANY: Company = {
 export async function dbFetchEmpresas(): Promise<Company[]> {
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: true });
-      if (!error && data && data.length > 0) {
-        const mapped = (data || []).map((row: any) => ({
-          id: row.id,
-          name: row.nombre,
-          taxId: row.rif,
-          nombre: row.nombre,
-          rif: row.rif,
-          anoInicio: row.ano_inicio || row.working_year || String(new Date().getFullYear()),
-          workingYear: row.working_year || String(new Date().getFullYear()),
-          direccion: row.direccion || '',
-          telefono: row.telefono || '',
-          email: row.email || '',
-          logo: row.logo || '',
-          monedaPrincipal: row.moneda_principal || 'USD',
-          monedaSecundaria: row.moneda_secundaria || 'VES',
-          tipoContribuyente: row.tipo_contribuyente || 'ordinario',
-          tipoEmpresa: row.tipo_empresa || 'comercial',
-          habilitarPOS: row.habilitar_pos ?? true,
-          habilitarVendedores: row.habilitar_vendedores ?? true,
-          habilitarPedidos: row.habilitar_pedidos ?? true,
-          habilitarTasaReferencial: row.habilitar_tasa_referencial ?? false,
-        }));
-        await setLocal('erp_local_empresas', mapped);
-        return mapped;
+      // Verificar si existe sesión autenticada antes de consultar Supabase (cumplimiento RLS)
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        const { data, error } = await supabase.from('empresas').select('*').order('created_at', { ascending: true });
+        if (!error && data && data.length > 0) {
+          const mapped = (data || []).map((row: any) => ({
+            id: row.id,
+            name: row.nombre,
+            taxId: row.rif,
+            nombre: row.nombre,
+            rif: row.rif,
+            anoInicio: row.ano_inicio || row.working_year || String(new Date().getFullYear()),
+            workingYear: row.working_year || String(new Date().getFullYear()),
+            direccion: row.direccion || '',
+            telefono: row.telefono || '',
+            email: row.email || '',
+            logo: row.logo || '',
+            monedaPrincipal: row.moneda_principal || 'USD',
+            monedaSecundaria: row.moneda_secundaria || 'VES',
+            tipoContribuyente: row.tipo_contribuyente || 'ordinario',
+            tipoEmpresa: row.tipo_empresa || 'comercial',
+            habilitarPOS: row.habilitar_pos ?? true,
+            habilitarVendedores: row.habilitar_vendedores ?? true,
+            habilitarPedidos: row.habilitar_pedidos ?? true,
+            habilitarTasaReferencial: row.habilitar_tasa_referencial ?? false,
+          }));
+          await setLocal('erp_local_empresas', mapped);
+          return mapped;
+        }
       }
     } catch (err: any) {
       console.warn('Error al consultar empresas de Supabase, usando local:', err);
@@ -115,7 +119,7 @@ export async function dbSaveEmpresa(empresa: any): Promise<{ success: boolean; e
     monedaPrincipal: empresa.monedaPrincipal || 'USD',
     monedaSecundaria: empresa.monedaSecundaria || 'VES',
     tipoContribuyente: empresa.tipoContribuyente || 'ordinario',
-    tipoEmpresa: empresa.tipoEmpresa || 'turismo',
+    tipoEmpresa: empresa.tipoEmpresa || 'comercial',
     anoInicio: empresa.anoInicio || empresa.workingYear || String(new Date().getFullYear()),
     workingYear: empresa.workingYear || empresa.anoInicio || String(new Date().getFullYear()),
     habilitarPOS: empresa.habilitarPOS ?? true,
@@ -136,6 +140,12 @@ export async function dbSaveEmpresa(empresa: any): Promise<{ success: boolean; e
 
   if (isSupabaseConfigured && supabase) {
     try {
+      // Si no hay sesión de Supabase Auth activa, no intentar escribir en Supabase (evita 401)
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session?.user) {
+        return { success: true };
+      }
+
       const payload = {
         id: compId,
         nombre: formatted.nombre,
@@ -157,8 +167,8 @@ export async function dbSaveEmpresa(empresa: any): Promise<{ success: boolean; e
       await supabase.from('empresas').upsert(payload);
 
       // --- ASIGNACIÓN AUTOMÁTICA DEL MASTER A LA EMPRESA ---
-      // Aseguramos que jhoansg@gmail.com (y jefe) queden explícitamente asignados a la data de la empresa
-      const masterEmails = ['jhoansg@gmail.com', 'jefe@halleyerp.com'];
+      // Aseguramos que jhoansg@gmail.com quede explícitamente asignado a la data de la empresa
+      const masterEmails = ['jhoansg@gmail.com'];
       const { data: masterUsers } = await supabase.from('usuarios').select('id, email').in('email', masterEmails);
       
       if (masterUsers && masterUsers.length > 0) {
@@ -457,7 +467,7 @@ const DEFAULT_CUENTAS: any[] = [];
 const DEFAULT_BANCOS: any[] = [];
 
 // ============================================================================
-// 9. CONTACTOS (ALIADOS, FREELANCE, AEROLÍNEAS, PROVEEDORES, AGENTES)
+// 9. CONTACTOS (CLIENTES, PROVEEDORES, EMPLEADOS, ACCIONISTAS, INTERCOMPAÑÍAS, ALIADOS)
 // ============================================================================
 
 export const DEFAULT_LOCAL_CONTACTS: any[] = [];
@@ -487,9 +497,6 @@ export async function dbFetchContactos(empresaId?: string): Promise<any[]> {
             expenseAccount: row.expense_account || localItem?.expenseAccount || '',
             employeeType: row.employee_type || undefined,
             comisionPorcentaje: Number(row.comision_porcentaje) || 0,
-            codigoIata: row.codigo_iata || '',
-            codigoDosLetras: row.codigo_dos_letras || '',
-            terminalAgente: row.terminal_agente || row.terminalAgente || '',
             personaContacto: row.persona_contacto || '',
             bancoPago: row.banco_pago || '',
             pagoMovil: row.pago_movil || '',
@@ -524,9 +531,6 @@ export async function dbSaveContacto(contacto: any, empresaId: string): Promise<
     expenseAccount: contacto.expenseAccount || '',
     employeeType: contacto.employeeType || undefined,
     comisionPorcentaje: Number(contacto.comisionPorcentaje) || 0,
-    codigoIata: contacto.codigoIata || '',
-    codigoDosLetras: contacto.codigoDosLetras || '',
-    terminalAgente: (contacto.terminalAgente || '').trim().toUpperCase(),
     personaContacto: contacto.personaContacto || '',
     bancoPago: contacto.bancoPago || '',
     pagoMovil: contacto.pagoMovil || '',
@@ -559,9 +563,6 @@ export async function dbSaveContacto(contacto: any, empresaId: string): Promise<
         expense_account: isUUID(formatted.expenseAccount) ? formatted.expenseAccount : null,
         employee_type: formatted.employeeType || null,
         comision_porcentaje: formatted.comisionPorcentaje,
-        codigo_iata: formatted.codigoIata || null,
-        codigo_dos_letras: formatted.codigoDosLetras || null,
-        terminal_agente: formatted.terminalAgente || null,
         persona_contacto: formatted.personaContacto || null,
         banco_pago: formatted.bancoPago || null,
         pago_movil: formatted.pagoMovil || null,
@@ -719,14 +720,17 @@ export async function dbFetchUsuarios(): Promise<any[]> {
     } catch {}
   }
 
-  if (!local || local.length === 0) {
+  const cleanLocal = (local || []).filter((u: any) => u.email?.toLowerCase() !== 'jefe@halleyerp.com');
+  if (cleanLocal.length !== (local || []).length) {
+    await setLocal('erp_local_usuarios', cleanLocal);
+  }
+
+  if (!cleanLocal || cleanLocal.length === 0) {
     const defaultMaster = {
-      id: "u-master-1",
-      email: "jefe@halleyerp.com",
-      name: "Administrador Master",
+      id: "u-master-jhoan",
+      email: "jhoansg@gmail.com",
+      name: "Jhoan SG",
       role: "Master",
-      password: "19072828",
-      claveOperaciones: globalMasterClave || "19072828",
       activo: true,
       companyRoles: { "*": "Master" },
       companyConfigs: {}
@@ -734,13 +738,13 @@ export async function dbFetchUsuarios(): Promise<any[]> {
     await setLocal('erp_local_usuarios', [defaultMaster]);
     return [defaultMaster];
   }
-  return local;
+  return cleanLocal;
 }
 
 export async function dbSaveUsuario(usuario: any): Promise<boolean> {
   const list = await getLocal<any[]>('erp_local_usuarios', []);
   const formatted = {
-    id: usuario.id || `user_${Date.now()}`,
+    id: (usuario.id && isUUID(usuario.id)) ? usuario.id : crypto.randomUUID(),
     email: usuario.email.trim().toLowerCase(),
     name: usuario.name || usuario.nombre || usuario.email.split('@')[0],
     password: usuario.password || usuario.password_hash || '123456',
@@ -965,20 +969,24 @@ export async function dbSaveCuentaContable(cuenta: any, empresaId: string): Prom
 
   if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
     try {
-      const payload = {
+      const payload: any = {
         id: formatted.id,
         empresa_id: empresaId,
         codigo: formatted.codigo,
         nombre: formatted.nombre,
-        tipo: formatted.tipo,
-        naturaleza: formatted.naturaleza,
-        grupo: formatted.grupo,
-        nivel: formatted.nivel,
+        tipo: formatted.tipo || 'Movimiento',
+        naturaleza: formatted.naturaleza || 'Deudora',
+        grupo: formatted.grupo || 'Activo',
+        nivel: formatted.nivel || 1,
         cuenta_padre_id: formatted.cuentaPadreId,
         saldo_actual: formatted.saldoActual,
         activo: formatted.activo
       };
-      await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      const { error: upsertErr } = await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      if (upsertErr && payload.cuenta_padre_id) {
+        payload.cuenta_padre_id = null;
+        await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      }
     } catch (e) {
       console.warn('Error dbSaveCuentaContable Supabase:', e);
     }
@@ -2241,9 +2249,17 @@ export async function dbFetchComprobantes(empresaId?: string): Promise<any[]> {
 export async function dbSaveComprobante(comp: any, empresaId: string): Promise<boolean> {
   const cid = empresaId || 'default';
   const list = await getLocal<any[]>(`erp_local_comprobantes_${cid}`, []);
-  const linesTotal = Array.isArray(comp.lineas) && comp.lineas.length > 0 
+  const totalDebe = Array.isArray(comp.lineas) && comp.lineas.length > 0 
     ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) 
     : 0;
+  const totalHaber = Array.isArray(comp.lineas) && comp.lineas.length > 0 
+    ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.haber) || 0), 0) 
+    : 0;
+  const diferencia = Math.abs(totalDebe - totalHaber);
+  const estadoFinal = comp.estado 
+    ? (comp.estado === 'Contabilizado' && diferencia > 0.01 && (comp.lineas?.length || 0) > 0 ? 'Descuadrado' : comp.estado)
+    : (diferencia > 0.01 && (comp.lineas?.length || 0) > 0 ? 'Descuadrado' : 'Contabilizado');
+
   const formatted = {
     id: comp.id || `diar_${Date.now()}`,
     numero: comp.numero || `DIAR-${Date.now().toString().slice(-6)}`,
@@ -2251,8 +2267,8 @@ export async function dbSaveComprobante(comp: any, empresaId: string): Promise<b
     tipo: comp.tipo || 'Diario',
     descripcion: comp.descripcion || '',
     referencia: comp.referencia || '',
-    total: Number(comp.total) || linesTotal,
-    estado: comp.estado || 'Contabilizado',
+    total: Number(comp.total) || totalDebe,
+    estado: estadoFinal,
     createdBy: comp.createdBy || comp.created_by || 'Sistema',
     lineas: comp.lineas || []
   };
@@ -3153,6 +3169,22 @@ export async function dbSaveProduct(product: any, empresaId: string): Promise<bo
           const updateRes = await supabase.from('productos').update(payload).eq('id', prodId);
           error = updateRes.error;
         }
+
+        // Si falla por Foreign Key inexistente (ej. almacén o cuenta contable que no existe en Supabase)
+        if (error && error.code === '23503') {
+          console.warn("Violación de clave foránea al guardar producto. Reintentando con claves anulables saneadas...", error.details);
+          const sanitizedPayload = {
+            ...payload,
+            almacen_id: null,
+            cuenta_inventario_id: null,
+            cuenta_costo_id: null,
+            cuenta_venta_id: null,
+            cuenta_ingreso_id: null
+          };
+          const retryUpsert = await supabase.from('productos').upsert(sanitizedPayload, { onConflict: 'id' });
+          error = retryUpsert.error;
+        }
+
         if (error) {
           console.error("Error al guardar producto en Supabase:", error);
         }
@@ -3311,6 +3343,7 @@ export const DEFAULT_ALMACEN_PRINCIPAL = {
 
 export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
   const cid = empresaId || 'default';
+
   if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
     try {
       const { data, error } = await supabase
@@ -3323,27 +3356,6 @@ export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
         await setLocal(`app_almacenes_${cid}`, data);
         return data;
       }
-      
-      // Si la base de datos no tiene almacenes para esta empresa, auto-creamos el Almacén Principal por defecto
-      if (!error && (!data || data.length === 0)) {
-        const defaultMain = {
-          empresa_id: empresaId,
-          codigo: 'DEP-01',
-          nombre: 'Almacén Principal (Central)',
-          ubicacion: 'Galpón Central A',
-          responsable: 'Administración',
-          es_principal: true,
-          activo: true
-        };
-        const { data: inserted, error: insertErr } = await supabase
-          .from('almacenes')
-          .insert(defaultMain)
-          .select();
-        if (!insertErr && inserted && inserted.length > 0) {
-          await setLocal(`app_almacenes_${cid}`, inserted);
-          return inserted;
-        }
-      }
     } catch (e) {
       console.warn("Error dbFetchAlmacenes:", e);
     }
@@ -3355,7 +3367,7 @@ export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
   }
   const fallback = [{
     id: '00000000-0000-4000-8000-000000000001',
-    empresa_id: empresaId || '',
+    empresa_id: cid,
     codigo: 'DEP-01',
     nombre: 'Almacén Principal (Central)',
     ubicacion: 'Galpón Central A',
@@ -4166,6 +4178,161 @@ export async function dbDeleteLotePos(id: string, empresaId?: string): Promise<b
     return false;
   }
 }
+
+// ============================================================================
+// 21. TRANSACCIONES ATÓMICAS & CORRELATIVOS CONCURRENTES (RPC POSTGRESQL)
+// ============================================================================
+
+export async function dbObtenerSiguienteCorrelativo(
+  empresaId: string,
+  tipoDocumento: string = 'factura'
+): Promise<{
+  prefijo: string;
+  correlativo_asignado: number;
+  numero_formateado: string;
+  siguiente_correlativo: number;
+  siguiente_correlativo_str: string;
+} | null> {
+  const cid = empresaId || 'default';
+  if (isSupabaseConfigured && supabase && isUUID(empresaId)) {
+    try {
+      const { data, error } = await supabase.rpc('obtener_siguiente_correlativo', {
+        p_empresa_id: empresaId,
+        p_tipo_documento: tipoDocumento
+      });
+      if (!error && data) {
+        return data;
+      }
+      if (error) {
+        console.warn('RPC obtener_siguiente_correlativo no disponible o error:', error.message);
+      }
+    } catch (e) {
+      console.error('Excepción al llamar obtener_siguiente_correlativo:', e);
+    }
+  }
+
+  // Fallback local
+  try {
+    const config = await dbFetchConfiguracionContable(cid);
+    let rawCorrelativo = 1;
+    let prefijo = '';
+    if (tipoDocumento === 'nota_entrega') {
+      prefijo = config?.prefijoNotaEntrega || '';
+      rawCorrelativo = parseInt(String(config?.correlativoNotaEntrega || '1'), 10) || 1;
+      const next = rawCorrelativo + 1;
+      await dbSaveConfiguracionContable({ ...config, correlativoNotaEntrega: formatCorrelativo(next, 6) }, cid);
+    } else if (tipoDocumento === 'cotizacion') {
+      prefijo = config?.prefijoCotizacion || '';
+      rawCorrelativo = parseInt(String(config?.correlativoCotizacion || '1'), 10) || 1;
+      const next = rawCorrelativo + 1;
+      await dbSaveConfiguracionContable({ ...config, correlativoCotizacion: formatCorrelativo(next, 6) }, cid);
+    } else {
+      prefijo = tipoDocumento === 'nota_credito' ? 'NC-' : (tipoDocumento === 'nota_debito' ? 'ND-' : (config?.prefijoFactura || ''));
+      rawCorrelativo = parseInt(String(config?.correlativoFactura || '1'), 10) || 1;
+      const next = rawCorrelativo + 1;
+      await dbSaveConfiguracionContable({ ...config, correlativoFactura: formatCorrelativo(next, 6) }, cid);
+    }
+
+    const formattedNum = `${prefijo}${String(rawCorrelativo).padStart(6, '0')}`;
+    return {
+      prefijo,
+      correlativo_asignado: rawCorrelativo,
+      numero_formateado: formattedNum,
+      siguiente_correlativo: rawCorrelativo + 1,
+      siguiente_correlativo_str: String(rawCorrelativo + 1).padStart(6, '0')
+    };
+  } catch (err) {
+    console.error('Error fallback obtener siguiente correlativo:', err);
+    return null;
+  }
+}
+
+export async function dbRegistrarFacturaVentaAtomica(
+  factura: any,
+  items: any[],
+  cxcPayload?: any,
+  empresaId?: string
+): Promise<{ success: boolean; factura_id?: string; numero?: string; error?: string }> {
+  const cid = empresaId || factura.empresa_id || 'default';
+  if (isSupabaseConfigured && supabase && isUUID(cid)) {
+    try {
+      const { data, error } = await supabase.rpc('registrar_factura_venta_atomica', {
+        p_factura: factura,
+        p_items: items,
+        p_cxc: cxcPayload || null
+      });
+
+      if (!error && data?.success) {
+        // Sincronizar espejo local
+        await dbSaveFacturaVenta({ ...factura, id: data.factura_id, numero: data.numero, items }, cid);
+        return { success: true, factura_id: data.factura_id, numero: data.numero };
+      }
+      if (error) {
+        console.warn('RPC registrar_factura_venta_atomica error:', error.message);
+      }
+    } catch (e: any) {
+      console.error('Excepción RPC registrar_factura_venta_atomica:', e);
+    }
+  }
+
+  // Fallback estándar en cliente
+  try {
+    await dbSaveFacturaVenta({ ...factura, items }, cid);
+    if (cxcPayload) {
+      await dbSaveCxc(cxcPayload, cid);
+    }
+    return { success: true, factura_id: factura.id, numero: factura.numero };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error local al guardar factura' };
+  }
+}
+
+// ============================================================================
+// 22. SISTEMA DE AUDITORÍA FORENSE (AUDIT LOGS)
+// ============================================================================
+
+export interface AuditoriaLogEntry {
+  id: string;
+  empresa_id: string;
+  tabla: string;
+  operacion: 'INSERT' | 'UPDATE' | 'DELETE';
+  registro_id?: string;
+  usuario_id?: string;
+  usuario_email?: string;
+  valores_anteriores?: any;
+  valores_nuevos?: any;
+  detalles?: string;
+  created_at: string;
+}
+
+export async function dbFetchAuditoriaLogs(empresaId: string, limit: number = 100): Promise<AuditoriaLogEntry[]> {
+  const cid = empresaId || 'default';
+  if (isSupabaseConfigured && supabase && isUUID(empresaId)) {
+    try {
+      const { data, error } = await supabase
+        .from('auditoria_logs')
+        .select('*')
+        .eq('empresa_id', empresaId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (!error && data) {
+        await setLocal(`erp_local_audit_logs_${cid}`, data);
+        return data;
+      }
+      if (error) {
+        console.warn('Error fetching auditoria_logs Supabase:', error.message);
+      }
+    } catch (err) {
+      console.error('Exception fetching audit logs:', err);
+    }
+  }
+
+  // Local fallback
+  const local = await getLocal<AuditoriaLogEntry[]>(`erp_local_audit_logs_${cid}`, []);
+  return local || [];
+}
+
 
 
 

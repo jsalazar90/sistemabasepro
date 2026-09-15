@@ -45,9 +45,9 @@ const SAMPLE_MAYOR_ACCOUNTS = [
     nat: 'Deudora',
     saldoInicial: 54200,
     entries: [
-      { fecha: '2026-01-05', comprobante: 'DI-001', concepto: 'Cobro factura FC-1044 cliente Corporación Turística', debe: 18500, haber: 0 },
-      { fecha: '2026-01-12', comprobante: 'EG-015', concepto: 'Pago transferencia a mayorista Copa Airlines', debe: 0, haber: 14200 },
-      { fecha: '2026-01-18', comprobante: 'DI-032', concepto: 'Cobro de paquete vacacional VIP Cancún', debe: 9400, haber: 0 },
+      { fecha: '2026-01-05', comprobante: 'DI-001', concepto: 'Cobro factura FC-1044 cliente Corporación Industrial', debe: 18500, haber: 0 },
+      { fecha: '2026-01-12', comprobante: 'EG-015', concepto: 'Pago transferencia a proveedor de insumos', debe: 0, haber: 14200 },
+      { fecha: '2026-01-18', comprobante: 'DI-032', concepto: 'Cobro de factura comercial de servicios', debe: 9400, haber: 0 },
       { fecha: '2026-01-25', comprobante: 'EG-040', concepto: 'Cancelación nómina quincenal empleados', debe: 0, haber: 8900 },
       { fecha: '2026-01-29', comprobante: 'EG-055', concepto: 'Pago alquiler oficina y servicios básicos', debe: 0, haber: 2450 }
     ]
@@ -61,7 +61,7 @@ const SAMPLE_MAYOR_ACCOUNTS = [
     entries: [
       { fecha: '2026-01-04', comprobante: 'DI-002', concepto: 'Emisión factura crédito 15 días Empresas Polar', debe: 24500, haber: 0 },
       { fecha: '2026-01-14', comprobante: 'DI-020', concepto: 'Cobro liquidación factura N° 1020', debe: 0, haber: 18500 },
-      { fecha: '2026-01-22', comprobante: 'DI-038', concepto: 'Facturación boletos grupo incentivo corporativo', debe: 16800, haber: 0 },
+      { fecha: '2026-01-22', comprobante: 'DI-038', concepto: 'Facturación servicios comerciales corporativos', debe: 16800, haber: 0 },
       { fecha: '2026-01-28', comprobante: 'DI-050', concepto: 'Cobro transferencia cliente BNC', debe: 0, haber: 12000 }
     ]
   },
@@ -72,22 +72,22 @@ const SAMPLE_MAYOR_ACCOUNTS = [
     nat: 'Acreedora',
     saldoInicial: 114500,
     entries: [
-      { fecha: '2026-01-08', comprobante: 'CP-010', concepto: 'Recepción factura servicios hoteleros Hesperia', debe: 0, haber: 21400 },
-      { fecha: '2026-01-16', comprobante: 'EG-022', concepto: 'Abono 50% factura N° 458 Hotel Hesperia', debe: 10700, haber: 0 },
-      { fecha: '2026-01-24', comprobante: 'CP-035', concepto: 'Factura mensual seguro asistencia Assist Card', debe: 0, haber: 7800 },
-      { fecha: '2026-01-30', comprobante: 'EG-060', concepto: 'Pago total saldo pendiente Assist Card', debe: 7800, haber: 0 }
+      { fecha: '2026-01-08', comprobante: 'CP-010', concepto: 'Recepción factura suministros de oficina y operaciones', debe: 0, haber: 21400 },
+      { fecha: '2026-01-16', comprobante: 'EG-022', concepto: 'Abono 50% factura N° 458 Proveedor Nacional', debe: 10700, haber: 0 },
+      { fecha: '2026-01-24', comprobante: 'CP-035', concepto: 'Factura mensual mantenimiento de infraestructura', debe: 0, haber: 7800 },
+      { fecha: '2026-01-30', comprobante: 'EG-060', concepto: 'Pago total saldo pendiente proveedor de servicios', debe: 7800, haber: 0 }
     ]
   },
   {
     id: 'm-401',
     codigo: '4.1.01.001',
-    nombre: 'Ventas de Boletos Aéreos Internacionales',
+    nombre: 'Ventas de Bienes y Mercancías',
     nat: 'Acreedora',
     saldoInicial: 0,
     entries: [
-      { fecha: '2026-01-05', comprobante: 'DI-001', concepto: 'Facturación boletos ruta CCS-MIA-CCS', debe: 0, haber: 32000 },
-      { fecha: '2026-01-15', comprobante: 'DI-025', concepto: 'Emisión 12 boletos Iberia ruta CCS-MAD', debe: 0, haber: 48500 },
-      { fecha: '2026-01-27', comprobante: 'DI-048', concepto: 'Venta pasajes familiares temporada alta', debe: 0, haber: 19800 }
+      { fecha: '2026-01-05', comprobante: 'DI-001', concepto: 'Facturación orden comercial N° 1002', debe: 0, haber: 32000 },
+      { fecha: '2026-01-15', comprobante: 'DI-025', concepto: 'Facturación lote de mercancía orden N° 1045', debe: 0, haber: 48500 },
+      { fecha: '2026-01-27', comprobante: 'DI-048', concepto: 'Venta de productos terminados al por mayor', debe: 0, haber: 19800 }
     ]
   }
 ];
@@ -646,7 +646,7 @@ export default function LibroMayorParamsModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {empresa?.nombre || 'Agencia de Viajes y Turismo Halley, C.A.'} • Movimientos del {localStartDate} al {localEndDate}
+                  {empresa?.nombre || 'Corporación Halley, C.A.'} • Movimientos del {localStartDate} al {localEndDate}
                 </p>
               </div>
             </div>

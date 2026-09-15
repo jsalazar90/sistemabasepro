@@ -1,27 +1,23 @@
 {
-  "name": "react-example",
+  "name": "sistema-base-pro",
   "private": true,
-  "version": "1.2.0",
+  "version": "1.3.0",
+  "description": "Halley ERP Pro - Sistema Administrativo, Comercial y Contable NIIF Multimoneda",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"const fs = require('fs'); fs.rmSync('dist', { recursive: true, force: true });\"",
     "clean:db": "tsx --env-file=.env src/database/clean_db.ts",
     "lint": "tsc --noEmit",
+    "test": "vitest run",
     "start": "node dist/server.cjs"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
     "@supabase/supabase-js": "^2.112.2",
     "@tailwindcss/vite": "^4.1.14",
-    "@types/ws": "^8.18.1",
-    "@vis.gl/react-google-maps": "^1.8.3",
     "@vitejs/plugin-react": "^5.0.4",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/addon-web-links": "^0.12.0",
-    "@xterm/xterm": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
@@ -37,7 +33,6 @@
     "recharts": "^3.8.0",
     "tailwind-merge": "^3.5.0",
     "vite": "^6.2.0",
-    "ws": "^8.21.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -51,6 +46,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
-    "vite-plugin-pwa": "^1.3.0"
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^5.0.0"
   }
 }

@@ -3,39 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, Suspense, lazy } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { CompanyProvider, useCompany } from "./context/CompanyContext";
 import Layout from "./components/Layout";
 import Home from "./pages/Home";
-import Contacts from "./pages/Contacts";
-import ContactsMenu from "./pages/ContactsMenu";
-import Banks from "./pages/Banks";
-import BanksMenu from "./pages/BanksMenu";
-import Receivables from "./pages/Receivables";
-import ReceivablesMenu from "./pages/ReceivablesMenu";
-import Payables from "./pages/Payables";
-import PayablesMenu from "./pages/PayablesMenu";
-import Settings from "./pages/Settings";
-import Accounting from "./pages/Accounting";
-
-import Purchases from "./pages/Purchases";
-import PurchasesMenu from "./pages/PurchasesMenu";
-import PurchaseForm from "./pages/PurchaseForm";
-import Inventory from "./pages/Inventory";
-import Invoicing from "./pages/Invoicing";
-import InvoiceForm from "./pages/InvoiceForm";
-
-import ChartOfAccounts from "./pages/ChartOfAccounts";
-import AccountingEntries from "./pages/AccountingEntries";
-import FiscalModule from "./pages/FiscalModule";
-import AccountingConfig from "./pages/AccountingConfig";
-import FixedAssetsModule from "./pages/FixedAssetsModule";
-import ComprobanteMovimientoBanco from "./pages/ComprobanteMovimientoBanco";
 import Login from "./pages/Login";
 import CompanySelector from "./components/CompanySelector";
-import Reports from "./pages/Reports";
-import PosLotes from "./pages/PosLotes";
+import PageLoadingFallback from "./components/common/PageLoadingFallback";
+
+// Lazy-loaded routes for high-performance bundle code splitting
+const Contacts = lazy(() => import("./pages/Contacts"));
+const ContactsMenu = lazy(() => import("./pages/ContactsMenu"));
+const Banks = lazy(() => import("./pages/Banks"));
+const BanksMenu = lazy(() => import("./pages/BanksMenu"));
+const Receivables = lazy(() => import("./pages/Receivables"));
+const ReceivablesMenu = lazy(() => import("./pages/ReceivablesMenu"));
+const Payables = lazy(() => import("./pages/Payables"));
+const PayablesMenu = lazy(() => import("./pages/PayablesMenu"));
+const Settings = lazy(() => import("./pages/Settings"));
+const Accounting = lazy(() => import("./pages/Accounting"));
+const Purchases = lazy(() => import("./pages/Purchases"));
+const PurchasesMenu = lazy(() => import("./pages/PurchasesMenu"));
+const PurchaseForm = lazy(() => import("./pages/PurchaseForm"));
+const Inventory = lazy(() => import("./pages/Inventory"));
+const Invoicing = lazy(() => import("./pages/Invoicing"));
+const InvoiceForm = lazy(() => import("./pages/InvoiceForm"));
+const ChartOfAccounts = lazy(() => import("./pages/ChartOfAccounts"));
+const AccountingEntries = lazy(() => import("./pages/AccountingEntries"));
+const FiscalModule = lazy(() => import("./pages/FiscalModule"));
+const AccountingConfig = lazy(() => import("./pages/AccountingConfig"));
+const FixedAssetsModule = lazy(() => import("./pages/FixedAssetsModule"));
+const ComprobanteMovimientoBanco = lazy(() => import("./pages/ComprobanteMovimientoBanco"));
+const Reports = lazy(() => import("./pages/Reports"));
+const PosLotes = lazy(() => import("./pages/PosLotes"));
 
 import {
   isUUID,
@@ -199,20 +200,78 @@ function AppContent() {
   const [pedidos, setPedidos] = useState<any[]>([]);
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
 
-  const [empresa, setEmpresa] = useState({
-    nombre: "Empresa",
-    rif: "J-00000000-0",
-    direccion: "",
-    telefono: "",
-    email: "",
-    monedaPrincipal: "USD",
-    monedaSecundaria: "VES",
-    tipoContribuyente: "ordinario",
-    tipoEmpresa: "comercial",
-    habilitarPOS: true,
-    habilitarVendedores: true,
-    habilitarPedidos: true,
+  const [empresa, setEmpresa] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem("erp_cached_active_company");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && (parsed.name || parsed.nombre)) {
+          return {
+            id: parsed.id,
+            nombre: parsed.name || parsed.nombre,
+            rif: parsed.taxId || parsed.rif || 'J-00000000-0',
+            direccion: parsed.direccion || '',
+            telefono: parsed.telefono || '',
+            email: parsed.email || '',
+            logo: parsed.logo || '',
+            monedaPrincipal: parsed.monedaPrincipal || parsed.moneda_principal || 'USD',
+            monedaSecundaria: parsed.monedaSecundaria || parsed.moneda_secundaria || 'VES',
+            tipoContribuyente: parsed.tipoContribuyente || parsed.tipo_contribuyente || 'ordinario',
+            tipoEmpresa: parsed.tipoEmpresa || parsed.tipo_empresa || 'comercial',
+            habilitarPOS: parsed.habilitarPOS ?? parsed.habilitar_pos ?? true,
+            habilitarVendedores: parsed.habilitarVendedores ?? parsed.habilitar_vendedores ?? true,
+            habilitarPedidos: parsed.habilitarPedidos ?? parsed.habilitar_pedidos ?? true,
+            habilitarTasaReferencial: parsed.habilitarTasaReferencial ?? parsed.habilitar_tasa_referencial ?? false,
+            ...parsed,
+          };
+        }
+      }
+    } catch {}
+    return {
+      nombre: "Halley ERP",
+      rif: "J-00000000-0",
+      direccion: "",
+      telefono: "",
+      email: "",
+      monedaPrincipal: "USD",
+      monedaSecundaria: "VES",
+      tipoContribuyente: "ordinario",
+      tipoEmpresa: "comercial",
+      habilitarPOS: true,
+      habilitarVendedores: true,
+      habilitarPedidos: true,
+    };
   });
+
+  // Mantener sincronizado empresa con availableCompanies y activeCompanyId en todo momento
+  useEffect(() => {
+    if (!activeCompanyId || availableCompanies.length === 0) return;
+    const found = availableCompanies.find((c) => c.id === activeCompanyId);
+    if (found) {
+      const synched = {
+        id: found.id,
+        nombre: found.name || (found as any).nombre || 'Halley ERP',
+        rif: found.taxId || (found as any).rif || 'J-00000000-0',
+        direccion: (found as any).direccion || '',
+        telefono: (found as any).telefono || '',
+        email: (found as any).email || '',
+        logo: (found as any).logo || '',
+        monedaPrincipal: (found as any).monedaPrincipal || (found as any).moneda_principal || 'USD',
+        monedaSecundaria: (found as any).monedaSecundaria || (found as any).moneda_secundaria || 'VES',
+        tipoContribuyente: (found as any).tipoContribuyente || (found as any).tipo_contribuyente || 'ordinario',
+        tipoEmpresa: (found as any).tipoEmpresa || (found as any).tipo_empresa || 'comercial',
+        habilitarPOS: (found as any).habilitarPOS ?? (found as any).habilitar_pos ?? true,
+        habilitarVendedores: (found as any).habilitarVendedores ?? (found as any).habilitar_vendedores ?? true,
+        habilitarPedidos: (found as any).habilitarPedidos ?? (found as any).habilitar_pedidos ?? true,
+        habilitarTasaReferencial: (found as any).habilitarTasaReferencial ?? (found as any).habilitar_tasa_referencial ?? false,
+        ...(found as any),
+      };
+      setEmpresa(synched);
+      try {
+        localStorage.setItem("erp_cached_active_company", JSON.stringify(synched));
+      } catch {}
+    }
+  }, [availableCompanies, activeCompanyId]);
 
   // Cargar datos operativos de la empresa activa desde Supabase
   useEffect(() => {
@@ -236,29 +295,6 @@ function AppContent() {
       setFacturasVenta([]);
       setFacturasCompra([]);
       return;
-    }
-
-    // Sincronizar datos de la empresa activa
-    const found = availableCompanies.find((c) => c.id === activeCompanyId);
-    if (found) {
-      setEmpresa({
-        id: found.id,
-        nombre: found.name || (found as any).nombre || 'Empresa',
-        rif: found.taxId || (found as any).rif || 'J-00000000-0',
-        direccion: (found as any).direccion || '',
-        telefono: (found as any).telefono || '',
-        email: (found as any).email || '',
-        logo: (found as any).logo || '',
-        monedaPrincipal: (found as any).monedaPrincipal || (found as any).moneda_principal || 'USD',
-        monedaSecundaria: (found as any).monedaSecundaria || (found as any).moneda_secundaria || 'VES',
-        tipoContribuyente: (found as any).tipoContribuyente || (found as any).tipo_contribuyente || 'ordinario',
-        tipoEmpresa: (found as any).tipoEmpresa || (found as any).tipo_empresa || 'comercial',
-        habilitarPOS: (found as any).habilitarPOS ?? (found as any).habilitar_pos ?? true,
-        habilitarVendedores: (found as any).habilitarVendedores ?? (found as any).habilitar_vendedores ?? true,
-        habilitarPedidos: (found as any).habilitarPedidos ?? (found as any).habilitar_pedidos ?? true,
-        habilitarTasaReferencial: (found as any).habilitarTasaReferencial ?? (found as any).habilitar_tasa_referencial ?? false,
-        ...(found as any),
-      });
     }
 
     // Resetear inmediatamente estados para evitar contaminación de la empresa previa
@@ -459,6 +495,8 @@ function AppContent() {
 
     switch (collectionName) {
       case "contactos":
+      case "contacts":
+      case "clientes":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setContactos([]);
@@ -495,12 +533,17 @@ function AppContent() {
             for (const b of data) await dbSaveBanco(b, cid);
           }
         } else {
-          updateCollection(setBancos, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setBancos, itemWithId);
           if (data._delete) await dbDeleteBanco(data.id);
-          else await dbSaveBanco(data, cid);
+          else await dbSaveBanco(itemWithId, cid);
         }
         break;
       case "movimientosBancos":
+      case "movimientos_bancos":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setMovimientosBancos([]);
@@ -510,12 +553,17 @@ function AppContent() {
             for (const m of data) await dbSaveMovimientoBanco(m, cid);
           }
         } else {
-          updateCollection(setMovimientosBancos, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setMovimientosBancos, itemWithId);
           if (data._delete) await dbDeleteMovimientoBanco(data.id);
-          else await dbSaveMovimientoBanco(data, cid);
+          else await dbSaveMovimientoBanco(itemWithId, cid);
         }
         break;
       case "cxc":
+      case "cuentas_cobrar_cxc":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setCxc([]);
@@ -525,12 +573,17 @@ function AppContent() {
             for (const item of data) await dbSaveCxc(item, cid);
           }
         } else {
-          updateCollection(setCxc, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setCxc, itemWithId);
           if (data._delete) await dbDeleteCxc(data.id);
-          else await dbSaveCxc(data, cid);
+          else await dbSaveCxc(itemWithId, cid);
         }
         break;
       case "cxp":
+      case "cuentas_pagar_cxp":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setCxp([]);
@@ -540,32 +593,48 @@ function AppContent() {
             for (const item of data) await dbSaveCxp(item, cid);
           }
         } else {
-          updateCollection(setCxp, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setCxp, itemWithId);
           if (data._delete) await dbDeleteCxp(data.id);
-          else await dbSaveCxp(data, cid);
+          else await dbSaveCxp(itemWithId, cid);
         }
         break;
       case "cobranzas":
+      case "cobranza":
         if (Array.isArray(data)) {
           mergeArrayCollection(setCobranzas, data);
           for (const item of data) await dbSaveCobranza(item, cid);
         } else {
-          updateCollection(setCobranzas, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setCobranzas, itemWithId);
           if (data._delete) await dbDeleteCobranza(data.id);
-          else await dbSaveCobranza(data, cid);
+          else await dbSaveCobranza(itemWithId, cid);
         }
         break;
       case "pagos-realizados":
+      case "pagosRealizados":
+      case "pagos_realizados":
         if (Array.isArray(data)) {
           mergeArrayCollection(setPagosRealizados, data);
           for (const item of data) await dbSavePagoRealizado(item, cid);
         } else {
-          updateCollection(setPagosRealizados, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setPagosRealizados, itemWithId);
           if (data._delete) await dbDeletePagoRealizado(data.id);
-          else await dbSavePagoRealizado(data, cid);
+          else await dbSavePagoRealizado(itemWithId, cid);
         }
         break;
       case "cuentasContables":
+      case "cuentas_contables":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setCuentasContables([]);
@@ -593,6 +662,7 @@ function AppContent() {
         }
         break;
       case "comprobantes":
+      case "comprobantes_diario":
         if (Array.isArray(data)) {
           if (data.length === 0) {
             setComprobantes([]);
@@ -602,9 +672,13 @@ function AppContent() {
             for (const item of data) await dbSaveComprobante(item, cid);
           }
         } else {
-          updateCollection(setComprobantes, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setComprobantes, itemWithId);
           if (data._delete) await dbDeleteComprobante(data.id);
-          else await dbSaveComprobante(data, cid);
+          else await dbSaveComprobante(itemWithId, cid);
         }
         break;
       case "servicios":
@@ -669,8 +743,12 @@ function AppContent() {
           setMovimientosInventario(data);
           for (const m of data) await dbSaveMovimientoInventario(m, cid);
         } else {
-          updateCollection(setMovimientosInventario, data);
-          await dbSaveMovimientoInventario(data, cid);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setMovimientosInventario, itemWithId);
+          await dbSaveMovimientoInventario(itemWithId, cid);
         }
         break;
       case "facturasVenta":
@@ -679,9 +757,13 @@ function AppContent() {
           setFacturasVenta(data);
           for (const f of data) await dbSaveFacturaVenta(f, cid);
         } else {
-          updateCollection(setFacturasVenta, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setFacturasVenta, itemWithId);
           if (data._delete) await dbDeleteFacturaVenta(data.id, cid);
-          else await dbSaveFacturaVenta(data, cid);
+          else await dbSaveFacturaVenta(itemWithId, cid);
         }
         break;
       case "facturasCompra":
@@ -690,20 +772,36 @@ function AppContent() {
           setFacturasCompra(data);
           for (const f of data) await dbSaveFacturaCompra(f, cid);
         } else {
-          updateCollection(setFacturasCompra, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setFacturasCompra, itemWithId);
           if (data._delete) await dbDeleteFacturaCompra(data.id, cid);
-          else await dbSaveFacturaCompra(data, cid);
+          else await dbSaveFacturaCompra(itemWithId, cid);
         }
         break;
       case "lotesPos":
       case "lotes_pos":
         if (data._delete) await dbDeleteLotePos(data.id, cid);
-        else await dbSaveLotePos(data, cid);
+        else {
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          await dbSaveLotePos(itemWithId, cid);
+        }
         break;
       case "terminalesPos":
       case "terminales_pos":
         if (data._delete) await dbDeleteTerminalPos(data.id, cid);
-        else await dbSaveTerminalPos(data, cid);
+        else {
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          await dbSaveTerminalPos(itemWithId, cid);
+        }
         break;
       case "pedidos":
         if (Array.isArray(data)) setPedidos(data);
@@ -777,7 +875,7 @@ function AppContent() {
           const updatedEmpresa = { ...empresa, ...data.empresa };
           setEmpresa(updatedEmpresa);
           const compPayload = {
-            id: activeCompanyId || (empresa as any).id || `comp_${Date.now()}`,
+            id: (activeCompanyId && isUUID(activeCompanyId)) ? activeCompanyId : ((empresa as any).id && isUUID((empresa as any).id) ? (empresa as any).id : crypto.randomUUID()),
             ...updatedEmpresa,
           };
           try {
@@ -834,8 +932,9 @@ function AppContent() {
             {toast.msg}
           </div>
         )}
-        <Routes>
-          <Route path="/" element={<Home tipoEmpresa={empresa.tipoEmpresa} />} />
+        <Suspense fallback={<PageLoadingFallback />}>
+          <Routes>
+            <Route path="/" element={<Home tipoEmpresa={empresa.tipoEmpresa} />} />
           <Route path="/clientes" element={<Navigate to="/contacts/customer" replace />} />
           
           {/* Módulo de Facturación */}
@@ -918,6 +1017,8 @@ function AppContent() {
                 cxp={filteredCxp}
                 comprobantes={filteredComprobantes}
                 movimientosInventario={movimientosInventario}
+                movimientosBancos={filteredMovimientosBancos}
+                pagosRealizados={filteredPagosRealizados}
                 products={products}
                 contactos={contactos}
                 cuentasContables={cuentasContables}
@@ -959,6 +1060,7 @@ function AppContent() {
               <Payables
                 cxc={filteredCxc}
                 cxp={filteredCxp}
+                facturasCompra={facturasCompra}
                 pagosRealizados={filteredPagosRealizados}
                 comprobantes={filteredComprobantes}
                 bancos={bancos}
@@ -1168,6 +1270,7 @@ function AppContent() {
             element={<div className="text-slate-500 p-6">Módulo en construcción...</div>}
           />
         </Routes>
+      </Suspense>
       </Layout>
     </Router>
   );

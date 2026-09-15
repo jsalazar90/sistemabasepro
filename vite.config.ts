@@ -17,10 +17,11 @@ export default defineConfig(({mode}) => {
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB Limit
         },
         manifest: {
-          name: 'Sistema Contable',
-          short_name: 'Contabilidad',
-          description: 'Sistema Contable y Administrativo',
-          theme_color: '#ffffff',
+          name: 'Halley ERP Pro',
+          short_name: 'HalleyERP',
+          description: 'Sistema ERP Comercial, Administrativo y Contable NIIF',
+          theme_color: '#4f46e5',
+          background_color: '#f8fafc',
           display: 'standalone',
           icons: [
             {
@@ -39,9 +40,6 @@ export default defineConfig(({mode}) => {
         }
       })
     ],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || ''),
-    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -55,5 +53,19 @@ export default defineConfig(({mode}) => {
       // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
     },
+    build: {
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-charts': ['recharts'],
+            'vendor-docs': ['xlsx', 'pdf-lib'],
+            'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge']
+          }
+        }
+      }
+    }
   };
 });

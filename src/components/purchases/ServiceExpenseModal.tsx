@@ -11,6 +11,7 @@ import { isUUID } from '../../services/db';
 import CuentaContableModal from '../common/CuentaContableModal';
 import CuentaSelectorTrigger from '../common/CuentaSelectorTrigger';
 import VoucherPreviewModal from '../common/VoucherPreviewModal';
+import { useCompany } from '../../context/CompanyContext';
 
 interface ServiceExpenseModalProps {
   isOpen: boolean;
@@ -37,6 +38,7 @@ export default function ServiceExpenseModal({
   onSave,
   showToast
 }: ServiceExpenseModalProps) {
+  const { activeCompanyId } = useCompany();
 
   // 1. Datos del Documento
   const [docType, setDocType] = useState<'factura' | 'recibo' | 'nota_debito' | 'comprobante'>('factura');
@@ -229,7 +231,7 @@ export default function ServiceExpenseModal({
     const newId = crypto.randomUUID();
     const newContact: ContactoModel = {
       id: newId,
-      empresa_id: '',
+      empresa_id: activeCompanyId,
       name: supplierForm.name.trim(),
       tax_id: fullTaxId,
       taxId: fullTaxId,
@@ -436,6 +438,7 @@ export default function ServiceExpenseModal({
       // 3. Guardar Comprobante Contable de Diario
       const newVoucher = {
         id: voucherId,
+        empresa_id: activeCompanyId,
         fecha: issueDate,
         numero: `CMP-SRV-${timestamp.toString().slice(-6)}`,
         tipo: 'Diario',
@@ -499,7 +502,7 @@ export default function ServiceExpenseModal({
 
       const newServiceDoc: FacturaCompraModel = {
         id: purchaseId,
-        empresa_id: '',
+        empresa_id: activeCompanyId,
         numero: invoiceNumber.trim().toUpperCase(),
         control_numero: controlNumber.trim() || undefined,
         tipo_documento: 'servicio',
@@ -555,6 +558,7 @@ export default function ServiceExpenseModal({
       if (paymentCondition === 'credito') {
         await onSave?.('cxp', {
           id: cxpId,
+          empresa_id: activeCompanyId,
           factura_id: purchaseId,
           factura_db_id: purchaseId,
           factura: newServiceDoc.numero,
@@ -589,7 +593,7 @@ export default function ServiceExpenseModal({
       if (paymentCondition === 'contado' && selectedBankId) {
         await onSave?.('movimientosBancos', {
           id: crypto.randomUUID(),
-          empresa_id: '',
+          empresa_id: activeCompanyId,
           banco_id: selectedBankId,
           fecha: issueDate,
           ref: paymentRef.trim() || newServiceDoc.numero,
@@ -604,6 +608,8 @@ export default function ServiceExpenseModal({
 
         await onSave?.('pagos-realizados', {
           id: crypto.randomUUID(),
+          empresa_id: activeCompanyId,
+          empresaId: activeCompanyId,
           comprobantePago: paymentRef.trim() || newServiceDoc.numero,
           proveedorId: selectedSupplierId || undefined,
           proveedorNombre: supplierName.trim(),

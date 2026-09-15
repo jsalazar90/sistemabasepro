@@ -752,7 +752,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         const cuentaBanco = b?.cuenta_contable_id || '1.1.3';
         
         draftMovs.push({
-          id: `mov-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
+          id: crypto.randomUUID(),
+          empresa_id: activeCompanyId,
           banco_id: p.bancoId,
           fecha: cobranzaForm.fecha,
           ref: p.referencia,
@@ -807,7 +808,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         });
         
         draftAnticipoSobrante = {
-          id: `ant-${Date.now()}`,
+          id: crypto.randomUUID(),
+          empresa_id: activeCompanyId,
           categoria: 'clientes',
           cliente: nombreSobrante,
           cliente_id: entidadSobranteId,
@@ -967,7 +969,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
               }
       
               const newCobranza = {
-                id: `cob-${Date.now()}`,
+                id: crypto.randomUUID(),
+                empresa_id: activeCompanyId,
                 fecha: cobranzaForm.fecha,
                 clienteId: cobranzaForm.clienteId,
                 clienteNombre: nameOfClient,
@@ -1054,7 +1057,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     // 1. Crear movimiento bancario (egreso)
     const newMov = {
-      id: nowTs,
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       banco_id: newMovForm.bancoId,
       fecha: newMovForm.fecha,
       ref: newMovForm.referencia || `REF-${nowTs.slice(-4)}`,
@@ -1068,7 +1072,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
     // 2. Crear registro en CXC
     const targetCategory = activeTab === 'cobranza' || activeTab === 'historial-cobranzas' || activeTab === 'clientes' || activeTab === 'aliados' ? 'aliados' : activeTab;
     const newCxc = {
-      id: nowTs + '-cxc',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: targetCategory,
       cliente: newMovForm.entidad,
       cliente_id: newMovForm.entidad_id || `ENT-${nowTs.slice(-4)}`,
@@ -1188,7 +1193,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     // 1. Crear movimiento bancario (ingreso)
     const newMov = {
-      id: nowTs,
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       banco_id: anticipoForm.bancoId,
       fecha: anticipoForm.fecha,
       ref: anticipoForm.referencia || `ANT-${nowTs.slice(-4)}`,
@@ -1202,7 +1208,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     // 2. Crear registro en CXC con saldo negativo (a favor del cliente)
     const newCxc = {
-      id: nowTs + '-cxc',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: activeTab === 'cobranza' || activeTab === 'clientes' ? 'aliados' : activeTab,
       cliente: anticipoForm.cliente,
       cliente_id: anticipoForm.cliente_id || `CLI-${nowTs.slice(-4)}`,
@@ -1302,7 +1309,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
 
     // 1. Crear registro en CXC
     const newCxc = {
-      id: Date.now().toString() + '-cxc',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: activeTab === 'cobranza' || activeTab === 'clientes' ? 'aliados' : activeTab,
       cliente: saldoInicialForm.contacto,
       cliente_id: saldoInicialForm.contacto_id || `CLI-${Date.now().toString().slice(-4)}`,
@@ -1614,9 +1622,10 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
         const reintRef = reintegroForm.referencia || `REINT-${nowTs.slice(-4)}`;
 
         // 1. Crear movimiento bancario de egreso
-        const movId = `mov-${nowTs}`;
+        const movId = crypto.randomUUID();
         const newMov = {
           id: movId,
+          empresa_id: activeCompanyId,
           banco_id: reintegroForm.bancoId,
           fecha: reintegroForm.fecha,
           ref: reintRef,
@@ -2082,7 +2091,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
           if (!cob.isSynthetic) {
             onSave?.('cobranzas', { ...cob, estado: 'anulado' });
           } else {
-            onSave?.('cobranzas', { ...cob, id: `cob-${Date.now()}`, isSynthetic: false, estado: 'anulado' });
+            onSave?.('cobranzas', { ...cob, id: crypto.randomUUID(), empresa_id: activeCompanyId, isSynthetic: false, estado: 'anulado' });
           }
 
           setSelectedClientKey(null);
@@ -3724,7 +3733,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                     type="button"
                     onClick={() => {
                       const newPago = {
-                        id: 'pago-' + Date.now(),
+                        id: crypto.randomUUID(),
                         bancoId: '',
                         metodo: 'Transferencia',
                         terminalId: '',

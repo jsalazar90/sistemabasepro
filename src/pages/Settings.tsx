@@ -6,13 +6,23 @@ import {
   Key, X, Search, Trash2, Shield, Filter, UserCheck, UserX, Hash, ArrowLeft, 
   ChevronRight, Coins, HelpCircle, Info, Layers, Scale, Briefcase, 
   ShieldAlert, AlertTriangle, Check, BookOpen, Sparkles, Globe, RefreshCw,
-  Lock, Eye, EyeOff, KeyRound, MapPin, Truck, FolderArchive, Calendar
+  Lock, Eye, EyeOff, KeyRound, MapPin, Truck, FolderArchive, Calendar, ShieldCheck
 } from 'lucide-react';
 import BulkUploadConfig from '../components/settings/BulkUploadConfig';
 import { useCompany } from '../context/CompanyContext';
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import BackButton from '../components/common/BackButton';
+import { AuditLogsViewer } from '../components/settings/AuditLogsViewer';
 import { formatCorrelativo, formatDocumentNumber } from '../utils/numberFormat';
+import { 
+  APP_VERSION, 
+  APP_NAME, 
+  APP_EDITION, 
+  APP_CODENAME, 
+  APP_BUILD_DATE, 
+  APP_BUILD_NUMBER, 
+  getFullVersionString 
+} from '../config/version';
 import { 
   dbSaveEmpresa, 
   dbDeleteEmpresa,
@@ -416,7 +426,7 @@ export default function Settings({
       const chosenClave = newUser.role === 'Master' ? (newUser.claveOperaciones ? newUser.claveOperaciones.trim() : globalMasterClave) : undefined;
 
       const userObj = {
-        id: `user-${Date.now()}`,
+        id: crypto.randomUUID(),
         email: cleanEmail,
         name: cleanEmail.split('@')[0],
         password: newUser.password ? newUser.password.trim() : '123456',
@@ -433,6 +443,19 @@ export default function Settings({
       };
 
       await dbSaveUsuario(userObj);
+
+      // Auto-aprovisionar en Supabase Auth si está configurado
+      try {
+        const { supabase, isSupabaseConfigured } = await import('../lib/supabase');
+        if (isSupabaseConfigured && supabase) {
+          await supabase.auth.signUp({
+            email: cleanEmail,
+            password: userObj.password
+          });
+        }
+      } catch (authErr) {
+        console.warn('Aviso al aprovisionar usuario en Supabase Auth:', authErr);
+      }
 
       if (newUser.role === 'Master' && newUser.claveOperaciones.trim()) {
         await dbSaveMasterClaveOperaciones(newUser.claveOperaciones.trim());
@@ -787,7 +810,9 @@ export default function Settings({
       tabs: [
         ...(isMaster ? [{ id: 'usuarios', label: 'Usuarios & Permisos (RBAC)', icon: Users, desc: 'Control exclusivo Master: altas, roles y accesos' }] : []),
         { id: 'importacion', label: 'Carga Masiva de Datos', icon: UploadCloud, desc: 'Importación estructurada de catálogos' },
-        ...(isMaster ? [{ id: 'respaldos', label: 'Copias de Seguridad & BD', icon: Database, desc: 'Snapshots JSON/SQL y gobernanza' }] : [])
+        ...(isMaster ? [{ id: 'respaldos', label: 'Copias de Seguridad & BD', icon: Database, desc: 'Snapshots JSON/SQL y gobernanza' }] : []),
+        ...(isMaster ? [{ id: 'auditoria', label: 'Pista de Auditoría Forense', icon: ShieldAlert, desc: 'Bitácora inmutable de eventos DML en tiempo real' }] : []),
+        { id: 'acerca', label: 'Acerca del ERP & Release', icon: ShieldCheck, desc: 'Especificaciones de versión y entorno' }
       ]
     }
   ];
@@ -795,6 +820,58 @@ export default function Settings({
   // ==========================================
   // SUB-VIEW RENDERS
   // ==========================================
+
+  // 0. Acerca del ERP & Release
+  const renderAcerca = () => (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <div className="p-6 bg-gradient-to-br from-indigo-900 via-indigo-800 to-slate-900 text-white rounded-3xl shadow-xl shadow-indigo-950/20 relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          <ShieldCheck size={180} />
+        </div>
+        <div className="relative z-10">
+          <span className="px-3 py-1 bg-white/15 backdrop-blur-md rounded-full text-[10px] font-black tracking-wider uppercase inline-block mb-3 border border-white/20">
+            {APP_EDITION}
+          </span>
+          <h2 className="text-2xl sm:text-3xl font-black tracking-tight mb-2">
+            {APP_NAME} <span className="text-indigo-400">v{APP_VERSION}</span>
+          </h2>
+          <p className="text-indigo-200 text-xs sm:text-sm max-w-xl font-medium leading-relaxed">
+            Plataforma Integral de Gestión Comercial, Administrativa y Contabilidad NIIF Multimoneda con Motor de Seguridad Row-Level Security (RLS).
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Versión del Sistema</span>
+          <span className="text-sm font-black text-slate-800 font-mono">v{APP_VERSION}</span>
+        </div>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Nombre Código (Codename)</span>
+          <span className="text-sm font-black text-slate-800">{APP_CODENAME}</span>
+        </div>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Build / Compilación</span>
+          <span className="text-sm font-black text-slate-800 font-mono">#{APP_BUILD_NUMBER} ({APP_BUILD_DATE})</span>
+        </div>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Base de Datos & Seguridad</span>
+          <span className="text-sm font-black text-emerald-600 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Supabase PostgreSQL (RLS Blindado)
+          </span>
+        </div>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Normativa Contable</span>
+          <span className="text-sm font-black text-slate-800">VEN-NIIF / SENIAT</span>
+        </div>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block mb-1">Aislamiento de Inquilinos</span>
+          <span className="text-sm font-black text-indigo-600">Multi-Tenant Estricto por Empresa</span>
+        </div>
+      </div>
+    </div>
+  );
 
   // 1. Perfil de Empresa
   const renderEmpresa = () => (
@@ -2210,6 +2287,8 @@ export default function Settings({
           {activeTab === 'usuarios' && renderUsuarios()}
           {activeTab === 'importacion' && renderImportacion()}
           {activeTab === 'respaldos' && renderRespaldos()}
+          {activeTab === 'auditoria' && <AuditLogsViewer companyId={activeCompanyId || ''} />}
+          {activeTab === 'acerca' && renderAcerca()}
         </main>
       </div>
 

@@ -45,7 +45,7 @@ const SAMPLE_DIARIO_COMPROBANTES = [
     numero: '1001',
     fecha: '2026-01-05',
     tipo: 'Diario',
-    glosa: 'Cobro de facturas comerciales boletos internacionales corporativos',
+    glosa: 'Cobro de facturas comerciales clientes corporativos',
     lineas: [
       { cuentaCodigo: '1.1.01.004', cuentaNombre: 'Banesco Banco Universal', debe: 18500, haber: 0 },
       { cuentaCodigo: '1.1.03.001', cuentaNombre: 'Clientes Nacionales al Día', debe: 0, haber: 18500 }
@@ -57,9 +57,9 @@ const SAMPLE_DIARIO_COMPROBANTES = [
     numero: '1002',
     fecha: '2026-01-08',
     tipo: 'Compras',
-    glosa: 'Recepción factura proveedores hotelería y receptivos turísticos',
+    glosa: 'Recepción factura proveedores de suministros y servicios operacionales',
     lineas: [
-      { cuentaCodigo: '5.1.01.002', cuentaNombre: 'Costos Directos Hotelería y Operadores', debe: 21400, haber: 0 },
+      { cuentaCodigo: '5.1.01.002', cuentaNombre: 'Costos Directos de Servicios', debe: 21400, haber: 0 },
       { cuentaCodigo: '1.1.05.001', cuentaNombre: 'Crédito Fiscal IVA 16%', debe: 3424, haber: 0 },
       { cuentaCodigo: '2.1.01.001', cuentaNombre: 'Proveedores Nacionales Comerciales', debe: 0, haber: 24824 }
     ]
@@ -70,7 +70,7 @@ const SAMPLE_DIARIO_COMPROBANTES = [
     numero: '1003',
     fecha: '2026-01-12',
     tipo: 'Egreso',
-    glosa: 'Pago parcial a mayorista aéreo Copa Airlines transferencia bancaria',
+    glosa: 'Pago parcial a proveedor comercial mediante transferencia bancaria',
     lineas: [
       { cuentaCodigo: '2.1.01.002', cuentaNombre: 'Proveedores del Exterior e Importaciones', debe: 14200, haber: 0 },
       { cuentaCodigo: '1.1.01.008', cuentaNombre: 'JPMorgan Chase Bank (USD Operaciones)', debe: 0, haber: 14200 }
@@ -82,10 +82,10 @@ const SAMPLE_DIARIO_COMPROBANTES = [
     numero: '1004',
     fecha: '2026-01-18',
     tipo: 'Ingreso',
-    glosa: 'Facturación directa paquetes todo incluido Cancún y Riviera Maya',
+    glosa: 'Facturación directa de productos y servicios comerciales al contado',
     lineas: [
       { cuentaCodigo: '1.1.01.003', cuentaNombre: 'Caja Bóveda Moneda Extranjera', debe: 9400, haber: 0 },
-      { cuentaCodigo: '4.1.01.002', cuentaNombre: 'Venta de Paquetes Turísticos y Hoteles', debe: 0, haber: 9400 }
+      { cuentaCodigo: '4.1.01.002', cuentaNombre: 'Ingresos por Prestación de Servicios Comerciales', debe: 0, haber: 9400 }
     ]
   },
   {
@@ -672,7 +672,7 @@ export default function LibroDiarioParamsModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {empresa?.nombre || 'Agencia de Viajes y Turismo Halley, C.A.'} • Del {localStartDate} al {localEndDate}
+                  {empresa?.nombre || 'Corporación Halley, C.A.'} • Del {localStartDate} al {localEndDate}
                 </p>
               </div>
             </div>

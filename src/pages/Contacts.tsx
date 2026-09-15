@@ -8,6 +8,7 @@ import {
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import CuentaSelectorTrigger from '../components/common/CuentaSelectorTrigger';
 import BackButton from '../components/common/BackButton';
+import { useCompany } from '../context/CompanyContext';
 
 export type ContactType = 
   | 'customer' 
@@ -22,6 +23,7 @@ export type ContactType =
 
 export interface Contact {
   id: string;
+  empresa_id?: string;
   name: string;
   type: ContactType;
   taxId: string;
@@ -35,15 +37,8 @@ export interface Contact {
   creditAccount?: string;
   expenseAccount?: string;
   vendedor?: string;
-  // Campos heredados opcionales para compatibilidad
-  terminalAgente?: string;
   employeeType?: string;
-  planId?: string;
-  planNombre?: string;
   comisionPorcentaje?: number;
-  planVariantes?: any[];
-  codigoIata?: string;
-  codigoDosLetras?: string;
 }
 
 export default function Contacts({ 
@@ -59,6 +54,7 @@ export default function Contacts({
 }) {
   const { type } = useParams<{ type: string }>();
   const navigate = useNavigate();
+  const { activeCompanyId } = useCompany();
 
   const [activeFilter, setActiveFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -345,6 +341,7 @@ export default function Contacts({
 
     const contactData: Contact = {
       id: editingContactId || crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       name: contactForm.name.trim(),
       type: (contactForm.type === 'clientes' ? 'customer' : contactForm.type) as ContactType,
       taxId: fullTaxId,

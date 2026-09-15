@@ -5,7 +5,7 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { 
   Users, Building, Briefcase, UserCircle, PhoneCall, Search, Filter, Download, Plus, 
   ArrowRight, ArrowLeft, Landmark, FileText, CheckCircle, ShoppingCart, X, Save, 
-  CornerDownRight, Package, Trash2, ChevronDown, Eye, EyeOff, Handshake, Plane, 
+  CornerDownRight, Package, Trash2, ChevronDown, Eye, EyeOff, Handshake, 
   UserCheck, Percent, Clock, AlertTriangle, ShieldCheck, Mail, Phone, ExternalLink, 
   DollarSign, ArrowDownLeft, FileSpreadsheet, Send, BarChart2, Coins, RotateCcw, 
   MessageSquare, Calendar, Printer, Lock, TrendingUp, ChevronRight, MoreVertical, CreditCard } from 'lucide-react';
@@ -46,7 +46,7 @@ const getCleanDocNumber = (itemOrDoc: any, fallback?: string): string => {
 };
 
 
-export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], comprobantes = [], bancos = [], movimientosBancos = [], proveedores = [], contactos = [], cuentasContables = [], configContable, onSave, showToast, workingYear }: { cxc?: any[], cxp?: any[], pagosRealizados?: any[], comprobantes?: any[], bancos?: any[], movimientosBancos?: any[], proveedores?: any[], contactos?: any[], cuentasContables?: any[], configContable?: any, onSave?: any, showToast?: any, workingYear?: string }) {
+export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pagosRealizados = [], comprobantes = [], bancos = [], movimientosBancos = [], proveedores = [], contactos = [], cuentasContables = [], configContable, onSave, showToast, workingYear }: { cxc?: any[], cxp?: any[], facturasCompra?: any[], pagosRealizados?: any[], comprobantes?: any[], bancos?: any[], movimientosBancos?: any[], proveedores?: any[], contactos?: any[], cuentasContables?: any[], configContable?: any, onSave?: any, showToast?: any, workingYear?: string }) {
   const { activeCompanyId } = useCompany();
   const { category } = useParams();
   const navigate = useNavigate();
@@ -292,9 +292,6 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     return contactos.filter(c => {
       let isMatch = false;
       switch(activeTab) {
-         case 'aerolineas':
-           isMatch = c.type === 'airline';
-           break;
          case 'freelance':
            isMatch = c.type === 'freelance' || c.type === 'customs_agency';
            break;
@@ -308,7 +305,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
            isMatch = c.type === 'employee';
            break;
          default: 
-           isMatch = ['supplier', 'both', 'airline', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
+           isMatch = ['supplier', 'both', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
       }
       return isMatch && ((c.taxId || '').toLowerCase().includes(term) || (c.name || '').toLowerCase().includes(term));
     });
@@ -320,15 +317,12 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     return contactos.filter(c => {
       let isMatch = false;
       switch(activeTab) {
-         case 'aerolineas':
-           isMatch = c.type === 'airline';
-           break;
          case 'freelance':
            isMatch = c.type === 'freelance' || c.type === 'customs_agency';
            break;
          case 'proveedores':
          case 'pago':
-           isMatch = ['supplier', 'both', 'airline'].includes(c.type);
+           isMatch = ['supplier', 'both'].includes(c.type);
            break;
          case 'aliados':
            isMatch = ['customs_agency', 'aliado', 'freelance', 'supplier', 'both'].includes(c.type);
@@ -343,7 +337,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
            isMatch = c.type === 'shareholder';
            break;
          default: 
-           isMatch = ['supplier', 'both', 'airline', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
+           isMatch = ['supplier', 'both', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
       }
       return isMatch && ((c.taxId || '').toLowerCase().includes(term) || (c.name || '').toLowerCase().includes(term));
     });
@@ -355,15 +349,12 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     return contactos.filter(c => {
       let isMatch = false;
       switch(activeTab) {
-         case 'aerolineas':
-           isMatch = c.type === 'airline';
-           break;
          case 'freelance':
            isMatch = c.type === 'freelance' || c.type === 'customs_agency';
            break;
          case 'proveedores':
          case 'pago':
-           isMatch = ['supplier', 'both', 'airline'].includes(c.type);
+           isMatch = ['supplier', 'both'].includes(c.type);
            break;
          case 'aliados':
            isMatch = ['customs_agency', 'aliado', 'freelance', 'supplier', 'both'].includes(c.type);
@@ -378,7 +369,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
            isMatch = c.type === 'shareholder';
            break;
          default: 
-           isMatch = ['supplier', 'both', 'airline', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
+           isMatch = ['supplier', 'both', 'freelance', 'customs_agency', 'aliado', 'intercompany', 'shareholder', 'employee'].includes(c.type);
       }
       return isMatch && ((c.taxId || '').toLowerCase().includes(term) || (c.name || '').toLowerCase().includes(term));
     });
@@ -964,6 +955,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
         draftMovs.push({
           id: crypto.randomUUID(),
+          empresa_id: activeCompanyId,
           banco_id: p.bancoId,
           fecha: pagoForm.fecha,
           ref: p.referencia,
@@ -994,6 +986,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
         const isDescuadrado = !isBalanced || lineas.some(l => !l.cuentaId);
         newComprobante = {
           id: compId,
+          empresa_id: activeCompanyId,
           fecha: pagoForm.fecha,
           numero: `CMP-${nowTs.slice(-6)}`,
           tipo: 'Diario',
@@ -1030,6 +1023,33 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                 const newSaldo = Math.max(0, currentSaldo - montoNum);
                 const newEstado = newSaldo <= 0.01 ? 'pagada' : (doc.estado || 'activo');
                 onSave('cxp', { ...doc, saldo: newSaldo, estado: newEstado });
+
+                // Sincronizar factura de compra si existe
+                if (facturasCompra && Array.isArray(facturasCompra)) {
+                  const matchedFac = facturasCompra.find((f: any) => {
+                    const facIdStr = String(f.id || '').toLowerCase();
+                    const facNumStr = String(f.numero || '').trim().toLowerCase();
+                    const docFacId = String(doc.factura_id || doc.factura_db_id || '').toLowerCase();
+                    const docFacNum = String(doc.factura || doc.numero || '').trim().toLowerCase();
+                    return (docFacId && (docFacId === facIdStr || docFacId === facNumStr)) ||
+                           (docFacNum && (docFacNum === facNumStr || docFacNum === facIdStr)) ||
+                           (doc.descripcion && facNumStr && doc.descripcion.toLowerCase().includes(facNumStr));
+                  });
+
+                  if (matchedFac) {
+                    const targetFacEstado = newSaldo <= 0.009 ? 'pagada' : 'parcial';
+                    const targetSaldoUSD = Math.max(0, newSaldo);
+                    const targetSaldoBs = targetSaldoUSD * (matchedFac.tasa_cambio || 1);
+                    onSave('facturasCompra', {
+                      ...matchedFac,
+                      estado: targetFacEstado,
+                      saldo_pendiente: targetSaldoUSD,
+                      saldo_pendiente_bs: targetSaldoBs,
+                      cxp_id: doc.id,
+                      updated_at: new Date().toISOString()
+                    });
+                  }
+                }
               }
             }
           });
@@ -1056,6 +1076,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
           // Registrar historial de pago realizado con array de pagos
           const newPagoRealizado = {
             id: crypto.randomUUID(),
+            empresa_id: activeCompanyId,
+            empresaId: activeCompanyId,
             fecha: pagoForm.fecha,
             proveedorNombre: entidadNombre,
             proveedorId: String(pagoForm.proveedorId),
@@ -1155,6 +1177,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     // 1. Crear movimiento bancario (ingreso a cuenta bancaria)
     const newMov = {
       id: movId,
+      empresa_id: activeCompanyId,
       banco_id: newMovForm.bancoId,
       fecha: newMovForm.fecha,
       ref: docRef,
@@ -1169,6 +1192,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
     // 2. Crear registro en CXP (Cuenta por Pagar)
     const newCxp = {
       id: cxpId,
+      empresa_id: activeCompanyId,
       categoria: effectiveCategory,
       proveedor: newMovForm.entidad,
       proveedor_id: newMovForm.entidad_id || null,
@@ -1231,6 +1255,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     const newComprobante = {
       id: compId,
+      empresa_id: activeCompanyId,
       fecha: newMovForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1299,7 +1324,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     // 1. Crear registro en CXP
     const newCxp = {
-      id: nowTs + '-cxp',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: activeTab,
       proveedor: provisionForm.proveedor,
       proveedor_id: provisionForm.proveedor_id,
@@ -1346,6 +1372,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     const newComprobante = {
       id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       fecha: provisionForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1417,7 +1444,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     // 1. Crear movimiento bancario (egreso)
     const newMov = {
-      id: nowTs,
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       banco_id: anticipoForm.bancoId,
       fecha: anticipoForm.fecha,
       ref: anticipoForm.referencia || `ANT-${nowTs.slice(-4)}`,
@@ -1431,7 +1459,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     // 2. Crear registro en CXP con saldo negativo (a favor del proveedor)
     const newCxp = {
-      id: nowTs + '-cxp',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: activeTab === 'pago' ? 'proveedores' : activeTab,
       proveedor: anticipoForm.proveedor,
       proveedor_id: anticipoForm.proveedor_id || `PROV-${nowTs.slice(-4)}`,
@@ -1468,6 +1497,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     const newComprobante = {
       id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       fecha: anticipoForm.fecha,
       numero: `CMP-${nowTs.slice(-6)}`,
       tipo: 'Diario',
@@ -1532,7 +1562,8 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
     // 1. Crear registro en CXP
     const newCxp = {
-      id: nowTs + '-cxp',
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       categoria: activeTab === 'pago' ? 'proveedores' : activeTab,
       proveedor: saldoInicialForm.contacto,
       proveedor_id: saldoInicialForm.contacto_id || `PROV-${nowTs.slice(-4)}`,
@@ -1577,6 +1608,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
 
       const newComprobante = {
         id: crypto.randomUUID(),
+        empresa_id: activeCompanyId,
         fecha: saldoInicialForm.fecha,
         numero: `CMP-${nowTs.slice(-6)}`,
         tipo: 'Diario',
@@ -1925,7 +1957,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
           if (!pago.isSynthetic) {
             onSave?.('pagos-realizados', { ...pago, estado: 'anulado' });
           } else {
-            onSave?.('pagos-realizados', { ...pago, id: `pago-${Date.now()}`, isSynthetic: false, estado: 'anulado' });
+            onSave?.('pagos-realizados', { ...pago, id: crypto.randomUUID(), empresa_id: activeCompanyId, empresaId: activeCompanyId, isSynthetic: false, estado: 'anulado' });
           }
 
           setSelectedSupplier(null);
@@ -2064,9 +2096,10 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       }
 
       // 2. Registrar documento de ajuste de reintegro en CxP
-      const docReintegroId = `cxp-reint-${Date.now()}`;
+      const docReintegroId = crypto.randomUUID();
       onSave?.('cxp', {
         id: docReintegroId,
+        empresa_id: activeCompanyId,
         factura_id: refCode,
         proveedor_id: currentSupplier.id,
         proveedor: currentSupplier.proveedor,
@@ -2083,10 +2116,11 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       });
 
       // 3. Registrar movimiento de ingreso bancario
-      const movBancoId = `mov-reint-${Date.now()}`;
+      const movBancoId = crypto.randomUUID();
       const cuentaBancoContable = selectedBanco?.cuentaContableId || '1.1.3';
       onSave?.('movimientosBancos', {
         id: movBancoId,
+        empresa_id: activeCompanyId,
         bancoId: reintegroForm.bancoId,
         banco_id: reintegroForm.bancoId,
         fecha: reintegroForm.fecha,
@@ -2103,6 +2137,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
       const compId = crypto.randomUUID();
       onSave?.('comprobantes', {
         id: compId,
+        empresa_id: activeCompanyId,
         numero: `CMP-${Date.now().toString().slice(-6)}`,
         fecha: reintegroForm.fecha,
         descripcion: `Reintegro de saldo a favor de ${currentSupplier.proveedor} (Ref: ${refCode})`,
@@ -3448,7 +3483,7 @@ export default function Payables({ cxc = [], cxp = [], pagosRealizados = [], com
                       const currentSum = pagoForm.pagos.reduce((s, p) => s + (Number(p.monto) || 0), 0);
                       const pending = Math.max(0, Number((montoBanco - currentSum).toFixed(2)));
                       const newPago = {
-                        id: 'pago-' + Date.now(),
+                        id: crypto.randomUUID(),
                         bancoId: '',
                         metodo: 'Transferencia',
                         terminalId: '',

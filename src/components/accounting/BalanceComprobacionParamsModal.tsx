@@ -744,7 +744,7 @@ export default function BalanceComprobacionParamsModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {empresa?.nombre || 'Agencia de Viajes y Turismo Halley, C.A.'} • Del {localStartDate} al {localEndDate}
+                  {empresa?.nombre || 'Corporación Halley, C.A.'} • Del {localStartDate} al {localEndDate}
                 </p>
               </div>
             </div>

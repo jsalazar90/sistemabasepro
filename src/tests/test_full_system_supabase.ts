@@ -157,7 +157,7 @@ async function runE2ETest() {
     // 5. MÓDULO: MOVIMIENTOS BANCARIOS
     // ------------------------------------------------------------------------
     const testMovBanco = {
-      id: `mov_${Date.now()}`,
+      id: crypto.randomUUID(),
       bancoId: testBanco.id,
       fecha: '2026-08-15',
       tipo: 'ingreso',

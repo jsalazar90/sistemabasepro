@@ -1,11 +1,13 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Plus, Filter, MoreVertical, FileText, ArrowLeft, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, ChevronDown } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useCompany } from '../context/CompanyContext';
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import BackButton from '../components/common/BackButton';
 import { getTodayLocalDate, toInputDateFormat } from '../utils/dateUtils';
 
 export default function AccountingEntries({ comprobantes = [], cuentasContables = [], onSave, showToast, workingYear }: { comprobantes?: any[], cuentasContables?: any[], onSave?: any, showToast?: any, workingYear?: string }) {
+  const { activeCompanyId } = useCompany();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   const defaultYear = workingYear || String(new Date().getFullYear());
@@ -30,8 +32,8 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
   });
 
   const [lines, setLines] = useState<any[]>([
-    { id: '1', cuentaId: '', descripcion: '', debe: 0, haber: 0 },
-    { id: '2', cuentaId: '', descripcion: '', debe: 0, haber: 0 }
+    { id: crypto.randomUUID(), cuentaId: '', descripcion: '', debe: 0, haber: 0 },
+    { id: crypto.randomUUID(), cuentaId: '', descripcion: '', debe: 0, haber: 0 }
   ]);
 
   const [activeLineId, setActiveLineId] = useState<string | null>(null);
@@ -211,8 +213,8 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
         referencia: ''
       });
       setLines([
-        { id: Date.now().toString(), cuentaId: '', descripcion: '', debe: 0, haber: 0 },
-        { id: (Date.now() + 1).toString(), cuentaId: '', descripcion: '', debe: 0, haber: 0 }
+        { id: crypto.randomUUID(), cuentaId: '', descripcion: '', debe: 0, haber: 0 },
+        { id: crypto.randomUUID(), cuentaId: '', descripcion: '', debe: 0, haber: 0 }
       ]);
     }
     setIsModalOpen(true);
@@ -235,7 +237,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
   };
 
   const handleAddLine = () => {
-    setLines([...lines, { id: Date.now().toString(), cuentaId: '', descripcion: form.descripcion || '', debe: 0, haber: 0 }]);
+    setLines([...lines, { id: crypto.randomUUID(), cuentaId: '', descripcion: form.descripcion || '', debe: 0, haber: 0 }]);
   };
 
   const handleRemoveLine = (id: string) => {
@@ -295,7 +297,8 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
     }));
 
     const newEntry = {
-      id: editingId || `comp-${Date.now()}`,
+      id: editingId || crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       ...form,
       total: totalDebe,
       estado: isDescuadrado ? 'Descuadrado' : 'Contabilizado',

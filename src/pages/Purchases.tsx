@@ -15,12 +15,23 @@ import { getTasaForDate } from '../services/exchangeRateService';
 import { FacturaCompraModel, AlmacenModel } from '../types/database';
 import { formatDate, getTodayLocalDate } from '../utils/dateUtils';
 import { formatNumber } from '../utils/numberFormat';
+import { useCompany } from '../context/CompanyContext';
+
+const purchaseIsPaid = (p: FacturaCompraModel): boolean => {
+  if (p.estado === 'anulada') return false;
+  if (p.estado === 'pagada') return true;
+  if (p.condicion === 'contado') return true;
+  if (p.saldo_pendiente !== undefined && Number(p.saldo_pendiente) <= 0.01) return true;
+  return false;
+};
 
 export default function Purchases({
   facturasCompra = [],
   cxp = [],
   comprobantes = [],
   movimientosInventario = [],
+  movimientosBancos = [],
+  pagosRealizados = [],
   products = [],
   contactos = [],
   cuentasContables = [],
@@ -36,6 +47,8 @@ export default function Purchases({
   cxp?: any[];
   comprobantes?: any[];
   movimientosInventario?: any[];
+  movimientosBancos?: any[];
+  pagosRealizados?: any[];
   products?: any[];
   contactos?: any[];
   cuentasContables?: any[];
@@ -49,6 +62,8 @@ export default function Purchases({
 }) {
   const { submodule } = useParams<{ submodule?: string }>();
   const navigate = useNavigate();
+  const { activeCompanyId } = useCompany();
+  const currentCompanyId = activeCompanyId || empresa?.id || '';
 
   const handleOpenPurchaseWindow = () => {
     window.open('/purchases/new', 'NuevaCompra', 'width=1450,height=900,left=50,top=50');
@@ -145,8 +160,9 @@ export default function Purchases({
       if (p.estado !== 'anulada') {
         totalMesUSD += Number(p.total) || 0;
         totalMesBs += Number(p.total_bs) || (Number(p.total) * (p.tasa_cambio || exchangeRate));
-        if (p.estado === 'emitida' || p.condicion === 'credito') {
-          totalPendienteUSD += Number(p.saldo_pendiente || p.total) || 0;
+        const isPaid = purchaseIsPaid(p);
+        if (p.condicion === 'credito' && !isPaid) {
+          totalPendienteUSD += Number(p.saldo_pendiente !== undefined ? p.saldo_pendiente : p.total) || 0;
         } else {
           totalPagadoUSD += Number(p.total) || 0;
         }
@@ -195,8 +211,8 @@ export default function Purchases({
             });
 
             onSave?.('movimientosInventario', {
-              id: `mov_rev_cmp_${Date.now()}_${item.id}`,
-              empresa_id: '',
+              id: crypto.randomUUID(),
+              empresa_id: currentCompanyId,
               producto_id: prod.id,
               producto_nombre: prod.nombre,
               producto_codigo: prod.codigo,
@@ -225,15 +241,15 @@ export default function Purchases({
     onSave?.('facturasCompra', updatedPurchase);
 
     // 3. Anular CxP si existe
-    if (purchaseToAnular.cxp_id) {
-      const existingCxp = cxp.find(c => c.id === purchaseToAnular.cxp_id || c.factura_id === purchaseToAnular.numero);
+    if (purchaseToAnular.cxp_id || purchaseToAnular.numero) {
+      const existingCxp = cxp.find(c => (purchaseToAnular.cxp_id && c.id === purchaseToAnular.cxp_id) || c.factura_id === purchaseToAnular.numero || c.numero === purchaseToAnular.numero);
       if (existingCxp) {
         onSave?.('cxp', {
           ...existingCxp,
           saldo: 0,
           saldo_bs: 0,
           estado: 'anulada',
-          descripcion: `[ANULADA] ${existingCxp.descripcion}`
+          descripcion: `[ANULADA] ${existingCxp.descripcion || existingCxp.concepto || ''}`
         });
       }
     }
@@ -249,6 +265,29 @@ export default function Purchases({
         });
       }
     }
+
+    // 5. Eliminar movimientos bancarios vinculados (si fue de contado)
+    const bankMatches = (movimientosBancos || []).filter((mov: any) => {
+      const matchComp = purchaseToAnular.comprobante_id && String(mov.comprobante_id) === String(purchaseToAnular.comprobante_id);
+      const matchRef = mov.ref && (String(mov.ref) === String(purchaseToAnular.numero) || String(mov.ref).includes(String(purchaseToAnular.numero)));
+      return matchComp || matchRef;
+    });
+
+    bankMatches.forEach((mov: any) => {
+      onSave?.('movimientosBancos', { id: mov.id, _delete: true });
+    });
+
+    // 6. Eliminar pagos-realizados vinculados
+    const pagoMatches = (pagosRealizados || []).filter((pago: any) => {
+      const matchComp = purchaseToAnular.comprobante_id && String(pago.comprobanteId) === String(purchaseToAnular.comprobante_id);
+      const matchRef = pago.comprobantePago && String(pago.comprobantePago).includes(String(purchaseToAnular.numero));
+      const matchDet = pago.detalles && Array.isArray(pago.detalles) && pago.detalles.some((d: any) => d.docId === purchaseToAnular.id || d.numDoc === purchaseToAnular.numero);
+      return matchComp || matchRef || matchDet;
+    });
+
+    pagoMatches.forEach((pago: any) => {
+      onSave?.('pagos-realizados', { id: pago.id, _delete: true });
+    });
 
     showToast?.(`${isServicio ? 'Gasto/Servicio' : 'Compra'} ${purchaseToAnular.numero} anulada exitosamente${!isServicio ? ' y stock revertido' : ''}.`, 'success');
     setPurchaseToAnular(null);
@@ -702,11 +741,13 @@ export default function Purchases({
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                         purchase.estado === 'anulada'
                           ? 'bg-rose-100 text-rose-700'
-                          : purchase.estado === 'emitida'
-                            ? 'bg-amber-100 text-amber-800'
-                            : 'bg-emerald-100 text-emerald-800'
+                          : purchaseIsPaid(purchase)
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : purchase.estado === 'parcial'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
                       }`}>
-                        {purchase.estado === 'anulada' ? 'Anulada' : purchase.estado === 'emitida' ? 'Pendiente' : 'Pagada'}
+                        {purchase.estado === 'anulada' ? 'Anulada' : purchaseIsPaid(purchase) ? 'Pagada' : purchase.estado === 'parcial' ? 'Parcial' : 'Pendiente'}
                       </span>
                     </td>
 

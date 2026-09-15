@@ -17,6 +17,7 @@ import {
 } from '../types/database';
 import { formatDate, getTodayLocalDate, addDaysToDate } from '../utils/dateUtils';
 import { formatNumber, parseMoney } from '../utils/numberFormat';
+import { useCompany } from '../context/CompanyContext';
 
 const DEFAULT_ALMACENES: AlmacenModel[] = [
   { id: '00000000-0000-4000-8000-000000000001', empresa_id: '', codigo: 'DEP-01', nombre: 'Almacén Principal (Central)', ubicacion: 'Galpón Central A', es_principal: true, activo: true }
@@ -46,6 +47,8 @@ export default function PurchaseForm({
   empresa?: any;
 }) {
   const navigate = useNavigate();
+  const { activeCompanyId } = useCompany();
+  const currentCompanyId = activeCompanyId || empresa?.id || '';
 
   // 1. Configuración de Documento y Multimoneda
   const [docType, setDocType] = useState<'factura_compra' | 'nota_entrega' | 'nota_debito' | 'orden_compra'>('factura_compra');
@@ -132,7 +135,7 @@ export default function PurchaseForm({
 
     const newContact: any = {
       id: crypto.randomUUID(),
-      empresa_id: '',
+      empresa_id: currentCompanyId,
       name: newSupplierForm.name.trim(),
       nombre: newSupplierForm.name.trim(),
       tax_id: newSupplierForm.taxId.trim(),
@@ -447,8 +450,8 @@ export default function PurchaseForm({
     const priceNum = parseFloat(newProdForm.precio_venta) || 0;
 
     const newProd: ProductModel = {
-      id: `prod_${Date.now()}`,
-      empresa_id: '',
+      id: crypto.randomUUID(),
+      empresa_id: currentCompanyId,
       codigo: newProdForm.codigo.trim().toUpperCase(),
       nombre: newProdForm.nombre.trim(),
       categoria: newProdForm.categoria || 'General',
@@ -707,7 +710,7 @@ export default function PurchaseForm({
         const newSuppId = crypto.randomUUID();
         const newContact: ContactoModel = {
           id: newSuppId,
-          empresa_id: '',
+          empresa_id: currentCompanyId,
           name: supplierName.trim(),
           tax_id: supplierRif.trim(),
           address: supplierAddress.trim() || undefined,
@@ -718,7 +721,7 @@ export default function PurchaseForm({
           saldo: 0,
           activo: true
         };
-        onSave?.('contacts', newContact);
+        onSave?.('contactos', newContact);
         effectiveSupplierId = newSuppId;
       }
 
@@ -871,7 +874,7 @@ export default function PurchaseForm({
       // 2. Guardar la Factura de Compra
       const newPurchase: FacturaCompraModel = {
         id: purchaseId,
-        empresa_id: '',
+        empresa_id: currentCompanyId,
         numero: invoiceNumber.trim().toUpperCase(),
         control_numero: controlNumber.trim() || undefined,
         tipo_documento: docType,
@@ -960,7 +963,7 @@ export default function PurchaseForm({
           // Registrar Movimiento de Kardex (tipo: entrada)
           await onSave?.('movimientosInventario', {
             id: crypto.randomUUID(),
-            empresa_id: empresa?.id || '',
+            empresa_id: currentCompanyId,
             producto_id: prod.id,
             producto_nombre: prod.nombre,
             producto_codigo: prod.codigo,
@@ -985,6 +988,7 @@ export default function PurchaseForm({
 
       await onSave?.('cxp', {
         id: cxpId,
+        empresa_id: currentCompanyId,
         factura_id: purchaseId,
         factura_db_id: purchaseId,
         factura: newPurchase.numero,
@@ -1024,7 +1028,7 @@ export default function PurchaseForm({
           const egresoId = crypto.randomUUID();
           onSave?.('movimientosBancos', {
             id: egresoId,
-            empresa_id: '',
+            empresa_id: currentCompanyId,
             banco_id: actualBankId,
             fecha: issueDate,
             ref: paymentRef.trim() || `${paymentMethod.toUpperCase()}-FAC-${newPurchase.numero}`,
@@ -1040,6 +1044,8 @@ export default function PurchaseForm({
 
           onSave?.('pagos-realizados', {
             id: crypto.randomUUID(),
+            empresa_id: currentCompanyId,
+            empresaId: currentCompanyId,
             comprobantePago: paymentRef.trim() || `${paymentMethod.toUpperCase()}-FAC-${newPurchase.numero}`,
             proveedorId: effectiveSupplierId || undefined,
             proveedorNombre: newPurchase.proveedor_nombre,

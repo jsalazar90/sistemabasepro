@@ -395,7 +395,7 @@ CREATE TABLE facturas_compra_items (
 );
 
 -- 7. CUENTAS POR COBRAR Y PAGAR
-CREATE TABLE cxc (
+CREATE TABLE cuentas_cobrar_cxc (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE,
     factura_id UUID REFERENCES facturas_venta(id),
@@ -429,7 +429,7 @@ CREATE TABLE cobranzas (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
-CREATE TABLE cxp (
+CREATE TABLE cuentas_pagar_cxp (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     empresa_id UUID REFERENCES empresas(id) ON DELETE CASCADE,
     factura_id UUID REFERENCES facturas_compra(id),

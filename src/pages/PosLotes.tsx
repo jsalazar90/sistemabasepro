@@ -145,8 +145,8 @@ export default function PosLotes({
     setIsLoading(true);
     try {
       const [terms, batchList] = await Promise.all([
-        dbFetchTerminalesPos(),
-        dbFetchLotesPos()
+        dbFetchTerminalesPos(activeCompanyId),
+        dbFetchLotesPos(activeCompanyId)
       ]);
       setTerminales(terms || []);
       setLotes(batchList || []);
@@ -159,7 +159,7 @@ export default function PosLotes({
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeCompanyId]);
 
   // Garantizar que cada terminal activa tenga un lote "abierto"
   const openBatches = useMemo(() => {
@@ -354,7 +354,8 @@ export default function PosLotes({
     // 1. Guardar el nuevo lote cerrado (cerrado_pendiente)
     const loteCerrado: LotePosModel = {
       ...selectedLoteForCierre,
-      id: `lote_${Date.now()}`,
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       lote_numero: loteNumeroInput.trim(),
       fecha_cierre: new Date().toISOString(),
       total_operaciones: selectedTxs.length,
@@ -368,7 +369,7 @@ export default function PosLotes({
       notas: notasCierre.trim()
     };
 
-    await dbSaveLotePos(loteCerrado);
+    await dbSaveLotePos(loteCerrado, activeCompanyId);
     onSave?.('lotesPos', loteCerrado);
 
     // 2. Actualizar el lote abierto virtual para mantener los restantes (si hay) o dejarlo en 0
@@ -394,7 +395,7 @@ export default function PosLotes({
       notas: ''
     };
 
-    await dbSaveLotePos(remainingOpen);
+    await dbSaveLotePos(remainingOpen, activeCompanyId);
     onSave?.('lotesPos', remainingOpen);
 
     showToast?.(`Lote Nº ${loteCerrado.lote_numero} cerrado exitosamente. ${selectedTxs.length} transacciones por ${symbolPrincipal} ${totalUsdCalculado.toFixed(2)} (Ref: Bs. ${totalSeleccionadoBs.toFixed(2)}).`, 'success');
@@ -738,7 +739,7 @@ export default function PosLotes({
         notas: liquidacionForm.notas.trim() || loteToLiquidate.notas
       };
 
-      await dbSaveLotePos(loteActualizado);
+      await dbSaveLotePos(loteActualizado, activeCompanyId);
       onSave?.('lotesPos', loteActualizado);
 
       showToast?.(`Lote Nº ${loteActualizado.lote_numero} acreditado con éxito en ${bank.banco}. Asiento contable registrado.`, 'success');

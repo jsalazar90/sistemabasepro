@@ -15,6 +15,7 @@ import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateServic
 import { FacturaVentaModel } from '../types/database';
 import { formatDate } from '../utils/dateUtils';
 import InvoiceForm from './InvoiceForm';
+import { useCompany } from '../context/CompanyContext';
 
 // Helpers de formato de fechas en español
 const MESES_ES = [
@@ -85,6 +86,8 @@ export default function Invoicing({
   showToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const navigate = useNavigate();
+  const { activeCompanyId } = useCompany();
+  const currentCompanyId = activeCompanyId || empresa?.id || '';
   const handleOpenInvoiceWindow = () => {
     window.open('/invoicing/new', 'NuevaFactura', 'width=1450,height=900,left=50,top=50');
   };
@@ -581,8 +584,8 @@ export default function Invoicing({
             });
 
             onSave?.('movimientosInventario', {
-              id: `mov_rev_${Date.now()}_${item.id || Math.random()}`,
-              empresa_id: '',
+              id: crypto.randomUUID(),
+              empresa_id: currentCompanyId,
               producto_id: originalProd.id,
               producto_nombre: originalProd.nombre,
               producto_codigo: originalProd.codigo,

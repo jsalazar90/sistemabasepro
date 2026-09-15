@@ -29,11 +29,14 @@ import {
   Receipt,
   FolderArchive,
   Calendar,
-  Plane,
   Terminal,
+  Lock,
 } from "lucide-react";
 import { useCompany } from "../context/CompanyContext";
 import { dbSaveEmpresa, dbSaveConfiguracionContable } from "../services/db";
+import { APP_VERSION } from "../config/version";
+import { useIdleTimer } from "../hooks/useIdleTimer";
+import { ScreenLockModal } from "./common/ScreenLockModal";
 
 const NAVIGATION = [
   { name: "Inicio", path: "/", icon: Home, exact: true, id: "home" },
@@ -102,6 +105,12 @@ export default function Layout({
   const [newCompanyTaxId, setNewCompanyTaxId] = useState("");
   const [newCompanyYear, setNewCompanyYear] = useState<string>(String(currentYear));
   const [isCreatingCompany, setIsCreatingCompany] = useState(false);
+
+  // Enterprise Inactivity Auto-Lock (15 min idle)
+  const { isLocked, lock, unlock } = useIdleTimer({
+    timeoutMinutes: 15,
+    enabled: Boolean(currentUser)
+  });
 
   useEffect(() => {
     const selectedComp = availableCompanies.find(c => c.id === (tempCompanyId || activeCompanyId)) || empresa;
@@ -295,12 +304,15 @@ export default function Layout({
             </Link>
             <div className="flex flex-col">
               <Link to="/" className="text-base sm:text-lg font-black tracking-tight text-slate-900 flex items-center leading-none hover:opacity-90">
-                {empresa?.nombre || activeCompany?.name || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
+                {activeCompany?.name || (activeCompany as any)?.nombre || (empresa?.nombre && empresa?.nombre !== 'Empresa' ? empresa?.nombre : '') || 'Halley'}<span className="text-indigo-600 ml-1 font-black">ERP</span>
               </Link>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   Sistema Operativo
+                </span>
+                <span className="bg-indigo-50 border border-indigo-200/70 text-indigo-700 text-[9px] font-black px-1.5 py-0.2 rounded font-mono">
+                  v{APP_VERSION} Pro
                 </span>
               </div>
             </div>
@@ -351,6 +363,15 @@ export default function Layout({
                 </span>
               </div>
             </div>
+ 
+            <button
+              onClick={lock}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-indigo-600 bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 p-2 sm:px-3 sm:py-2 rounded-xl transition-all shadow-2xs cursor-pointer active:scale-95"
+              title="Bloquear pantalla de trabajo"
+            >
+              <Lock size={14} />
+              <span className="hidden sm:inline">Bloquear</span>
+            </button>
 
             {onLogout && (
               <button
@@ -651,6 +672,12 @@ export default function Layout({
           </div>
         </div>
       )}
+
+      <ScreenLockModal
+        isOpen={isLocked}
+        onUnlock={unlock}
+        onLogout={onLogout || (() => {})}
+      />
     </div>
   );
 }

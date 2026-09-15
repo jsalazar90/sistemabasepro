@@ -40,16 +40,16 @@ const formatMontoContableHtml = (num: number | string) => {
 // Cuentas de muestra para resultados si el sistema no tiene movimientos registrados
 const SAMPLE_PL_CUENTAS = [
   // 4. INGRESOS
-  { id: 'pl-401', codigo: '4.1.01.001', nombre: 'Ingresos por Venta de Boletos Aéreos Internacionales', grupo: '4', nat: 'Acreedora', saldo: 485600 },
-  { id: 'pl-402', codigo: '4.1.01.002', nombre: 'Ingresos por Venta de Paquetes Turísticos y Hoteles', grupo: '4', nat: 'Acreedora', saldo: 242300 },
-  { id: 'pl-403', codigo: '4.1.01.003', nombre: 'Comisiones por Seguros de Viaje y Asistencia', grupo: '4', nat: 'Acreedora', saldo: 38400 },
-  { id: 'pl-404', codigo: '4.1.01.004', nombre: 'Servicios de Logística Corporativa y Traslados VIP', grupo: '4', nat: 'Acreedora', saldo: 61500 },
+  { id: 'pl-401', codigo: '4.1.01.001', nombre: 'Ingresos por Venta de Mercancías y Productos', grupo: '4', nat: 'Acreedora', saldo: 485600 },
+  { id: 'pl-402', codigo: '4.1.01.002', nombre: 'Ingresos por Prestación de Servicios Comerciales', grupo: '4', nat: 'Acreedora', saldo: 242300 },
+  { id: 'pl-403', codigo: '4.1.01.003', nombre: 'Ingresos por Asesorías y Consultorías', grupo: '4', nat: 'Acreedora', saldo: 38400 },
+  { id: 'pl-404', codigo: '4.1.01.004', nombre: 'Servicios de Logística y Transporte Comercial', grupo: '4', nat: 'Acreedora', saldo: 61500 },
   { id: 'pl-405', codigo: '4.1.02.001', nombre: 'Descuentos y Bonificaciones Otorgados en Ventas', grupo: '4', nat: 'Deudora', saldo: -12800 },
   
   // 5. COSTOS
-  { id: 'pl-501', codigo: '5.1.01.001', nombre: 'Costo de Emisión de Boletos GDS y Tarifa Neta IATA', grupo: '5', nat: 'Deudora', saldo: 412000 },
-  { id: 'pl-502', codigo: '5.1.01.002', nombre: 'Costos Directos de Hotelería y Operadores Receptivos', grupo: '5', nat: 'Deudora', saldo: 178500 },
-  { id: 'pl-503', codigo: '5.1.01.003', nombre: 'Comisiones Pagadas a Agentes y Aliados Comerciales', grupo: '5', nat: 'Deudora', saldo: 24600 },
+  { id: 'pl-501', codigo: '5.1.01.001', nombre: 'Costo de Ventas - Mercancías para la Venta', grupo: '5', nat: 'Deudora', saldo: 412000 },
+  { id: 'pl-502', codigo: '5.1.01.002', nombre: 'Costos Directos de Servicios Prestados', grupo: '5', nat: 'Deudora', saldo: 178500 },
+  { id: 'pl-503', codigo: '5.1.01.003', nombre: 'Comisiones Pagadas a Vendedores y Aliados', grupo: '5', nat: 'Deudora', saldo: 24600 },
 
   // 6. GASTOS OPERACIONALES
   { id: 'pl-601', codigo: '6.1.01.001', nombre: 'Sueldos, Salarios y Beneficios al Personal Operativo', grupo: '6', nat: 'Deudora', saldo: 45200 },
@@ -57,7 +57,7 @@ const SAMPLE_PL_CUENTAS = [
   { id: 'pl-603', codigo: '6.1.01.003', nombre: 'Alquiler de Oficinas Administrativas y Sucursales', grupo: '6', nat: 'Deudora', saldo: 14400 },
   { id: 'pl-604', codigo: '6.1.01.004', nombre: 'Servicios Públicos (Electricidad, Telecomunicaciones, Agua)', grupo: '6', nat: 'Deudora', saldo: 4850 },
   { id: 'pl-605', codigo: '6.1.01.005', nombre: 'Publicidad Digital, Campañas y Redes Sociales', grupo: '6', nat: 'Deudora', saldo: 9200 },
-  { id: 'pl-606', codigo: '6.1.01.006', nombre: 'Licencias de Software Contable, ERP y Sistemas GDS', grupo: '6', nat: 'Deudora', saldo: 7500 },
+  { id: 'pl-606', codigo: '6.1.01.006', nombre: 'Licencias de Software Contable y ERP Cloud', grupo: '6', nat: 'Deudora', saldo: 7500 },
   { id: 'pl-607', codigo: '6.1.01.007', nombre: 'Honorarios Profesionales Contables y Jurídicos', grupo: '6', nat: 'Deudora', saldo: 5400 },
   { id: 'pl-608', codigo: '6.1.01.008', nombre: 'Depreciación de Mobiliario y Equipos de Computación', grupo: '6', nat: 'Deudora', saldo: 6100 },
   { id: 'pl-609', codigo: '6.1.01.009', nombre: 'Mantenimiento General, Limpieza y Seguridad', grupo: '6', nat: 'Deudora', saldo: 3900 },
@@ -635,7 +635,7 @@ export default function EstadoResultadosParamsModal({
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {empresa?.nombre || 'Agencia de Viajes y Turismo Halley, C.A.'} • Rendimiento del {localStartDate} al {localEndDate}
+                  {empresa?.nombre || 'Corporación Halley, C.A.'} • Rendimiento del {localStartDate} al {localEndDate}
                 </p>
               </div>
             </div>

@@ -244,10 +244,10 @@ export default function InvoiceForm({
   // Terminales POS para cobranzas con tarjeta
   const [terminalesPos, setTerminalesPos] = useState<TerminalPosModel[]>([]);
   useEffect(() => {
-    dbFetchTerminalesPos().then(res => {
+    dbFetchTerminalesPos(currentCompanyId).then(res => {
       if (res && res.length > 0) setTerminalesPos(res);
     });
-  }, []);
+  }, [currentCompanyId]);
 
   // Modal de Asiento Contable
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
@@ -1626,11 +1626,12 @@ export default function InvoiceForm({
             const termObj = terminalesPos.find(t => t.id === termId);
             
             try {
-              const existingLotes = await dbFetchLotesPos();
+              const existingLotes = await dbFetchLotesPos(currentCompanyId);
               let openLote = existingLotes.find((l: any) => l.terminal_id === termId && l.estado === 'abierto');
               if (!openLote) {
                 openLote = {
-                  id: `lote_${Date.now()}_${idx}`,
+                  id: crypto.randomUUID(),
+                  company_id: currentCompanyId,
                   terminal_id: termId,
                   terminal_nombre: termObj ? termObj.nombre : 'Punto de Venta',
                   banco_id: termObj ? termObj.banco_id : (bancos.length > 0 ? bancos[0].id : ''),
@@ -1648,7 +1649,7 @@ export default function InvoiceForm({
               }
 
               const newTx: LotePosTransaccion = {
-                id: `tx_pos_${Date.now()}_${idx}`,
+                id: crypto.randomUUID(),
                 factura_id: newFactura.id,
                 factura_numero: newFactura.numero,
                 cliente_nombre: customerName,
@@ -1661,6 +1662,7 @@ export default function InvoiceForm({
 
               const updatedLote = {
                 ...openLote,
+                company_id: currentCompanyId,
                 total_operaciones: (openLote.transacciones?.length || 0) + 1,
                 monto_bruto_sistema: Number(((openLote.monto_bruto_sistema || 0) + pagoMontoBsNum).toFixed(2)),
                 monto_bruto_usd: Number(((openLote.monto_bruto_usd || 0) + pagoMontoNum).toFixed(2)),
@@ -1668,7 +1670,7 @@ export default function InvoiceForm({
                 updated_at: new Date().toISOString()
               };
 
-              await dbSaveLotePos(updatedLote);
+              await dbSaveLotePos(updatedLote, currentCompanyId);
               onSave?.('lotesPos', updatedLote);
               
               onSave?.('cobranzas', {
@@ -1693,7 +1695,7 @@ export default function InvoiceForm({
           } else {
             const bank = bancos.find(b => b.id === pago.bancoId) || (pago.metodoPago === 'efectivo' || pago.metodoPago === 'Efectivo' ? bancos.find(b => b.es_caja || (b.tipo || '').toLowerCase().includes('caja')) : null) || (bancos && bancos.length > 0 ? bancos[0] : null);
             if (bank) {
-              const movId = `mov_bnk_${Date.now()}_${idx}`;
+              const movId = crypto.randomUUID();
               onSave?.('movimientosBancos', {
                 id: movId,
                 banco_id: bank.id,

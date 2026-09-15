@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Calculator, Search, Filter, Play, X, Eye, Trash2, FileText } from 'lucide-react';
 import VoucherPreviewModal from '../common/VoucherPreviewModal';
+import { useCompany } from '../../context/CompanyContext';
 
 interface DepreciationsProps {
   depreciaciones: any[];
@@ -21,6 +22,7 @@ export default function Depreciations({
   onSave, 
   showToast 
 }: DepreciationsProps) {
+  const { activeCompanyId } = useCompany();
   const [searchTerm, setSearchTerm] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [selectedDepreciacion, setSelectedDepreciacion] = useState<any | null>(null);
@@ -190,16 +192,16 @@ export default function Depreciations({
 
     // Construir líneas de partida doble: Débitos primero, luego Créditos
     const lineasAsiento = [
-      ...Object.values(gastoTotals).map((g, idx) => ({
-        id: `line-deb-${idx + 1}-${timestamp}`,
+      ...Object.values(gastoTotals).map((g) => ({
+        id: crypto.randomUUID(),
         cuentaId: g.cuentaId,
         nombreCuenta: g.nombreCuenta,
         descripcion: g.descripcion,
         debe: Math.round(g.monto * 100) / 100,
         haber: 0
       })),
-      ...Object.values(acumTotals).map((a, idx) => ({
-        id: `line-cred-${idx + 1}-${timestamp}`,
+      ...Object.values(acumTotals).map((a) => ({
+        id: crypto.randomUUID(),
         cuentaId: a.cuentaId,
         nombreCuenta: a.nombreCuenta,
         descripcion: a.descripcion,
@@ -210,6 +212,7 @@ export default function Depreciations({
 
     const proposedVoucher = {
       id: voucherId,
+      empresa_id: activeCompanyId,
       numero: comprobanteRef,
       comprobante: comprobanteRef,
       referencia: comprobanteRef,
@@ -223,7 +226,8 @@ export default function Depreciations({
     };
 
     setPendingDeprecData({
-      id: timestamp.toString(),
+      id: crypto.randomUUID(),
+      empresa_id: activeCompanyId,
       periodo,
       fechaEjecucion: new Date().toISOString().split('T')[0],
       totalDepreciado,
@@ -241,7 +245,7 @@ export default function Depreciations({
 
   const handleConfirmVoucher = async (finalComprobante: any) => {
     if (isViewingExistingVoucher) {
-      onSave('comprobantes', finalComprobante);
+      onSave('comprobantes', { ...finalComprobante, empresa_id: finalComprobante.empresa_id || activeCompanyId });
       setShowVoucherModal(false);
       setPendingVoucher(null);
       setPendingDeprecData(null);
@@ -254,13 +258,15 @@ export default function Depreciations({
     // 1. Guardar Comprobante Contable confirmado por el usuario
     const voucherToSave = {
       ...finalComprobante,
-      id: finalComprobante.id || crypto.randomUUID()
+      id: finalComprobante.id || crypto.randomUUID(),
+      empresa_id: activeCompanyId
     };
     onSave('comprobantes', voucherToSave);
 
     // 2. Guardar registro de Depreciación
     onSave('depreciaciones', {
       id: pendingDeprecData.id,
+      empresa_id: activeCompanyId,
       periodo: pendingDeprecData.periodo,
       fechaEjecucion: pendingDeprecData.fechaEjecucion,
       totalDepreciado: pendingDeprecData.totalDepreciado,
@@ -273,7 +279,7 @@ export default function Depreciations({
     // 3. Actualizar la depreciación acumulada de cada activo fijo
     if (pendingDeprecData.assetUpdates && Array.isArray(pendingDeprecData.assetUpdates)) {
       for (const update of pendingDeprecData.assetUpdates) {
-        onSave('activosFijos', update);
+        onSave('activosFijos', { ...update, empresa_id: update.empresa_id || activeCompanyId });
       }
     }
 

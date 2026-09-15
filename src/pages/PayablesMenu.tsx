@@ -9,7 +9,6 @@ import {
   PhoneCall,
   Building,
   FileText,
-  Plane,
   Percent
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
@@ -17,7 +16,7 @@ import BackButton from '../components/common/BackButton';
 const payableModules = [
   { 
     name: 'Proveedores', 
-    description: 'Gestión de facturas de compra, GDS y servicios comerciales', 
+    description: 'Gestión de facturas de compra y servicios comerciales', 
     icon: Truck, 
     gradient: 'from-rose-500 to-orange-500', 
     shadow: 'shadow-rose-500/20', 
