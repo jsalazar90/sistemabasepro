@@ -85,6 +85,10 @@ export async function dbFetchEmpresas(): Promise<Company[]> {
         await setLocal('erp_local_empresas', mapped);
         return mapped;
       }
+      if (!error && (!data || data.length === 0)) {
+        await dbSaveEmpresa(DEFAULT_LOCAL_COMPANY);
+        return [DEFAULT_LOCAL_COMPANY];
+      }
     } catch (err: any) {
       console.warn('Error al consultar empresas de Supabase, usando local:', err);
     }
@@ -157,8 +161,8 @@ export async function dbSaveEmpresa(empresa: any): Promise<{ success: boolean; e
       await supabase.from('empresas').upsert(payload);
 
       // --- ASIGNACIÓN AUTOMÁTICA DEL MASTER A LA EMPRESA ---
-      // Aseguramos que jhoansg@gmail.com (y jefe) queden explícitamente asignados a la data de la empresa
-      const masterEmails = ['jhoansg@gmail.com', 'jefe@halleyerp.com'];
+      // Aseguramos que jhoansg@gmail.com quede explícitamente asignado a la data de la empresa
+      const masterEmails = ['jhoansg@gmail.com'];
       const { data: masterUsers } = await supabase.from('usuarios').select('id, email').in('email', masterEmails);
       
       if (masterUsers && masterUsers.length > 0) {
@@ -719,14 +723,17 @@ export async function dbFetchUsuarios(): Promise<any[]> {
     } catch {}
   }
 
-  if (!local || local.length === 0) {
+  const cleanLocal = (local || []).filter((u: any) => u.email?.toLowerCase() !== 'jefe@halleyerp.com');
+  if (cleanLocal.length !== (local || []).length) {
+    await setLocal('erp_local_usuarios', cleanLocal);
+  }
+
+  if (!cleanLocal || cleanLocal.length === 0) {
     const defaultMaster = {
-      id: "u-master-1",
-      email: "jefe@halleyerp.com",
-      name: "Administrador Master",
+      id: "u-master-jhoan",
+      email: "jhoansg@gmail.com",
+      name: "Jhoan SG",
       role: "Master",
-      password: "19072828",
-      claveOperaciones: globalMasterClave || "19072828",
       activo: true,
       companyRoles: { "*": "Master" },
       companyConfigs: {}
@@ -734,7 +741,7 @@ export async function dbFetchUsuarios(): Promise<any[]> {
     await setLocal('erp_local_usuarios', [defaultMaster]);
     return [defaultMaster];
   }
-  return local;
+  return cleanLocal;
 }
 
 export async function dbSaveUsuario(usuario: any): Promise<boolean> {
@@ -965,20 +972,24 @@ export async function dbSaveCuentaContable(cuenta: any, empresaId: string): Prom
 
   if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
     try {
-      const payload = {
+      const payload: any = {
         id: formatted.id,
         empresa_id: empresaId,
         codigo: formatted.codigo,
         nombre: formatted.nombre,
-        tipo: formatted.tipo,
-        naturaleza: formatted.naturaleza,
-        grupo: formatted.grupo,
-        nivel: formatted.nivel,
+        tipo: formatted.tipo || 'Movimiento',
+        naturaleza: formatted.naturaleza || 'Deudora',
+        grupo: formatted.grupo || 'Activo',
+        nivel: formatted.nivel || 1,
         cuenta_padre_id: formatted.cuentaPadreId,
         saldo_actual: formatted.saldoActual,
         activo: formatted.activo
       };
-      await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      const { error: upsertErr } = await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      if (upsertErr && payload.cuenta_padre_id) {
+        payload.cuenta_padre_id = null;
+        await supabase.from('cuentas_contables').upsert(payload, { onConflict: 'empresa_id,codigo' });
+      }
     } catch (e) {
       console.warn('Error dbSaveCuentaContable Supabase:', e);
     }
@@ -3153,6 +3164,22 @@ export async function dbSaveProduct(product: any, empresaId: string): Promise<bo
           const updateRes = await supabase.from('productos').update(payload).eq('id', prodId);
           error = updateRes.error;
         }
+
+        // Si falla por Foreign Key inexistente (ej. almacén o cuenta contable que no existe en Supabase)
+        if (error && error.code === '23503') {
+          console.warn("Violación de clave foránea al guardar producto. Reintentando con claves anulables saneadas...", error.details);
+          const sanitizedPayload = {
+            ...payload,
+            almacen_id: null,
+            cuenta_inventario_id: null,
+            cuenta_costo_id: null,
+            cuenta_venta_id: null,
+            cuenta_ingreso_id: null
+          };
+          const retryUpsert = await supabase.from('productos').upsert(sanitizedPayload, { onConflict: 'id' });
+          error = retryUpsert.error;
+        }
+
         if (error) {
           console.error("Error al guardar producto en Supabase:", error);
         }
@@ -3311,6 +3338,7 @@ export const DEFAULT_ALMACEN_PRINCIPAL = {
 
 export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
   const cid = empresaId || 'default';
+
   if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
     try {
       const { data, error } = await supabase
@@ -3323,27 +3351,6 @@ export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
         await setLocal(`app_almacenes_${cid}`, data);
         return data;
       }
-      
-      // Si la base de datos no tiene almacenes para esta empresa, auto-creamos el Almacén Principal por defecto
-      if (!error && (!data || data.length === 0)) {
-        const defaultMain = {
-          empresa_id: empresaId,
-          codigo: 'DEP-01',
-          nombre: 'Almacén Principal (Central)',
-          ubicacion: 'Galpón Central A',
-          responsable: 'Administración',
-          es_principal: true,
-          activo: true
-        };
-        const { data: inserted, error: insertErr } = await supabase
-          .from('almacenes')
-          .insert(defaultMain)
-          .select();
-        if (!insertErr && inserted && inserted.length > 0) {
-          await setLocal(`app_almacenes_${cid}`, inserted);
-          return inserted;
-        }
-      }
     } catch (e) {
       console.warn("Error dbFetchAlmacenes:", e);
     }
@@ -3355,7 +3362,7 @@ export async function dbFetchAlmacenes(empresaId?: string): Promise<any[]> {
   }
   const fallback = [{
     id: '00000000-0000-4000-8000-000000000001',
-    empresa_id: empresaId || '',
+    empresa_id: cid,
     codigo: 'DEP-01',
     nombre: 'Almacén Principal (Central)',
     ubicacion: 'Galpón Central A',
