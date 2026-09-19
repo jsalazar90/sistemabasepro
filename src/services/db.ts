@@ -88,10 +88,10 @@ export async function dbFetchEmpresas(): Promise<Company[]> {
           await setLocal('erp_local_empresas', mapped);
           return mapped;
         }
-      }
-      if (!error && (!data || data.length === 0)) {
-        await dbSaveEmpresa(DEFAULT_LOCAL_COMPANY);
-        return [DEFAULT_LOCAL_COMPANY];
+        if (!error && (!data || data.length === 0)) {
+          await dbSaveEmpresa(DEFAULT_LOCAL_COMPANY);
+          return [DEFAULT_LOCAL_COMPANY];
+        }
       }
     } catch (err: any) {
       console.warn('Error al consultar empresas de Supabase, usando local:', err);
