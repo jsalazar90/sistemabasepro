@@ -1,18 +1,18 @@
 /// <reference types="vite/client" />
 import { createClient } from '@supabase/supabase-js';
 
-const getEnv = (key: string) => {
-  if (typeof import.meta !== 'undefined' && (import.meta as any).env?.[key]) {
-    return (import.meta as any).env[key];
-  }
-  if (typeof process !== 'undefined' && process.env?.[key]) {
-    return process.env[key];
-  }
-  return '';
-};
+const DEFAULT_SUPABASE_URL = 'https://smmmascbafyposncncga.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtbW1hc2NiYWZ5cG9zbmNuY2dhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkyNTQ2MjYsImV4cCI6MjEwNDgzMDYyNn0.o3MVKPsrNbvjWdtnU884cE_F_yeZ0thpdckzVWZKUpw';
 
-const supabaseUrl = getEnv('VITE_SUPABASE_URL');
-const supabaseAnonKey = getEnv('VITE_SUPABASE_ANON_KEY');
+const supabaseUrl: string = 
+  import.meta.env.VITE_SUPABASE_URL || 
+  (typeof process !== 'undefined' ? process.env?.VITE_SUPABASE_URL : '') || 
+  DEFAULT_SUPABASE_URL;
+
+const supabaseAnonKey: string = 
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 
+  (typeof process !== 'undefined' ? process.env?.VITE_SUPABASE_ANON_KEY : '') || 
+  DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl && 
