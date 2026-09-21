@@ -1,6 +1,6 @@
 import https from 'https';
 
-// Cache en memoria en la instancia serverless para ejecuciones cálidas
+// Cache en memoria para la instancia serverless
 let bcvCache: {
   rate: number;
   date: string;
@@ -10,7 +10,7 @@ let bcvCache: {
 
 async function fetchFromBCVOfficial(): Promise<{ rate: number; date: string; source: string } | null> {
   return new Promise((resolve) => {
-    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: false, timeout: 9000 }, (res: any) => {
+    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: false, timeout: 8000 }, (res: any) => {
       let data = '';
       res.on('data', (chunk: any) => data += chunk);
       res.on('end', () => {
@@ -47,7 +47,7 @@ async function fetchFromBCVOfficial(): Promise<{ rate: number; date: string; sou
 async function fetchFromMirrorApi(): Promise<{ rate: number; date: string; source: string } | null> {
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
     const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial', { signal: controller.signal });
     clearTimeout(timeoutId);
     if (!res.ok) return null;
@@ -66,6 +66,18 @@ async function fetchFromMirrorApi(): Promise<{ rate: number; date: string; sourc
 }
 
 export default async function handler(req: any, res: any) {
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+
+  if (req.method === 'OPTIONS') {
+    if (typeof res.status === 'function') return res.status(200).end();
+    res.writeHead(200);
+    return res.end();
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (typeof res.status === 'function') {
       return res.status(405).json({ error: 'Method not allowed' });
@@ -74,9 +86,8 @@ export default async function handler(req: any, res: any) {
     return res.end(JSON.stringify({ error: 'Method not allowed' }));
   }
 
-  // Parse query params
   const urlObj = new URL(req.url, `http://${req.headers?.host || 'localhost'}`);
-  const force = urlObj.searchParams.get('force') === 'true';
+  const force = urlObj.searchParams.get('force') === 'true' || req.query?.force === 'true';
   const now = Date.now();
 
   const sendResponse = (statusCode: number, data: any, edgeCache: boolean = true) => {
@@ -87,7 +98,6 @@ export default async function handler(req: any, res: any) {
     };
 
     if (edgeCache && statusCode === 200) {
-      // 10 minutos en CDN Edge de Vercel, revalidación en segundo plano hasta 5 minutos
       headers['Cache-Control'] = 'public, s-maxage=600, stale-while-revalidate=300';
     } else {
       headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
@@ -107,7 +117,7 @@ export default async function handler(req: any, res: any) {
     res.end(JSON.stringify(data));
   };
 
-  // 1. Verificar cache en memoria si no se solicita refresco forzado
+  // 1. Cache en memoria (10 min)
   if (!force && bcvCache && (now - bcvCache.timestamp < 10 * 60 * 1000)) {
     return sendResponse(200, {
       success: true,
@@ -122,7 +132,7 @@ export default async function handler(req: any, res: any) {
   // 2. Intentar directamente desde la página oficial del BCV
   let result = await fetchFromBCVOfficial();
 
-  // 3. Fallback a API espejo si el portal del BCV presenta intermitencias
+  // 3. Fallback a API espejo si BCV presenta bloqueo o lentitud
   if (!result) {
     result = await fetchFromMirrorApi();
   }
@@ -142,7 +152,7 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // 4. Si fallaron ambos pero tenemos un cache anterior, devolverlo como fallback
+  // 4. Devolver cache anterior si ambos fallan
   if (bcvCache) {
     return sendResponse(200, {
       success: true,

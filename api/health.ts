@@ -1,4 +1,18 @@
 export default async function handler(req: any, res: any) {
+  if (typeof res.setHeader === 'function') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  }
+
+  if (req.method === 'OPTIONS') {
+    if (typeof res.status === 'function') return res.status(200).end();
+    res.writeHead(200);
+    return res.end();
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     if (typeof res.status === 'function') {
       return res.status(405).json({ error: 'Method not allowed' });
