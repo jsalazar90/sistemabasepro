@@ -7,7 +7,8 @@ import {
 } from "react";
 
 import { UserSession, INITIAL_DEFAULT_USERS } from "../data/defaultUsers";
-import { dbFetchEmpresas } from "../services/db";
+import { dbFetchEmpresas, dbFetchUsuarioEmpresas, dbFetchUsuarios } from "../services/db";
+import { supabase, isSupabaseConfigured } from "../lib/supabase";
 
 export type { UserSession };
 
@@ -128,7 +129,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
       // ÚNICAMENTE el rol Master tiene acceso irrestricto a todas las empresas
       if (activeUser && activeUser.role !== 'Master') {
-        const { dbFetchUsuarioEmpresas } = await import("../services/db");
         userEmpresas = await dbFetchUsuarioEmpresas(activeUser.id);
         setCurrentUserEmpresas(userEmpresas);
         
@@ -174,7 +174,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     async function syncAuthSession() {
       try {
-        const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
         if (!isSupabaseConfigured || !supabase) {
           refreshCompanies(currentUser);
           return;
@@ -259,7 +258,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     async function loadUsers() {
       if (!currentUser) return;
       try {
-        const { dbFetchUsuarios } = await import("../services/db");
         const list = await dbFetchUsuarios();
         if (list && list.length > 0) {
           setDbUsers(list);
@@ -288,8 +286,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
-      
       if (isSupabaseConfigured && supabase) {
         // 1. Autenticación Segura con Supabase Auth
         let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -374,7 +370,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     // --- FALLBACK LOCAL OFFLINE ---
     let usersList = dbUsers;
     try {
-      const { dbFetchUsuarios } = await import("../services/db");
       const remoteUsers = await dbFetchUsuarios();
       if (remoteUsers && remoteUsers.length > 0) {
         usersList = remoteUsers;
@@ -408,7 +403,6 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   // Cierre de Sesión
   const logout = async () => {
     try {
-      const { supabase, isSupabaseConfigured } = await import("../lib/supabase");
       if (isSupabaseConfigured && supabase) {
         await supabase.auth.signOut();
       }

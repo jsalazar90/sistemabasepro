@@ -16,7 +16,7 @@ import MasterAuthModal from '../components/common/MasterAuthModal';
 import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import InvoicePrintModal from '../components/invoicing/InvoicePrintModal';
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
-import { dbFetchTerminalesPos, dbFetchLotesPos, dbSaveLotePos, isUUID } from '../services/db';
+import { dbFetchTerminalesPos, dbFetchLotesPos, dbSaveLotePos, dbObtenerSiguienteCorrelativo, isUUID } from '../services/db';
 import { FacturaVentaModel, FacturaItemModel, ProductModel, TerminalPosModel, LotePosTransaccion } from '../types/database';
 import { formatDate, getTodayLocalDate, addDaysToDate } from '../utils/dateUtils';
 import { formatDocumentNumber, getNextCorrelativo, parseMoney } from '../utils/numberFormat';
@@ -1449,12 +1449,27 @@ export default function InvoiceForm({
         };
       });
 
+      // Asignar correlativo atómico con bloqueo pesimista en PostgreSQL para evitar colisiones
+      let finalInvoiceNumber = invoiceNumber.trim().toUpperCase();
+      if (currentCompanyId) {
+        try {
+          const atomicResult = await dbObtenerSiguienteCorrelativo(currentCompanyId, docType);
+          if (atomicResult && atomicResult.numero_formateado) {
+            finalInvoiceNumber = atomicResult.numero_formateado;
+          }
+        } catch (e) {
+          console.warn("Error obteniendo correlativo atómico, usando preasignado:", e);
+        }
+      }
+
       // 1. Guardar Asiento Contable PRIMERO para que su UUID exista en base de datos antes de que la factura lo referencie
       if (currentVoucher) {
         const voucherToSave = {
           ...currentVoucher,
           id: voucherId,
-          descripcion: currentVoucher.concepto || currentVoucher.descripcion || `Registro de Factura de Venta ${invoiceNumber}`
+          numero: `AS-FAC-${finalInvoiceNumber.replace(/[^a-zA-Z0-9]/g, '')}`,
+          referencia: finalInvoiceNumber,
+          descripcion: currentVoucher.concepto || currentVoucher.descripcion || `Registro de Factura de Venta ${finalInvoiceNumber}`
         };
         await onSave?.('comprobantes', voucherToSave);
       }
@@ -1463,7 +1478,7 @@ export default function InvoiceForm({
       const newFactura: FacturaVentaModel = {
         id: factId,
         empresa_id: currentCompanyId,
-        numero: invoiceNumber.trim().toUpperCase(),
+        numero: finalInvoiceNumber,
         control_numero: controlNumber.trim(),
         tipo_documento: docType,
         condicion: selectedCondition,

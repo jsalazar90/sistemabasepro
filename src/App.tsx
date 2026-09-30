@@ -316,9 +316,11 @@ function AppContent() {
     setMovimientosInventario([]);
     setFacturasVenta([]);
 
+    let isCurrent = true;
+
     async function loadCompanyDataFromSupabase() {
       try {
-        // Lote 1: Entidades maestras contables y bancarias
+        // Lote 1: Entidades maestras contables y bancarias (Inmediato)
         const [
           dbContacts,
           dbAccounts,
@@ -333,7 +335,14 @@ function AppContent() {
           dbFetchConfiguracionContable(activeCompanyId!)
         ]);
 
-        // Lote 2: Cuentas por cobrar y pagar, cobranzas y pagos
+        if (!isCurrent) return;
+        setContactos(dbContacts || []);
+        setCuentasContables(dbAccounts || []);
+        setBancos(dbBanksList || []);
+        setMovimientosBancos(dbBankTx || []);
+        setConfigContable(dbConfig || { ...initialConfiguracionContable, empresaId: activeCompanyId });
+
+        // Lote 2: Cuentas por cobrar y pagar, cobranzas y pagos (Progresivo)
         const [
           dbCxcList,
           dbCxpList,
@@ -348,7 +357,14 @@ function AppContent() {
           dbFetchComprobantes(activeCompanyId!)
         ]);
 
-        // Lote 3: Inventario, almacenes y servicios
+        if (!isCurrent) return;
+        setCxc(dbCxcList || []);
+        setCxp(dbCxpList || []);
+        setCobranzas(dbCobranzasList || []);
+        setPagosRealizados(dbPagosList || []);
+        setComprobantes(dbComprobantesList || []);
+
+        // Lote 3: Inventario, almacenes y servicios (Progresivo)
         const [
           dbCategoriasList,
           dbProductsList,
@@ -363,7 +379,14 @@ function AppContent() {
           dbFetchAlmacenes(activeCompanyId!)
         ]);
 
-        // Lote 4: Facturación y Activos Fijos
+        if (!isCurrent) return;
+        setCategoriasProducto(dbCategoriasList || []);
+        setProducts(dbProductsList || []);
+        setMovimientosInventario(dbMovimientosInvList || []);
+        setServicios(dbServiciosList || []);
+        setAlmacenes(dbAlmacenesList || []);
+
+        // Lote 4: Facturación y Activos Fijos (Progresivo)
         const [
           dbFacturasVentaList,
           dbFacturasCompraList,
@@ -378,32 +401,21 @@ function AppContent() {
           dbFetchDepreciaciones(activeCompanyId!)
         ]);
 
-        setContactos(dbContacts || []);
-        setCuentasContables(dbAccounts || []);
-        setBancos(dbBanksList || []);
-        setMovimientosBancos(dbBankTx || []);
-        setConfigContable(dbConfig || { ...initialConfiguracionContable, empresaId: activeCompanyId });
-        setCxc(dbCxcList || []);
-        setCxp(dbCxpList || []);
-        setCobranzas(dbCobranzasList || []);
-        setPagosRealizados(dbPagosList || []);
-        setComprobantes(dbComprobantesList || []);
-        setServicios(dbServiciosList || []);
+        if (!isCurrent) return;
+        setFacturasVenta(dbFacturasVentaList || []);
+        setFacturasCompra(dbFacturasCompraList || []);
         setCategoriasActivos(dbCategoriasActivos || []);
         setActivosFijos(dbActivosFijosList || []);
         setDepreciaciones(dbDepreciacionesList || []);
-        setProducts(dbProductsList || []);
-        setCategoriasProducto(dbCategoriasList || []);
-        setAlmacenes(dbAlmacenesList || []);
-        setMovimientosInventario(dbMovimientosInvList || []);
-        setFacturasVenta(dbFacturasVentaList || []);
-        setFacturasCompra(dbFacturasCompraList || []);
       } catch (err) {
         console.warn("Error cargando datos de Supabase:", err);
       }
     }
 
     loadCompanyDataFromSupabase();
+    return () => {
+      isCurrent = false;
+    };
   }, [activeCompanyId]);
 
   const clientes = contactos.filter((c) => c.type === "customer" || c.type === "both");

@@ -37,6 +37,7 @@ import { dbSaveEmpresa, dbSaveConfiguracionContable } from "../services/db";
 import { APP_VERSION } from "../config/version";
 import { useIdleTimer } from "../hooks/useIdleTimer";
 import { ScreenLockModal } from "./common/ScreenLockModal";
+import SyncStatusBadge from "./common/SyncStatusBadge";
 
 const NAVIGATION = [
   { name: "Inicio", path: "/", icon: Home, exact: true, id: "home" },
@@ -348,6 +349,8 @@ export default function Layout({
               <ChevronDown size={13} className="text-slate-400 group-hover:text-indigo-600 transition-colors" />
             </button>
           )}
+
+          <SyncStatusBadge />
 
           <div className="flex items-center gap-2 pl-2 sm:border-l border-slate-200/80">
             <div className="flex items-center gap-2 bg-white border border-slate-200/80 pl-1.5 pr-2.5 py-1 rounded-xl shadow-2xs">
