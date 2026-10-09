@@ -33,8 +33,10 @@ import {
   dbSaveUsuarioEmpresa,
   dbDeleteUsuarioEmpresa,
   dbSaveConfiguracionContable,
-  dbGetMasterClaveOperaciones,
-  dbSaveMasterClaveOperaciones
+  dbSaveMasterClaveOperaciones,
+  dbClaveOperacionesConfigurada,
+  dbCrearUsuarioAdmin,
+  dbCambiarPasswordAdmin
 } from '../services/db';
 
 interface SettingsProps {
@@ -270,7 +272,7 @@ export default function Settings({
   const [userToChangePassword, setUserToChangePassword] = useState<any>(null);
   const [newPasswordForUser, setNewPasswordForUser] = useState('');
   const [newClaveOperacionesForUser, setNewClaveOperacionesForUser] = useState('');
-  const [globalMasterClave, setGlobalMasterClave] = useState('19072828');
+  const [claveConfigurada, setClaveConfigurada] = useState<boolean | null>(null);
   const [showNewUserPassword, setShowNewUserPassword] = useState(false);
   const [showNewUserClaveOperaciones, setShowNewUserClaveOperaciones] = useState(false);
   const [showModalPassword, setShowModalPassword] = useState(false);
@@ -392,18 +394,13 @@ export default function Settings({
 
   const fetchUsers = async () => {
     try {
-      const [dbList, masterClave] = await Promise.all([
-        dbFetchUsuarios(),
-        dbGetMasterClaveOperaciones()
-      ]);
-      setGlobalMasterClave(masterClave || '19072828');
+      const dbList = await dbFetchUsuarios();
       const defaultUsers = [
         {
           id: "u-admin",
           email: "administrador@empresa.com",
           name: "Administrador Principal",
           role: "Master",
-          claveOperaciones: masterClave || '19072828',
           activo: true,
           companyRoles: { [activeCompanyId || "default"]: "Master" },
           companyPermissions: {}
@@ -417,20 +414,36 @@ export default function Settings({
 
   const handleCreateUser = async () => {
     if (!newUser.email) return;
+    if (newUser.password.trim().length < 8) {
+      if (showToast) showToast('La contraseña inicial debe tener al menos 8 caracteres', 'error');
+      return;
+    }
+    if (newUser.role === 'Master' && newUser.claveOperaciones.trim().length < 6) {
+      if (showToast) showToast('La clave de operaciones del Master debe tener al menos 6 caracteres', 'error');
+      return;
+    }
     try {
       const cleanEmail = newUser.email.trim().toLowerCase();
       const selectedCompanyIds = newUser.companies && newUser.companies.length > 0 
         ? newUser.companies 
         : (activeCompanyId ? [activeCompanyId] : []);
 
-      const chosenClave = newUser.role === 'Master' ? (newUser.claveOperaciones ? newUser.claveOperaciones.trim() : globalMasterClave) : undefined;
+      // La cuenta se crea en el servidor (Supabase Auth) sin alterar la sesión del Master
+      const created = await dbCrearUsuarioAdmin({
+        email: cleanEmail,
+        password: newUser.password.trim(),
+        nombre: cleanEmail.split('@')[0],
+        role: newUser.role
+      });
+      if (!created.success || !created.id) {
+        if (showToast) showToast('No se pudo crear el usuario: ' + (created.error || ''), 'error');
+        return;
+      }
 
       const userObj = {
-        id: crypto.randomUUID(),
+        id: created.id,
         email: cleanEmail,
         name: cleanEmail.split('@')[0],
-        password: newUser.password ? newUser.password.trim() : '123456',
-        claveOperaciones: chosenClave,
         role: newUser.role,
         vendedorId: newUser.vendedorId,
         vendedorNombre: newUser.vendedorNombre,
@@ -444,22 +457,11 @@ export default function Settings({
 
       await dbSaveUsuario(userObj);
 
-      // Auto-aprovisionar en Supabase Auth si está configurado
-      try {
-        const { supabase, isSupabaseConfigured } = await import('../lib/supabase');
-        if (isSupabaseConfigured && supabase) {
-          await supabase.auth.signUp({
-            email: cleanEmail,
-            password: userObj.password
-          });
-        }
-      } catch (authErr) {
-        console.warn('Aviso al aprovisionar usuario en Supabase Auth:', authErr);
-      }
-
       if (newUser.role === 'Master' && newUser.claveOperaciones.trim()) {
-        await dbSaveMasterClaveOperaciones(newUser.claveOperaciones.trim());
-        setGlobalMasterClave(newUser.claveOperaciones.trim());
+        const claveRes = await dbSaveMasterClaveOperaciones(newUser.claveOperaciones.trim(), userObj.id);
+        if (!claveRes.success && showToast) {
+          showToast('Usuario creado, pero la clave de operaciones no se guardó: ' + (claveRes.error || ''), 'error');
+        }
       }
 
       // Guardar accesos explícitos para las empresas seleccionadas
@@ -501,22 +503,33 @@ export default function Settings({
       if (showToast) showToast('Por favor ingrese al menos una clave o contraseña para actualizar', 'error');
       return;
     }
+    if (pwd && pwd.length < 8) {
+      if (showToast) showToast('La contraseña debe tener al menos 8 caracteres', 'error');
+      return;
+    }
 
     try {
+      // 0. Cambiar la contraseña real de acceso (Supabase Auth) desde el servidor
+      if (pwd) {
+        const pwdRes = await dbCambiarPasswordAdmin(userToChangePassword.id, pwd);
+        if (!pwdRes.success) {
+          if (showToast) showToast('No se pudo cambiar la contraseña: ' + (pwdRes.error || ''), 'error');
+          return;
+        }
+      }
+
       // 1. Si el usuario es Master y configuró clave de operaciones, persistir como clave global de operaciones
-      if ((userToChangePassword.role === 'Master' || userToChangePassword.role === 'SuperAdmin') && claveOp) {
-        await dbSaveMasterClaveOperaciones(claveOp);
-        setGlobalMasterClave(claveOp);
+      if (userToChangePassword.role === 'Master' && claveOp) {
+        const claveRes = await dbSaveMasterClaveOperaciones(claveOp, userToChangePassword.id);
+        if (!claveRes.success) {
+          if (showToast) showToast('No se pudo guardar la clave de operaciones: ' + (claveRes.error || ''), 'error');
+          return;
+        }
+        setClaveConfigurada(true);
       }
 
       // 2. Preparar el objeto de usuario actualizado
-      const updatedUser = { 
-        ...userToChangePassword, 
-        ...(pwd ? { password: pwd, password_hash: pwd } : {}),
-        ...(claveOp ? { claveOperaciones: claveOp, clave_operaciones: claveOp } : {})
-      };
-      
-      await dbSaveUsuario(updatedUser);
+      const updatedUser = { ...userToChangePassword };
 
       // 3. Sincronizar en memoria y lista de usuarios
       const updatedUsers = users.map(u => {
@@ -1549,7 +1562,7 @@ export default function Settings({
                   <input 
                     type={showNewUserPassword ? 'text' : 'password'}
                     className="w-full px-3 py-2 pr-8 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"
-                    placeholder="Clave de acceso..."
+                    placeholder="Mínimo 8 caracteres"
                     value={newUser.password}
                     onChange={e => setNewUser({...newUser, password: e.target.value})}
                   />
@@ -1583,7 +1596,7 @@ export default function Settings({
                     <input 
                       type={showNewUserClaveOperaciones ? 'text' : 'password'}
                       className="w-full px-3 py-2 pr-8 bg-rose-50/50 border border-rose-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-rose-500"
-                      placeholder="Ej. 19072828"
+                      placeholder="Mínimo 6 caracteres"
                       value={newUser.claveOperaciones}
                       onChange={e => setNewUser({...newUser, claveOperaciones: e.target.value})}
                     />
@@ -1903,7 +1916,9 @@ export default function Settings({
                           onClick={() => { 
                             setUserToChangePassword(u); 
                             setNewPasswordForUser(''); 
-                            setNewClaveOperacionesForUser(u.claveOperaciones || u.clave_operaciones || (u.role === 'Master' ? globalMasterClave : '') || '');
+                            setNewClaveOperacionesForUser('');
+                            setClaveConfigurada(null);
+                            if (u.role === 'Master') dbClaveOperacionesConfigurada(u.id).then(setClaveConfigurada);
                           }}
                           className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 rounded-lg text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                           title="Gestionar Contraseña de Acceso y Clave de Operaciones"
@@ -1968,7 +1983,7 @@ export default function Settings({
                   <div className="relative">
                     <input
                       type={showModalPassword ? 'text' : 'password'}
-                      placeholder="Ingrese nueva clave de inicio de sesión..."
+                      placeholder="Nueva contraseña (mínimo 8 caracteres)"
                       className="w-full px-3.5 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-indigo-500 transition-all"
                       value={newPasswordForUser}
                       onChange={e => setNewPasswordForUser(e.target.value)}
@@ -1983,7 +1998,7 @@ export default function Settings({
                     </button>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-1">
-                    Dejar en blanco para mantener la contraseña de acceso actual.
+                    Dejar en blanco para mantener la contraseña actual. Al cambiarla, se cerrará la sesión de ese usuario.
                   </p>
                 </div>
 
@@ -1997,7 +2012,7 @@ export default function Settings({
                     <div className="relative">
                       <input
                         type={showModalClaveOperaciones ? 'text' : 'password'}
-                        placeholder="Ej. 1709 o 19072828"
+                        placeholder="Nueva clave (mínimo 6 caracteres)"
                         className="w-full px-3.5 py-2.5 pr-10 bg-rose-50/50 border border-rose-200 rounded-xl text-xs font-bold text-slate-900 outline-none focus:bg-white focus:border-rose-500 transition-all font-mono"
                         value={newClaveOperacionesForUser}
                         onChange={e => setNewClaveOperacionesForUser(e.target.value)}
@@ -2012,11 +2027,9 @@ export default function Settings({
                       </button>
                     </div>
                     <p className="text-[10px] text-slate-500 mt-1">
-                      {userToChangePassword.claveOperaciones || globalMasterClave ? (
-                        <>Clave de operaciones actual: <strong className="text-slate-800 font-mono font-bold">{userToChangePassword.claveOperaciones || globalMasterClave}</strong></>
-                      ) : (
-                        'Dejar en blanco para conservar la clave de operaciones actual (19072828).'
-                      )}
+                      {claveConfigurada === false
+                        ? 'Este usuario aún no tiene clave de operaciones: defina una para poder autorizar anulaciones y eliminaciones.'
+                        : 'Dejar en blanco para conservar la clave actual. Por seguridad, la clave no se puede visualizar.'}
                     </p>
                   </div>
                 )}

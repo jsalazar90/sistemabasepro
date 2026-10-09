@@ -11,11 +11,13 @@ import BackButton from '../components/common/BackButton';
 import InvoicePrintModal from '../components/invoicing/InvoicePrintModal';
 import TasaCambioModal from '../components/invoicing/TasaCambioModal';
 import MasterAuthModal from '../components/common/MasterAuthModal';
+import BimonetaryValue from '../components/common/BimonetaryValue';
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
 import { FacturaVentaModel } from '../types/database';
 import { formatDate } from '../utils/dateUtils';
 import InvoiceForm from './InvoiceForm';
 import { useCompany } from '../context/CompanyContext';
+import { dbActualizarStockAtomico } from '../services/db';
 
 // Helpers de formato de fechas en español
 const MESES_ES = [
@@ -65,6 +67,7 @@ export default function Invoicing({
   contactos = [],
   cuentasContables = [],
   bancos = [],
+  cobranzas = [],
   configContable,
   workingYear,
   empresa,
@@ -75,6 +78,7 @@ export default function Invoicing({
   cxc?: any[];
   comprobantes?: any[];
   movimientosBancos?: any[];
+  cobranzas?: any[];
   products?: any[];
   contactos?: any[];
   cuentasContables?: any[];
@@ -173,37 +177,41 @@ export default function Invoicing({
     return Number(f.total) || 0;
   }, []);
 
-  // Helper para buscar el documento correspondiente en Cuentas por Cobrar (CxC)
+  // Mapa indexado en memoria para búsquedas O(1) instantáneas de CxC
+  const cxcLookupMap = useMemo(() => {
+    const map = new Map<string, any>();
+    if (!cxc || !cxc.length) return map;
+
+    for (const c of cxc) {
+      if (!c) continue;
+      if (c.id) map.set(String(c.id).toLowerCase(), c);
+      if (c.factura_id) map.set(String(c.factura_id).toLowerCase(), c);
+      if (c.factura_db_id) map.set(String(c.factura_db_id).toLowerCase(), c);
+      if (c.factura) map.set(String(c.factura).trim().toLowerCase(), c);
+      if (c.numero) map.set(String(c.numero).trim().toLowerCase(), c);
+      if (c.metadata?.factura_id) map.set(String(c.metadata.factura_id).toLowerCase(), c);
+      if (c.metadata?.factura_numero) map.set(String(c.metadata.factura_numero).trim().toLowerCase(), c);
+    }
+    return map;
+  }, [cxc]);
+
+  // Helper optimizado O(1) para buscar el documento correspondiente en CxC
   const findCxcForInvoice = useCallback((fac: FacturaVentaModel): any | undefined => {
     if (!cxc || !cxc.length) return undefined;
 
-    // 1. Coincidencia directa por cxc_id
-    if (fac.cxc_id) {
-      const match = cxc.find(c => String(c.id) === String(fac.cxc_id));
-      if (match) return match;
+    if (fac.cxc_id && cxcLookupMap.has(String(fac.cxc_id).toLowerCase())) {
+      return cxcLookupMap.get(String(fac.cxc_id).toLowerCase());
     }
-
     const facIdStr = fac.id ? String(fac.id).toLowerCase() : '';
+    if (facIdStr && cxcLookupMap.has(facIdStr)) {
+      return cxcLookupMap.get(facIdStr);
+    }
     const facNumStr = fac.numero ? String(fac.numero).trim().toLowerCase() : '';
-
-    return cxc.find(c => {
-      if (!c) return false;
-      const cFacId = String(c.factura_id || c.factura_db_id || '').toLowerCase();
-      const cFacNum = String(c.factura || c.numero || '').trim().toLowerCase();
-      const cMetaFacId = String(c.metadata?.factura_id || '').toLowerCase();
-      const cMetaFacNum = String(c.metadata?.factura_numero || '').trim().toLowerCase();
-
-      if (facIdStr && (cFacId === facIdStr || cMetaFacId === facIdStr)) return true;
-      if (facNumStr && (cFacNum === facNumStr || cFacId === facNumStr || cMetaFacNum === facNumStr)) return true;
-
-      // Buscar por descripción que contenga el número de factura
-      if (facNumStr && c.descripcion && typeof c.descripcion === 'string') {
-        const descLow = c.descripcion.toLowerCase();
-        if (descLow.includes(facNumStr)) return true;
-      }
-      return false;
-    });
-  }, [cxc]);
+    if (facNumStr && cxcLookupMap.has(facNumStr)) {
+      return cxcLookupMap.get(facNumStr);
+    }
+    return undefined;
+  }, [cxc, cxcLookupMap]);
 
   // Saldo pendiente en USD considerando conciliación con Cuentas por Cobrar (CxC)
   const getInvoicePendingUSD = useCallback((f: FacturaVentaModel): number => {
@@ -513,13 +521,13 @@ export default function Invoicing({
     setIsMasterAuthModalOpen(true);
   };
 
-  const handleConfirmAnulacion = () => {
+  const handleConfirmAnulacion = async () => {
     if (!facturaToAnular) return;
 
     const fac = facturaToAnular;
 
     // 1. Marcar la factura como anulada y en cero
-    onSave?.('facturasVenta', {
+    await onSave?.('facturasVenta', {
       ...fac,
       estado: 'anulada',
       saldo_pendiente: 0,
@@ -528,7 +536,7 @@ export default function Invoicing({
       updated_at: new Date().toISOString()
     });
 
-    // 2. Eliminar la Cuenta por Cobrar (CxC) asociada
+    // 2. Eliminar o anular la Cuenta por Cobrar (CxC) asociada
     const cxcMatches = (cxc || []).filter(item => {
       const matchId = fac.cxc_id && String(item.id) === String(fac.cxc_id);
       const matchDoc = (item.factura && String(item.factura) === String(fac.numero)) ||
@@ -542,20 +550,24 @@ export default function Invoicing({
       return matchId || matchDoc || matchMeta;
     });
 
-    cxcMatches.forEach(item => {
-      onSave?.('cxc', { id: item.id, _delete: true });
-    });
+    for (const item of cxcMatches) {
+      await onSave?.('cxc', { id: item.id, _delete: true });
+    }
 
-    // 3. Eliminar el Asiento Contable asociado
+    // 3. Anular el Asiento Contable asociado (preserva la correlatividad y auditoría NIIF)
     const compMatches = (comprobantes || []).filter(comp => {
       const matchId = fac.comprobante_id && String(comp.id) === String(fac.comprobante_id);
       const matchConc = comp.concepto && String(comp.concepto).includes(String(fac.numero));
       return matchId || matchConc;
     });
 
-    compMatches.forEach(comp => {
-      onSave?.('comprobantes', { id: comp.id, _delete: true });
-    });
+    for (const comp of compMatches) {
+      await onSave?.('comprobantes', {
+        ...comp,
+        estado: 'Anulado',
+        descripcion: `[ANULADO] ${comp.descripcion || comp.concepto || 'Registro de Factura de Venta'}`
+      });
+    }
 
     // 4. Eliminar movimientos bancarios vinculados (si fue de contado)
     const bankMatches = (movimientosBancos || []).filter(mov => {
@@ -564,33 +576,63 @@ export default function Invoicing({
       return matchComp || matchRef;
     });
 
-    bankMatches.forEach(mov => {
-      onSave?.('movimientosBancos', { id: mov.id, _delete: true });
+    for (const mov of bankMatches) {
+      await onSave?.('movimientosBancos', { id: mov.id, _delete: true });
+    }
+
+    // 5. Eliminar o cancelar cobranzas vinculadas (si fue de contado)
+    const cobMatches = (cobranzas || []).filter((cob: any) => {
+      const matchComp = fac.comprobante_id && String(cob.comprobanteId) === String(fac.comprobante_id);
+      const matchRec = cob.reciboNumero && String(cob.reciboNumero) === String(fac.numero);
+      const matchDet = cob.detalles && Array.isArray(cob.detalles) && cob.detalles.some((d: any) => d.docId === fac.id || d.numDoc === fac.numero);
+      return matchComp || matchRec || matchDet;
     });
 
-    // 5. Revertir inventario si la factura contenía productos
+    for (const cob of cobMatches) {
+      await onSave?.('cobranzas', { id: cob.id, _delete: true });
+    }
+
+    // 6. Revertir inventario atómicamente si la factura contenía productos
     if (fac.items && Array.isArray(fac.items)) {
-      fac.items.forEach(item => {
+      for (const item of fac.items) {
         if (item.producto_id) {
           const originalProd = (products || []).find((p: any) => String(p.id) === String(item.producto_id));
           if (originalProd) {
+            const cantRevertir = Number(item.cantidad) || 0;
             const currentStock = Number(originalProd.stock_actual) || 0;
-            const restoredStock = currentStock + (Number(item.cantidad) || 0);
+            const restoredStock = currentStock + cantRevertir;
 
-            onSave?.('products', {
+            if (currentCompanyId) {
+              try {
+                await dbActualizarStockAtomico(
+                  currentCompanyId,
+                  originalProd.id,
+                  cantRevertir,
+                  'devolucion',
+                  {
+                    referencia: `Anulación Factura Venta N° ${fac.numero}`,
+                    usuario: 'Administrador (Master)'
+                  }
+                );
+              } catch (e) {
+                console.warn('Error en retorno atómico de inventario:', e);
+              }
+            }
+
+            await onSave?.('products', {
               ...originalProd,
               stock_actual: restoredStock,
               updated_at: new Date().toISOString()
             });
 
-            onSave?.('movimientosInventario', {
+            await onSave?.('movimientosInventario', {
               id: crypto.randomUUID(),
               empresa_id: currentCompanyId,
               producto_id: originalProd.id,
               producto_nombre: originalProd.nombre,
               producto_codigo: originalProd.codigo,
               tipo: 'ajuste_positivo',
-              cantidad: Number(item.cantidad) || 0,
+              cantidad: cantRevertir,
               stock_anterior: currentStock,
               stock_resultante: restoredStock,
               costo_unitario: originalProd.costo_unitario,
@@ -601,11 +643,11 @@ export default function Invoicing({
             });
           }
         }
-      });
+      }
     }
 
     showToast?.(
-      `Factura ${fac.numero} anulada con éxito. Se eliminó la CxC y el asiento contable asociado.`,
+      `Factura ${fac.numero} anulada con éxito. Stock restituido y módulos sincronizados.`,
       'success'
     );
     setIsMasterAuthModalOpen(false);
@@ -1093,25 +1135,20 @@ export default function Invoicing({
                                   {fac.condicion || 'Contado'}
                                 </span>
                               </td>
-                              <td className="px-4 py-2.5 text-right font-black text-slate-900">
-                                <div className="font-mono font-extrabold text-slate-900">
-                                  {formatMoney(getInvoiceTotalUSD(fac), 'USD')}
-                                </div>
-                                {(fac.moneda_presentacion === 'VES' || fac.moneda === 'VES' || fac.tasa_cambio > 1) && (
-                                  <div className="text-[10px] font-semibold text-slate-400 font-mono mt-0.5">
-                                    Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(getInvoiceTotalBs(fac))}
-                                  </div>
-                                )}
+                              <td className="px-4 py-2.5 text-right">
+                                <BimonetaryValue
+                                  amountUSD={getInvoiceTotalUSD(fac)}
+                                  amountBs={getInvoiceTotalBs(fac)}
+                                  align="right"
+                                />
                               </td>
-                              <td className="px-4 py-2.5 text-right font-bold text-slate-600">
-                                <div className={`font-mono ${getInvoicePendingUSD(fac) > 0 ? 'text-amber-700 font-extrabold' : 'text-slate-400'}`}>
-                                  {formatMoney(getInvoicePendingUSD(fac), 'USD')}
-                                </div>
-                                {(fac.moneda_presentacion === 'VES' || fac.moneda === 'VES' || fac.tasa_cambio > 1) && getInvoicePendingUSD(fac) > 0 && (
-                                  <div className="text-[10px] font-semibold text-amber-600/80 font-mono mt-0.5">
-                                    Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(getInvoicePendingBs(fac))}
-                                  </div>
-                                )}
+                              <td className="px-4 py-2.5 text-right">
+                                <BimonetaryValue
+                                  amountUSD={getInvoicePendingUSD(fac)}
+                                  amountBs={getInvoicePendingBs(fac)}
+                                  variant={getInvoicePendingUSD(fac) > 0 ? 'warning' : 'neutral'}
+                                  align="right"
+                                />
                               </td>
                               <td className="px-4 py-2.5 text-center">
                                 <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] border font-bold ${badgeColor}`}>
@@ -1424,25 +1461,20 @@ export default function Invoicing({
                           {fac.condicion || 'Contado'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-right font-black text-slate-900">
-                        <div className="font-mono font-extrabold text-slate-900">
-                          {formatMoney(getInvoiceTotalUSD(fac), 'USD')}
-                        </div>
-                        {(fac.moneda_presentacion === 'VES' || fac.moneda === 'VES' || fac.tasa_cambio > 1) && (
-                          <div className="text-[10px] font-semibold text-slate-400 font-mono mt-0.5">
-                            Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(getInvoiceTotalBs(fac))}
-                          </div>
-                        )}
+                      <td className="px-4 py-3 text-right">
+                        <BimonetaryValue
+                          amountUSD={getInvoiceTotalUSD(fac)}
+                          amountBs={getInvoiceTotalBs(fac)}
+                          align="right"
+                        />
                       </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-600">
-                        <div className={`font-mono ${getInvoicePendingUSD(fac) > 0 ? 'text-amber-700 font-extrabold' : 'text-slate-400'}`}>
-                          {formatMoney(getInvoicePendingUSD(fac), 'USD')}
-                        </div>
-                        {(fac.moneda_presentacion === 'VES' || fac.moneda === 'VES' || fac.tasa_cambio > 1) && getInvoicePendingUSD(fac) > 0 && (
-                          <div className="text-[10px] font-semibold text-amber-600/80 font-mono mt-0.5">
-                            Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(getInvoicePendingBs(fac))}
-                          </div>
-                        )}
+                      <td className="px-4 py-3 text-right">
+                        <BimonetaryValue
+                          amountUSD={getInvoicePendingUSD(fac)}
+                          amountBs={getInvoicePendingBs(fac)}
+                          variant={getInvoicePendingUSD(fac) > 0 ? 'warning' : 'neutral'}
+                          align="right"
+                        />
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] border font-bold ${badgeColor}`}>

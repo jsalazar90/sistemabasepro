@@ -27,6 +27,7 @@ const Purchases = lazy(() => import("./pages/Purchases"));
 const PurchasesMenu = lazy(() => import("./pages/PurchasesMenu"));
 const PurchaseForm = lazy(() => import("./pages/PurchaseForm"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const InventoryMenu = lazy(() => import("./pages/InventoryMenu"));
 const Invoicing = lazy(() => import("./pages/Invoicing"));
 const InvoiceForm = lazy(() => import("./pages/InvoiceForm"));
 const ChartOfAccounts = lazy(() => import("./pages/ChartOfAccounts"));
@@ -118,6 +119,7 @@ import {
   dbSaveAlmacen,
   dbDeleteAlmacen
 } from "./services/db";
+import { supabase, isSupabaseConfigured } from "./lib/supabase";
 
 const initialConfiguracionContable = {
   cuentaCxc: "",
@@ -172,7 +174,8 @@ function AppContent() {
     logout, 
     activeCompanyId, 
     availableCompanies, 
-    setAvailableCompanies 
+    setAvailableCompanies,
+    syncVersion
   } = useCompany();
 
   // Estados locales en memoria alimentados por Supabase para la empresa activa
@@ -275,7 +278,7 @@ function AppContent() {
 
   // Cargar datos operativos de la empresa activa desde Supabase
   useEffect(() => {
-    if (!activeCompanyId) {
+    if (!currentUser || !activeCompanyId) {
       setContactos([]);
       setCuentasContables([]);
       setBancos([]);
@@ -416,7 +419,98 @@ function AppContent() {
     return () => {
       isCurrent = false;
     };
-  }, [activeCompanyId]);
+  }, [activeCompanyId, currentUser?.id, syncVersion]);
+
+  // Sincronización en Tiempo Real (Supabase Realtime) para evitar desincronización entre múltiples usuarios
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || !activeCompanyId || !isUUID(activeCompanyId) || !currentUser) {
+      return;
+    }
+
+    const channelName = `realtime-sync-${activeCompanyId}`;
+    const channel = supabase.channel(channelName);
+
+    // 1. Cambios en Productos (Stock, Costos, Precios)
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'productos',
+        filter: `empresa_id=eq.${activeCompanyId}`
+      },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setProducts((prev) => {
+            if (prev.some((p) => p.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setProducts((prev) =>
+            prev.map((p) => (p.id === payload.new.id ? { ...p, ...payload.new } : p))
+          );
+        } else if (payload.eventType === 'DELETE') {
+          setProducts((prev) => prev.filter((p) => p.id !== (payload.old as any).id));
+        }
+      }
+    );
+
+    // 2. Cambios en Facturas de Venta
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'facturas_venta',
+        filter: `empresa_id=eq.${activeCompanyId}`
+      },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setFacturasVenta((prev) => {
+            if (prev.some((f) => f.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setFacturasVenta((prev) =>
+            prev.map((f) => (f.id === payload.new.id ? { ...f, ...payload.new } : f))
+          );
+        } else if (payload.eventType === 'DELETE') {
+          setFacturasVenta((prev) => prev.filter((f) => f.id !== (payload.old as any).id));
+        }
+      }
+    );
+
+    // 3. Cambios en Cuentas por Cobrar (Saldos y Abonos)
+    channel.on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'cuentas_cobrar_cxc',
+        filter: `empresa_id=eq.${activeCompanyId}`
+      },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setCxc((prev) => {
+            if (prev.some((c) => c.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        } else if (payload.eventType === 'UPDATE') {
+          setCxc((prev) =>
+            prev.map((c) => (c.id === payload.new.id ? { ...c, ...payload.new } : c))
+          );
+        } else if (payload.eventType === 'DELETE') {
+          setCxc((prev) => prev.filter((c) => c.id !== (payload.old as any).id));
+        }
+      }
+    );
+
+    channel.subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [activeCompanyId, currentUser?.id]);
 
   const clientes = contactos.filter((c) => c.type === "customer" || c.type === "both");
   const proveedores = contactos.filter((c) => c.type === "supplier" || c.type === "both");
@@ -505,6 +599,14 @@ function AppContent() {
       });
     };
 
+    // Helper de concurrencia controlada para evitar cascada secuencial O(N)
+    const batchSave = async <T,>(items: T[], fn: (item: T) => Promise<any>, batchSize = 10) => {
+      for (let i = 0; i < items.length; i += batchSize) {
+        const chunk = items.slice(i, i + batchSize);
+        await Promise.all(chunk.map(fn));
+      }
+    };
+
     switch (collectionName) {
       case "contactos":
       case "contacts":
@@ -515,7 +617,7 @@ function AppContent() {
             await dbClearContactos(cid);
           } else {
             mergeArrayCollection(setContactos, data);
-            for (const item of data) await dbSaveContacto(item, cid);
+            await batchSave(data, (item) => dbSaveContacto(item, cid));
           }
         } else {
           const itemWithId = {
@@ -542,7 +644,7 @@ function AppContent() {
             await dbClearBancos(cid);
           } else {
             mergeArrayCollection(setBancos, data);
-            for (const b of data) await dbSaveBanco(b, cid);
+            await batchSave(data, (b) => dbSaveBanco(b, cid));
           }
         } else {
           const itemWithId = {
@@ -562,7 +664,7 @@ function AppContent() {
             await dbClearMovimientosBancos(cid);
           } else {
             mergeArrayCollection(setMovimientosBancos, data);
-            for (const m of data) await dbSaveMovimientoBanco(m, cid);
+            await batchSave(data, (m) => dbSaveMovimientoBanco(m, cid));
           }
         } else {
           const itemWithId = {
@@ -571,7 +673,7 @@ function AppContent() {
           };
           updateCollection(setMovimientosBancos, itemWithId);
           if (data._delete) await dbDeleteMovimientoBanco(data.id);
-          else await dbSaveMovimientoBanco(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveMovimientoBanco(itemWithId, cid);
         }
         break;
       case "cxc":
@@ -582,7 +684,7 @@ function AppContent() {
             await dbClearCxc(cid);
           } else {
             mergeArrayCollection(setCxc, data);
-            for (const item of data) await dbSaveCxc(item, cid);
+            await batchSave(data, (item) => dbSaveCxc(item, cid));
           }
         } else {
           const itemWithId = {
@@ -591,7 +693,7 @@ function AppContent() {
           };
           updateCollection(setCxc, itemWithId);
           if (data._delete) await dbDeleteCxc(data.id);
-          else await dbSaveCxc(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveCxc(itemWithId, cid);
         }
         break;
       case "cxp":
@@ -602,7 +704,7 @@ function AppContent() {
             await dbClearCxp(cid);
           } else {
             mergeArrayCollection(setCxp, data);
-            for (const item of data) await dbSaveCxp(item, cid);
+            await batchSave(data, (item) => dbSaveCxp(item, cid));
           }
         } else {
           const itemWithId = {
@@ -611,14 +713,14 @@ function AppContent() {
           };
           updateCollection(setCxp, itemWithId);
           if (data._delete) await dbDeleteCxp(data.id);
-          else await dbSaveCxp(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveCxp(itemWithId, cid);
         }
         break;
       case "cobranzas":
       case "cobranza":
         if (Array.isArray(data)) {
           mergeArrayCollection(setCobranzas, data);
-          for (const item of data) await dbSaveCobranza(item, cid);
+          await batchSave(data, (item) => dbSaveCobranza(item, cid));
         } else {
           const itemWithId = {
             ...data,
@@ -626,7 +728,7 @@ function AppContent() {
           };
           updateCollection(setCobranzas, itemWithId);
           if (data._delete) await dbDeleteCobranza(data.id);
-          else await dbSaveCobranza(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveCobranza(itemWithId, cid);
         }
         break;
       case "pagos-realizados":
@@ -634,7 +736,7 @@ function AppContent() {
       case "pagos_realizados":
         if (Array.isArray(data)) {
           mergeArrayCollection(setPagosRealizados, data);
-          for (const item of data) await dbSavePagoRealizado(item, cid);
+          await batchSave(data, (item) => dbSavePagoRealizado(item, cid));
         } else {
           const itemWithId = {
             ...data,
@@ -642,7 +744,7 @@ function AppContent() {
           };
           updateCollection(setPagosRealizados, itemWithId);
           if (data._delete) await dbDeletePagoRealizado(data.id);
-          else await dbSavePagoRealizado(itemWithId, cid);
+          else if (!data._localOnly) await dbSavePagoRealizado(itemWithId, cid);
         }
         break;
       case "cuentasContables":
@@ -665,7 +767,7 @@ function AppContent() {
                 (a.codigo || "").localeCompare(b.codigo || ""),
               );
             });
-            for (const c of data) await dbSaveCuentaContable(c, cid);
+            await batchSave(data, (c) => dbSaveCuentaContable(c, cid));
           }
         } else {
           updateCollection(setCuentasContables, data);
@@ -681,7 +783,7 @@ function AppContent() {
             await dbClearComprobantes(cid);
           } else {
             mergeArrayCollection(setComprobantes, data);
-            for (const item of data) await dbSaveComprobante(item, cid);
+            await batchSave(data, (item) => dbSaveComprobante(item, cid));
           }
         } else {
           const itemWithId = {
@@ -700,7 +802,7 @@ function AppContent() {
             await dbClearServicios(cid);
           } else {
             mergeArrayCollection(setServicios, data);
-            for (const s of data) await dbSaveServicio(s, cid);
+            await batchSave(data, (s) => dbSaveServicio(s, cid));
           }
         } else {
           updateCollection(setServicios, data);
@@ -720,19 +822,23 @@ function AppContent() {
             await dbClearProducts(cid);
           } else {
             mergeArrayCollection(setProducts, data);
-            for (const p of data) await dbSaveProduct(p, cid);
+            await batchSave(data, (p) => dbSaveProduct(p, cid));
           }
         } else {
-          updateCollection(setProducts, data);
+          const itemWithId = {
+            ...data,
+            id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
+          };
+          updateCollection(setProducts, itemWithId);
           if (data._delete) await dbDeleteProduct(data.id, cid);
-          else await dbSaveProduct(data, cid);
+          else if (!data._localOnly) await dbSaveProduct(itemWithId, cid);
         }
         break;
       case "categoriasProducto":
       case "categorias_producto":
         if (Array.isArray(data)) {
           setCategoriasProducto(data);
-          for (const c of data) await dbSaveCategoriaProducto(c, cid);
+          await batchSave(data, (c) => dbSaveCategoriaProducto(c, cid));
         } else {
           updateCollection(setCategoriasProducto, data);
           if (data._delete) await dbDeleteCategoriaProducto(data.id, cid);
@@ -742,7 +848,7 @@ function AppContent() {
       case "almacenes":
         if (Array.isArray(data)) {
           setAlmacenes(data);
-          for (const a of data) await dbSaveAlmacen(a, cid);
+          await batchSave(data, (a) => dbSaveAlmacen(a, cid));
         } else {
           updateCollection(setAlmacenes, data);
           if (data._delete) await dbDeleteAlmacen(data.id, cid);
@@ -753,7 +859,7 @@ function AppContent() {
       case "movimientos_inventario":
         if (Array.isArray(data)) {
           setMovimientosInventario(data);
-          for (const m of data) await dbSaveMovimientoInventario(m, cid);
+          await batchSave(data, (m) => dbSaveMovimientoInventario(m, cid));
         } else {
           const itemWithId = {
             ...data,
@@ -767,7 +873,7 @@ function AppContent() {
       case "facturas_venta":
         if (Array.isArray(data)) {
           setFacturasVenta(data);
-          for (const f of data) await dbSaveFacturaVenta(f, cid);
+          await batchSave(data, (f) => dbSaveFacturaVenta(f, cid));
         } else {
           const itemWithId = {
             ...data,
@@ -775,14 +881,14 @@ function AppContent() {
           };
           updateCollection(setFacturasVenta, itemWithId);
           if (data._delete) await dbDeleteFacturaVenta(data.id, cid);
-          else await dbSaveFacturaVenta(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveFacturaVenta(itemWithId, cid);
         }
         break;
       case "facturasCompra":
       case "facturas_compra":
         if (Array.isArray(data)) {
           setFacturasCompra(data);
-          for (const f of data) await dbSaveFacturaCompra(f, cid);
+          await batchSave(data, (f) => dbSaveFacturaCompra(f, cid));
         } else {
           const itemWithId = {
             ...data,
@@ -790,7 +896,7 @@ function AppContent() {
           };
           updateCollection(setFacturasCompra, itemWithId);
           if (data._delete) await dbDeleteFacturaCompra(data.id, cid);
-          else await dbSaveFacturaCompra(itemWithId, cid);
+          else if (!data._localOnly) await dbSaveFacturaCompra(itemWithId, cid);
         }
         break;
       case "lotesPos":
@@ -801,7 +907,7 @@ function AppContent() {
             ...data,
             id: (data.id && isUUID(data.id)) ? data.id : crypto.randomUUID()
           };
-          await dbSaveLotePos(itemWithId, cid);
+          if (!data._localOnly) await dbSaveLotePos(itemWithId, cid);
         }
         break;
       case "terminalesPos":
@@ -937,11 +1043,38 @@ function AppContent() {
       <Layout empresa={empresa} tipoEmpresa={empresa.tipoEmpresa} onLogout={handleLogout}>
         {toast && (
           <div
-            className={`fixed bottom-4 right-4 p-4 rounded-lg shadow-lg z-50 text-white font-medium ${
-              toast.type === "error" ? "bg-red-500" : "bg-emerald-500"
+            className={`fixed bottom-5 right-5 max-w-md flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl z-50 text-white font-medium border backdrop-blur-md transition-all animate-slide-up ${
+              toast.type === "error"
+                ? "bg-slate-900/95 border-rose-500/40 text-rose-50 shadow-rose-950/20"
+                : toast.type === "info"
+                ? "bg-slate-900/95 border-indigo-500/40 text-indigo-50 shadow-indigo-950/20"
+                : "bg-slate-900/95 border-emerald-500/40 text-emerald-50 shadow-emerald-950/20"
             }`}
           >
-            {toast.msg}
+            <div className="shrink-0">
+              {toast.type === "error" ? (
+                <div className="w-6 h-6 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center text-xs font-bold">
+                  !
+                </div>
+              ) : toast.type === "info" ? (
+                <div className="w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs font-bold">
+                  i
+                </div>
+              ) : (
+                <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold">
+                  ✓
+                </div>
+              )}
+            </div>
+            <div className="flex-1 text-xs sm:text-sm font-semibold tracking-tight text-slate-100">
+              {toast.msg}
+            </div>
+            <button
+              onClick={() => setToast(null)}
+              className="text-slate-400 hover:text-white p-1 rounded-md transition cursor-pointer"
+            >
+              ✕
+            </button>
           </div>
         )}
         <Suspense fallback={<PageLoadingFallback />}>
@@ -958,6 +1091,7 @@ function AppContent() {
                 cxc={filteredCxc}
                 comprobantes={filteredComprobantes}
                 movimientosBancos={filteredMovimientosBancos}
+                cobranzas={filteredCobranzas}
                 products={products}
                 contactos={contactos}
                 cuentasContables={cuentasContables}
@@ -988,8 +1122,9 @@ function AppContent() {
           />
 
           {/* Módulo de Inventario de Mercancía */}
+          <Route path="/inventory" element={<InventoryMenu />} />
           <Route
-            path="/inventory"
+            path="/inventory/:submodule"
             element={
               <Inventory
                 products={products}

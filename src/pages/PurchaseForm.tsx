@@ -10,7 +10,7 @@ import {
 import BackButton from '../components/common/BackButton';
 import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import { getTasaForDate } from '../services/exchangeRateService';
-import { isUUID } from '../services/db';
+import { isUUID, dbActualizarStockLoteAtomico } from '../services/db';
 import { 
   FacturaCompraModel, FacturaCompraItemModel, ProductModel, 
   AlmacenModel, ContactoModel 
@@ -781,7 +781,8 @@ export default function PurchaseForm({
       const ctaRetIva = configContable?.cuentaIvaRetenidoCompras || '2.1.03.001';
       const ctaRetIslr = configContable?.cuentaIslrRetenidoCompras || '2.1.04.001';
       const ctaCxp = configContable?.cuentaCxp || '2.1.01.001';
-      const ctaBanco = bancos.find(b => b.id === effectiveBankId)?.cuenta_contable_id || '1.1.01.001';
+      const selectedBankObj = bancos.find(b => b.id === effectiveBankId) || (paymentMethod === 'efectivo' ? bancos.find(b => b.es_caja || (b.tipo || '').toLowerCase().includes('caja')) : null) || (bancos && bancos.length > 0 ? bancos[0] : null);
+      const ctaBanco = selectedBankObj?.cuenta_contable_id || (paymentMethod === 'efectivo' ? (configContable?.cuentaCaja || '1.1.01.001') : (configContable?.cuentaBancos || '1.1.01.004'));
 
       const voucherDescripcion = `Contabilización Compra Mercancía Fact. ${invoiceNumber.trim().toUpperCase()} - ${supplierName.trim()}`;
 
@@ -928,7 +929,8 @@ export default function PurchaseForm({
 
       await onSave?.('facturasCompra', newPurchase);
 
-      // 3. Aumentar Stock en Inventario, recalcular Costo Promedio y Registrar Kardex
+      // 3. Aumentar Stock en Inventario y Recalcular Costo Promedio de Forma Atómica (Bloqueo FOR UPDATE)
+      const batchStockItems: any[] = [];
       for (const item of itemsToSave) {
         let prod = products.find(p => p.id === item.producto_id);
         if (!prod && item.codigo) {
@@ -938,46 +940,40 @@ export default function PurchaseForm({
         const cantComprada = Number(item.cantidad) || 0;
         const costoCompraUSD = Number(item.costo_unitario) || 0;
 
-        if (prod) {
-          const currentStock = Number(prod.stock_actual) || 0;
-          const currentCost = Number(prod.costo_unitario) || 0;
-          const newStock = currentStock + cantComprada;
-
-          // Cálculo de costo promedio ponderado
-          let newAverageCost = currentCost;
-          if (newStock > 0) {
-            const totalCostoInventario = (Math.max(0, currentStock) * currentCost) + (cantComprada * costoCompraUSD);
-            newAverageCost = totalCostoInventario / (Math.max(0, currentStock) + cantComprada);
-          }
-
-          const updatedProd: ProductModel = {
-            ...prod,
-            stock_actual: newStock,
-            costo_unitario: item.actualizar_costo ? costoCompraUSD : prod.costo_unitario,
-            costo_promedio: Number(newAverageCost.toFixed(4)),
-            updated_at: new Date().toISOString()
-          };
-
-          await onSave?.('products', updatedProd);
-
-          // Registrar Movimiento de Kardex (tipo: entrada)
-          await onSave?.('movimientosInventario', {
-            id: crypto.randomUUID(),
-            empresa_id: currentCompanyId,
+        if (prod && cantComprada > 0) {
+          batchStockItems.push({
             producto_id: prod.id,
-            producto_nombre: prod.nombre,
-            producto_codigo: prod.codigo,
-            tipo: 'entrada',
-            almacen_destino_id: effectiveAlmacenId,
             cantidad: cantComprada,
-            stock_anterior: currentStock,
-            stock_resultante: newStock,
             costo_unitario: costoCompraUSD,
-            referencia: `Compra Fact. ${newPurchase.numero} - ${newPurchase.proveedor_nombre}`,
-            fecha: issueDate,
-            usuario: 'Administrador (Compras)',
-            created_at: new Date().toISOString()
+            actualizar_costo: Boolean(item.actualizar_costo),
+            almacen_destino_id: effectiveAlmacenId
           });
+        }
+      }
+
+      if (batchStockItems.length > 0 && currentCompanyId) {
+        await dbActualizarStockLoteAtomico(
+          currentCompanyId,
+          batchStockItems,
+          'compra',
+          {
+            referencia: `Compra Fact. ${newPurchase.numero} - ${newPurchase.proveedor_nombre}`,
+            usuario: 'Administrador (Compras)'
+          }
+        );
+
+        // Actualizar visualmente la caché React sin enviar un upsert riesgoso a Supabase
+        for (const bItem of batchStockItems) {
+          const originalProd = products.find(p => p.id === bItem.producto_id);
+          if (originalProd) {
+            const currentStock = Number(originalProd.stock_actual) || 0;
+            const newStock = currentStock + bItem.cantidad;
+            onSave?.('products', {
+              ...originalProd,
+              stock_actual: newStock,
+              _localOnly: true
+            });
+          }
         }
       }
 
@@ -1026,7 +1022,7 @@ export default function PurchaseForm({
         const actualBankId = bancoSeleccionado?.id || effectiveBank;
         if (actualBankId) {
           const egresoId = crypto.randomUUID();
-          onSave?.('movimientosBancos', {
+          await onSave?.('movimientosBancos', {
             id: egresoId,
             empresa_id: currentCompanyId,
             banco_id: actualBankId,
@@ -1042,7 +1038,7 @@ export default function PurchaseForm({
             created_at: new Date().toISOString()
           });
 
-          onSave?.('pagos-realizados', {
+          await onSave?.('pagos-realizados', {
             id: crypto.randomUUID(),
             empresa_id: currentCompanyId,
             empresaId: currentCompanyId,

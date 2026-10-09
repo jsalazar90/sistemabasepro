@@ -12,7 +12,7 @@ import {
 import CuentaContableModal from '../components/common/CuentaContableModal';
 import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import { PrintPreview } from '../components/PrintPreview';
-import { dbResetAllTestData, dbFetchTerminalesPos, isUUID } from '../services/db';
+import { dbResetAllTestData, dbFetchTerminalesPos, dbRegistrarAbonoCxpAtomico, isUUID } from '../services/db';
 import { TerminalPosModel } from '../types/database';
 import { useCompany } from '../context/CompanyContext';
 import MasterAuthModal from '../components/common/MasterAuthModal';
@@ -1005,24 +1005,34 @@ export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pago
 
           // Guardar primero el comprobante para que su ID exista en Supabase y no falle la FK en movimientos_bancos
           if (effectiveComp) {
-            onSave('comprobantes', effectiveComp);
+            await onSave('comprobantes', effectiveComp);
           }
 
           // Guardar cada movimiento bancario generado
           for (const mov of draftMovs) {
-            onSave('movimientosBancos', { ...mov, comprobante_id: effectiveCompId });
+            await onSave('movimientosBancos', { ...mov, comprobante_id: effectiveCompId });
           }
 
-          // Actualizar saldos de las facturas en cxp
-          Object.entries(abonos).forEach(([docId, montoAbonado]) => {
+          // Actualizar saldos de las facturas en cxp de forma atómica
+          for (const [docId, montoAbonado] of Object.entries(abonos)) {
             const montoNum = Number(montoAbonado);
             if (montoNum > 0) {
               const doc = cxp.find(d => d.id === docId);
               if (doc) {
                 const currentSaldo = Number(doc.saldo !== undefined ? doc.saldo : doc.total) || 0;
-                const newSaldo = Math.max(0, currentSaldo - montoNum);
-                const newEstado = newSaldo <= 0.01 ? 'pagada' : (doc.estado || 'activo');
-                onSave('cxp', { ...doc, saldo: newSaldo, estado: newEstado });
+                const abonoRes = await dbRegistrarAbonoCxpAtomico(
+                  activeCompanyId || '',
+                  doc.id,
+                  montoNum,
+                  pagoForm.fecha,
+                  mainRef || `PAG-${Date.now().toString().slice(-6)}`
+                );
+
+                const newSaldo = abonoRes.success && abonoRes.nuevo_saldo !== undefined
+                  ? abonoRes.nuevo_saldo
+                  : Math.max(0, currentSaldo - montoNum);
+                const newEstado = newSaldo <= 0.009 ? 'pagada' : 'parcial';
+                await onSave('cxp', { ...doc, saldo: newSaldo, saldo_pendiente: newSaldo, estado: newEstado, _localOnly: true });
 
                 // Sincronizar factura de compra si existe
                 if (facturasCompra && Array.isArray(facturasCompra)) {
@@ -1040,19 +1050,19 @@ export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pago
                     const targetFacEstado = newSaldo <= 0.009 ? 'pagada' : 'parcial';
                     const targetSaldoUSD = Math.max(0, newSaldo);
                     const targetSaldoBs = targetSaldoUSD * (matchedFac.tasa_cambio || 1);
-                    onSave('facturasCompra', {
+                    await onSave('facturasCompra', {
                       ...matchedFac,
                       estado: targetFacEstado,
                       saldo_pendiente: targetSaldoUSD,
                       saldo_pendiente_bs: targetSaldoBs,
                       cxp_id: doc.id,
-                      updated_at: new Date().toISOString()
+                      _localOnly: true
                     });
                   }
                 }
               }
             }
-          });
+          }
 
           // Actualizar saldos de los anticipos en cxp usando FIFO
           let remainingAnticipoToApply = totalAnticiposAplicados;
@@ -1063,7 +1073,7 @@ export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pago
             if (saldoAbs > 0) {
               const amountToApplyToThisDoc = Math.min(saldoAbs, remainingAnticipoToApply);
               
-              onSave('cxp', { 
+              await onSave('cxp', { 
                 ...anticipoDoc, 
                 saldo: anticipoDoc.saldo + amountToApplyToThisDoc
               });
@@ -1093,7 +1103,7 @@ export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pago
             bancoId: pagoForm.pagos[0]?.bancoId || '',
             tasa: pagoForm.tasa || 1,
           };
-          onSave('pagos-realizados', newPagoRealizado);
+          await onSave('pagos-realizados', newPagoRealizado);
         }
 
         showToast?.('Pago procesado exitosamente', 'success');
@@ -1124,7 +1134,7 @@ export default function Payables({ cxc = [], cxp = [], facturasCompra = [], pago
           }
         });
       } else {
-        executeSave(null);
+        await executeSave(null);
       }
     } catch (error) {
       console.error(error);

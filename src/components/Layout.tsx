@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import {
   Bell,
   User,
-  Search,
   Home,
   Contact,
   FileText,

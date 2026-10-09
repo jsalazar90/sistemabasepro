@@ -15,8 +15,9 @@ export async function dbFetchBancos(empresaId?: string): Promise<any[]> {
       const { data, error } = await supabase.from('bancos').select('*').eq('empresa_id', empresaId).order('banco', { ascending: true });
       if (!error && data) {
         const localList = await getLocal<any[]>(`erp_local_bancos_${cid}`, []);
-        return (data || []).map((row: any) => {
+        const mapped = (data || []).map((row: any) => {
           const localItem = localList.find((l: any) => l.id === row.id);
+          const isCaja = !!(row.es_caja || (row.tipo || '').toLowerCase().includes('caja'));
           return {
             id: row.id,
             banco: row.banco,
@@ -24,14 +25,18 @@ export async function dbFetchBancos(empresaId?: string): Promise<any[]> {
             cuenta: row.numero_cuenta,
             numero_cuenta: row.numero_cuenta,
             tipo: row.tipo || 'Corriente',
+            tipo_cuenta: row.tipo_cuenta || 'nacional',
             moneda: row.moneda || 'Bolivares',
             saldo: Number(row.saldo) || 0,
             tasa: Number(row.tasa) || 1.0,
+            es_caja: isCaja,
             cuentaContableId: row.cuenta_contable_id || localItem?.cuentaContableId || '1.1.3',
             cuenta_contable_id: row.cuenta_contable_id || localItem?.cuenta_contable_id || '1.1.3',
             activo: row.activo ?? true
           };
         });
+        await setLocal(`erp_local_bancos_${cid}`, mapped);
+        return mapped;
       }
     } catch (e) {
       console.warn('Error dbFetchBancos desde Supabase:', e);
@@ -49,6 +54,7 @@ export async function dbSaveBanco(banco: any, empresaId: string): Promise<boolea
   const cid = empresaId || 'default';
   const list = await getLocal<any[]>(`erp_local_bancos_${cid}`, DEFAULT_BANCOS);
   const bancoId = (banco.id && isUUID(banco.id)) ? banco.id : crypto.randomUUID();
+  const isCaja = !!(banco.es_caja || (banco.tipo || '').toLowerCase().includes('caja'));
   const formatted = {
     id: bancoId,
     banco: banco.banco,
@@ -56,9 +62,11 @@ export async function dbSaveBanco(banco: any, empresaId: string): Promise<boolea
     cuenta: banco.cuenta || banco.numeroCuenta || banco.numero_cuenta || '0000-0000-0000-0000',
     numero_cuenta: banco.cuenta || banco.numeroCuenta || banco.numero_cuenta || '0000-0000-0000-0000',
     tipo: banco.tipo || 'Corriente',
+    tipo_cuenta: banco.tipo_cuenta || 'nacional',
     moneda: banco.moneda || 'USD',
     saldo: Number(banco.saldo) || 0,
     tasa: Number(banco.tasa) || 1.0,
+    es_caja: isCaja,
     cuentaContableId: banco.cuenta_contable_id || banco.cuentaContableId || '1.1.3',
     cuenta_contable_id: banco.cuenta_contable_id || banco.cuentaContableId || '1.1.3',
     activo: banco.activo ?? true
@@ -78,6 +86,8 @@ export async function dbSaveBanco(banco: any, empresaId: string): Promise<boolea
         moneda: formatted.moneda,
         saldo: formatted.saldo,
         tasa: formatted.tasa,
+        es_caja: formatted.es_caja,
+        tipo_cuenta: formatted.tipo_cuenta,
         cuenta_contable_id: isUUID(formatted.cuentaContableId) ? formatted.cuentaContableId : null,
         activo: formatted.activo
       };
@@ -112,7 +122,7 @@ export async function dbFetchMovimientosBancos(empresaId?: string): Promise<any[
     try {
       const { data, error } = await supabase.from('movimientos_bancos').select('*').eq('empresa_id', empresaId).order('fecha', { ascending: true });
       if (!error && data) {
-        return (data || []).map((row: any) => ({
+        const mapped = (data || []).map((row: any) => ({
           id: row.id,
           bancoId: row.banco_id,
           banco_id: row.banco_id,
@@ -121,6 +131,7 @@ export async function dbFetchMovimientosBancos(empresaId?: string): Promise<any[
           descripcion: row.descripcion,
           tipo: row.tipo,
           monto: Number(row.monto) || 0,
+          montoBs: row.monto_bs !== undefined && row.monto_bs !== null ? Number(row.monto_bs) : undefined,
           tasa: Number(row.tasa) || 1.0,
           comprobanteId: row.comprobante_id || '',
           comprobante_id: row.comprobante_id || '',
@@ -129,6 +140,8 @@ export async function dbFetchMovimientosBancos(empresaId?: string): Promise<any[
           created_at: row.created_at,
           createdAt: row.created_at
         }));
+        await setLocal(`erp_local_movimientos_bancos_${cid}`, mapped);
+        return mapped;
       }
     } catch {}
   }

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { 
   Package, Search, Plus, ArrowUpRight, ArrowDownRight, 
   AlertTriangle, CheckCircle2, Edit2, Trash2, RotateCcw, 
@@ -8,7 +9,8 @@ import {
   Check, X, ShieldCheck, Warehouse, ChevronRight, Hash,
   Sparkles, FileText, Share2, CornerDownRight, Lock, Key,
   ClipboardCheck, ShieldAlert, LayoutGrid, List, CheckCircle,
-  Building2, MoreVertical
+  Building2, MoreVertical, Boxes, Percent, SlidersHorizontal,
+  ExternalLink, FileSpreadsheet
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
 import CuentaSelectorTrigger from '../components/common/CuentaSelectorTrigger';
@@ -17,7 +19,7 @@ import { ProductModel, MovimientoInventarioModel, AlmacenModel, CategoriaProduct
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
 import { getTodayLocalDate } from '../utils/dateUtils';
 import { useCompany } from '../context/CompanyContext';
-import { dbFetchAlmacenes, dbSaveAlmacen, dbDeleteAlmacen, isUUID } from '../services/db';
+import { dbFetchAlmacenes, dbSaveAlmacen, dbDeleteAlmacen, dbActualizarStockAtomico, dbActualizarStockLoteAtomico, isUUID } from '../services/db';
 
 const DEFAULT_ALMACENES: AlmacenModel[] = [
   { id: '00000000-0000-4000-8000-000000000001', empresa_id: '', codigo: 'DEP-01', nombre: 'Almacén Principal (Central)', ubicacion: 'Galpón Central A', responsable: 'Administración', es_principal: true, activo: true }
@@ -66,7 +68,32 @@ export default function Inventory({
   showToast?: (msg: string, type: 'success' | 'error' | 'info') => void;
 }) {
   const { activeCompanyId } = useCompany();
-  const [activeTab, setActiveTab] = useState<'catalogo' | 'categorias' | 'auditoria' | 'kardex' | 'almacenes' | 'precios'>('catalogo');
+  const { submodule } = useParams<{ submodule?: string }>();
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<'catalogo' | 'categorias' | 'auditoria' | 'kardex' | 'almacenes' | 'precios'>(() => {
+    if (submodule === 'auditoria') return 'auditoria';
+    if (submodule === 'kardex') return 'kardex';
+    if (submodule === 'precios') return 'precios';
+    if (submodule === 'categorias') return 'categorias';
+    if (submodule === 'almacenes' || submodule === 'depositos') return 'almacenes';
+    return 'catalogo';
+  });
+
+  useEffect(() => {
+    if (submodule) {
+      if (submodule === 'auditoria') setActiveTab('auditoria');
+      else if (submodule === 'kardex') setActiveTab('kardex');
+      else if (submodule === 'precios') setActiveTab('precios');
+      else if (submodule === 'categorias') setActiveTab('categorias');
+      else if (submodule === 'almacenes' || submodule === 'depositos') setActiveTab('almacenes');
+      else if (submodule === 'catalogo') {
+        if (!['catalogo', 'categorias', 'almacenes'].includes(activeTab)) {
+          setActiveTab('catalogo');
+        }
+      }
+    }
+  }, [submodule]);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [displayCurrency, setDisplayCurrency] = useState<'USD' | 'VES'>('USD');
   const [exchangeRate, setExchangeRate] = useState<number>(() => {
@@ -118,6 +145,7 @@ export default function Inventory({
   }, [propAlmacenes, activeCompanyId]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Todos');
+  const [selectedWarehouseFilter, setSelectedWarehouseFilter] = useState('Todos');
   const [stockStatusFilter, setStockStatusFilter] = useState<'todos' | 'en_stock' | 'bajo_stock' | 'agotados'>('todos');
 
   // Modales
@@ -291,6 +319,7 @@ export default function Inventory({
         p.marca?.toLowerCase().includes(q);
 
       const matchCat = selectedCategory === 'Todos' || p.categoria === selectedCategory;
+      const matchWarehouse = selectedWarehouseFilter === 'Todos' || p.almacen_id === selectedWarehouseFilter;
 
       const stock = Number(p.stock_actual) || 0;
       const reorder = Number(p.punto_reorden) || 10;
@@ -300,9 +329,9 @@ export default function Inventory({
       else if (stockStatusFilter === 'bajo_stock') matchStatus = stock > 0 && stock <= reorder;
       else if (stockStatusFilter === 'en_stock') matchStatus = stock > reorder;
 
-      return matchSearch && matchCat && matchStatus;
+      return matchSearch && matchCat && matchWarehouse && matchStatus;
     });
-  }, [products, searchTerm, selectedCategory, stockStatusFilter]);
+  }, [products, searchTerm, selectedCategory, selectedWarehouseFilter, stockStatusFilter]);
 
   // Artículos Filtrados en Auditoría
   const filteredAuditProducts = useMemo(() => {
@@ -372,30 +401,47 @@ export default function Inventory({
     };
   }, [products, auditCounts]);
 
-  // Estadísticas del Inventario
+  // Estadísticas del Inventario de Alto Impacto
   const stats = useMemo(() => {
     let totalUnits = 0;
     let totalCostValuationUSD = 0;
+    let totalRetailValuationUSD = 0;
     let outOfStockCount = 0;
     let lowStockCount = 0;
 
     products.forEach(p => {
       const stock = Number(p.stock_actual) || 0;
       const cost = Number(p.costo_unitario) || 0;
+      const pvp = Number(p.precio_venta) || 0;
       const reorder = Number(p.punto_reorden) || 10;
 
       totalUnits += stock;
       totalCostValuationUSD += (stock * cost);
+      totalRetailValuationUSD += (stock * pvp);
 
       if (stock <= 0) outOfStockCount++;
       else if (stock <= reorder) lowStockCount++;
     });
 
+    const inStockCount = Math.max(0, products.length - outOfStockCount - lowStockCount);
+    const totalMarginUSD = Math.max(0, totalRetailValuationUSD - totalCostValuationUSD);
+    const avgMarginPercent = totalRetailValuationUSD > 0 
+      ? (totalMarginUSD / totalRetailValuationUSD) * 100 
+      : 0;
+    const availabilityRate = products.length > 0
+      ? Math.round((inStockCount / products.length) * 100)
+      : 100;
+
     return {
       totalUnits,
       totalCostValuationUSD,
+      totalRetailValuationUSD,
+      totalMarginUSD,
+      avgMarginPercent,
+      availabilityRate,
       outOfStockCount,
-      lowStockCount
+      lowStockCount,
+      inStockCount
     };
   }, [products]);
 
@@ -432,7 +478,7 @@ export default function Inventory({
     setIsAuditSecurityModalOpen(true);
   };
 
-  const handleConfirmAuditAdjust = (e: React.FormEvent) => {
+  const handleConfirmAuditAdjust = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!auditTargetItem) return;
 
@@ -448,12 +494,29 @@ export default function Inventory({
 
     const { product, systemStock, physicalCount, diff } = auditTargetItem;
 
+    if (activeCompanyId) {
+      try {
+        await dbActualizarStockAtomico(
+          activeCompanyId,
+          product.id,
+          Math.abs(diff),
+          diff > 0 ? 'ajuste_positivo' : 'ajuste_negativo',
+          {
+            referencia: auditMotivo.trim() || 'Ajuste de Auditoría Física',
+            usuario: 'Supervisor Autorizado'
+          }
+        );
+      } catch (err) {
+        console.warn('Error en ajuste atómico de inventario:', err);
+      }
+    }
+
     const updatedProd: ProductModel = {
       ...product,
       stock_actual: physicalCount,
       updated_at: new Date().toISOString()
     };
-    onSave?.('products', updatedProd);
+    await onSave?.('products', updatedProd);
 
     const movement: MovimientoInventarioModel = {
       id: crypto.randomUUID(),
@@ -471,28 +534,33 @@ export default function Inventory({
       usuario: 'Supervisor Autorizado',
       created_at: new Date().toISOString()
     };
-    onSave?.('movimientosInventario', movement);
+    await onSave?.('movimientosInventario', movement);
 
     const diffCost = Math.abs(diff) * (product.costo_unitario || 0);
     if (diffCost > 0) {
+      const cuentaInv = product.cuenta_inventario_id || '1.1.04.001';
+      const ctaContrapartida = diff > 0 ? '4.2.01.001' : '6.1.05.001';
+      const voucherLineas = diff > 0 ? [
+        { id: crypto.randomUUID(), cuentaId: cuentaInv, cuenta_id: cuentaInv, descripcion: `Ajuste Auditoría: ${product.nombre} (Sobrante)`, debe: Number(diffCost.toFixed(2)), haber: 0 },
+        { id: crypto.randomUUID(), cuentaId: ctaContrapartida, cuenta_id: ctaContrapartida, descripcion: `Ganancia por Ajuste Físico: ${product.nombre}`, debe: 0, haber: Number(diffCost.toFixed(2)) }
+      ] : [
+        { id: crypto.randomUUID(), cuentaId: ctaContrapartida, cuenta_id: ctaContrapartida, descripcion: `Pérdida por Ajuste Físico: ${product.nombre}`, debe: Number(diffCost.toFixed(2)), haber: 0 },
+        { id: crypto.randomUUID(), cuentaId: cuentaInv, cuenta_id: cuentaInv, descripcion: `Ajuste Auditoría: ${product.nombre} (Faltante)`, debe: 0, haber: Number(diffCost.toFixed(2)) }
+      ];
+
       const voucher = {
         id: crypto.randomUUID(),
         empresa_id: activeCompanyId,
         numero: `AUD-${Date.now().toString().slice(-6)}`,
         fecha: getTodayLocalDate(),
+        tipo: 'Diario',
         descripcion: `Ajuste de Auditoría: ${product.nombre} (${diff > 0 ? 'Sobrante' : 'Faltante'})`,
-        estado: 'procesado',
-        detalles: [] as any[]
+        total: Number(diffCost.toFixed(2)),
+        estado: 'Contabilizado',
+        lineas: voucherLineas,
+        detalles: voucherLineas
       };
-      const cuentaInv = product.cuenta_inventario_id || '1.1.04.001';
-      if (diff > 0) {
-        voucher.detalles.push({ cuenta_id: cuentaInv, descripcion: voucher.descripcion, debe: diffCost, haber: 0 });
-        voucher.detalles.push({ cuenta_id: '4.2.01.001', descripcion: voucher.descripcion, debe: 0, haber: diffCost });
-      } else {
-        voucher.detalles.push({ cuenta_id: '6.1.05.001', descripcion: voucher.descripcion, debe: diffCost, haber: 0 });
-        voucher.detalles.push({ cuenta_id: cuentaInv, descripcion: voucher.descripcion, debe: 0, haber: diffCost });
-      }
-      onSave?.('comprobantes', voucher);
+      await onSave?.('comprobantes', voucher);
     }
 
     showToast?.(`Stock actualizado a ${physicalCount} ${product.unidad_medida}`, 'success');
@@ -507,7 +575,7 @@ export default function Inventory({
     setIsBatchAuditModalOpen(true);
   };
 
-  const handleConfirmBatchAudit = (e: React.FormEvent) => {
+  const handleConfirmBatchAudit = async (e: React.FormEvent) => {
     e.preventDefault();
     const pin = supervisorPin.trim();
     if (!VALID_PINS.includes(pin)) {
@@ -529,30 +597,49 @@ export default function Inventory({
       return;
     }
 
-    const batchVoucher = {
-      id: crypto.randomUUID(),
-      empresa_id: activeCompanyId,
-      numero: `ABATCH-${Date.now().toString().slice(-6)}`,
-      fecha: getTodayLocalDate(),
-      descripcion: `Ajuste Masivo de Auditoría`,
-      estado: 'procesado',
-      detalles: [] as any[]
-    };
+    const batchStockItems = itemsToAdjust.map(p => {
+      const physical = parseFloat(auditCounts[p.id]);
+      const system = Number(p.stock_actual) || 0;
+      const diff = physical - system;
+      return {
+        producto_id: p.id,
+        cantidad: Math.abs(diff),
+        costo_unitario: p.costo_unitario || 0
+      };
+    });
 
-    itemsToAdjust.forEach((p) => {
+    if (activeCompanyId && batchStockItems.length > 0) {
+      try {
+        await dbActualizarStockLoteAtomico(
+          activeCompanyId,
+          batchStockItems,
+          'ajuste',
+          {
+            referencia: 'Ajuste Masivo de Auditoría Física',
+            usuario: 'Supervisor Autorizado (Masivo)'
+          }
+        );
+      } catch (err) {
+        console.warn('Error en ajuste masivo atómico:', err);
+      }
+    }
+
+    const batchLines: any[] = [];
+
+    for (const p of itemsToAdjust) {
       const physical = parseFloat(auditCounts[p.id]);
       const system = Number(p.stock_actual) || 0;
       const diff = physical - system;
 
       // 1. Actualizar stock del producto
-      onSave?.('products', {
+      await onSave?.('products', {
         ...p,
         stock_actual: physical,
         updated_at: new Date().toISOString()
       });
 
       // 2. Registrar movimiento de auditoría
-      onSave?.('movimientosInventario', {
+      await onSave?.('movimientosInventario', {
         id: crypto.randomUUID(),
         empresa_id: activeCompanyId || p.empresa_id || '',
         producto_id: p.id,
@@ -574,17 +661,29 @@ export default function Inventory({
       if (diffCost > 0) {
         const cuentaInv = p.cuenta_inventario_id || '1.1.04.001';
         if (diff > 0) {
-          batchVoucher.detalles.push({ cuenta_id: cuentaInv, descripcion: batchVoucher.descripcion, debe: diffCost, haber: 0 });
-          batchVoucher.detalles.push({ cuenta_id: '4.2.01.001', descripcion: batchVoucher.descripcion, debe: 0, haber: diffCost });
+          batchLines.push({ id: crypto.randomUUID(), cuentaId: cuentaInv, cuenta_id: cuentaInv, descripcion: `Sobrante Inventario: ${p.nombre}`, debe: Number(diffCost.toFixed(2)), haber: 0 });
+          batchLines.push({ id: crypto.randomUUID(), cuentaId: '4.2.01.001', cuenta_id: '4.2.01.001', descripcion: `Ganancia Ajuste: ${p.nombre}`, debe: 0, haber: Number(diffCost.toFixed(2)) });
         } else {
-          batchVoucher.detalles.push({ cuenta_id: '6.1.05.001', descripcion: batchVoucher.descripcion, debe: diffCost, haber: 0 });
-          batchVoucher.detalles.push({ cuenta_id: cuentaInv, descripcion: batchVoucher.descripcion, debe: 0, haber: diffCost });
+          batchLines.push({ id: crypto.randomUUID(), cuentaId: '6.1.05.001', cuenta_id: '6.1.05.001', descripcion: `Faltante Inventario: ${p.nombre}`, debe: Number(diffCost.toFixed(2)), haber: 0 });
+          batchLines.push({ id: crypto.randomUUID(), cuentaId: cuentaInv, cuenta_id: cuentaInv, descripcion: `Baja Inventario: ${p.nombre}`, debe: 0, haber: Number(diffCost.toFixed(2)) });
         }
       }
-    });
+    }
 
-    if (batchVoucher.detalles.length > 0) {
-      onSave?.('comprobantes', batchVoucher);
+    if (batchLines.length > 0) {
+      const totalBatch = batchLines.reduce((acc, l) => acc + (Number(l.debe) || 0), 0);
+      await onSave?.('comprobantes', {
+        id: crypto.randomUUID(),
+        empresa_id: activeCompanyId,
+        numero: `ABATCH-${Date.now().toString().slice(-6)}`,
+        fecha: getTodayLocalDate(),
+        tipo: 'Diario',
+        descripcion: `Ajuste Masivo de Auditoría (${itemsToAdjust.length} artículos)`,
+        total: Number(totalBatch.toFixed(2)),
+        estado: 'Contabilizado',
+        lineas: batchLines,
+        detalles: batchLines
+      });
     }
 
     showToast?.(`Se ajustaron exitosamente ${itemsToAdjust.length} artículos`, 'success');
@@ -785,6 +884,59 @@ export default function Inventory({
     });
     setProductModalTab('general');
     setIsProductModalOpen(true);
+  };
+
+  // Navegar directamente al Kardex de un artículo específico
+  const handleViewProductKardex = (productId: string) => {
+    setSelectedKardexProductId(productId);
+    setActiveTab('kardex');
+    navigate('/inventory/kardex');
+  };
+
+  // Abrir modal de transferencia rápida para un artículo
+  const handleOpenTransferForProduct = (prod: ProductModel) => {
+    setTransferProduct(prod);
+    setTransferForm({
+      producto_id: prod.id,
+      almacen_origen_id: prod.almacen_id || almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
+      almacen_destino_id: almacenes.find(a => a.id !== prod.almacen_id)?.id || almacenes[0]?.id || DEFAULT_ALMACENES[0].id,
+      cantidad: '',
+      referencia: `Transferencia rápida ${prod.codigo}`
+    });
+    setIsTransferModalOpen(true);
+  };
+
+  // Exportar Catálogo de Productos a CSV
+  const handleExportProductsCSV = () => {
+    if (filteredProducts.length === 0) {
+      showToast?.('No hay artículos para exportar con los filtros actuales', 'info');
+      return;
+    }
+    const headers = ['Código SKU', 'Código Barra', 'Nombre', 'Categoría', 'Marca', 'Ubicación', 'Unidad', 'Costo USD', 'PVP USD', 'PVP Bs (BCV)', 'Stock Actual', 'Mínimo', 'Punto Reorden', 'Estado'];
+    const rows = filteredProducts.map(p => [
+      p.codigo,
+      p.codigo_barra || '',
+      `"${(p.nombre || '').replace(/"/g, '""')}"`,
+      `"${(p.categoria || '').replace(/"/g, '""')}"`,
+      `"${(p.marca || '').replace(/"/g, '""')}"`,
+      `"${(p.ubicacion || '').replace(/"/g, '""')}"`,
+      p.unidad_medida,
+      (Number(p.costo_unitario) || 0).toFixed(2),
+      (Number(p.precio_venta) || 0).toFixed(2),
+      ((Number(p.precio_venta) || 0) * exchangeRate).toFixed(2),
+      Number(p.stock_actual) || 0,
+      Number(p.stock_minimo) || 0,
+      Number(p.punto_reorden) || 10,
+      p.activo !== false ? 'Activo' : 'Inactivo'
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const link = document.createElement('a');
+    link.setAttribute('href', encodeURI(csvContent));
+    link.setAttribute('download', `inventario_${getTodayLocalDate()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast?.('Catálogo de inventario exportado exitosamente', 'success');
   };
 
   // Handlers de Categorías
@@ -994,7 +1146,7 @@ export default function Inventory({
     }
   };
 
-  const handleSaveTransfer = (e: React.FormEvent) => {
+  const handleSaveTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
     const qty = parseFloat(transferForm.cantidad);
     if (!transferForm.producto_id || isNaN(qty) || qty <= 0) {
@@ -1002,14 +1154,48 @@ export default function Inventory({
       return;
     }
     if (transferForm.almacen_origen_id === transferForm.almacen_destino_id) {
-      showToast?.('El almacén de destino debe ser diferente', 'error');
+      showToast?.('El almacén de destino debe ser diferente al de origen', 'error');
       return;
     }
     const prod = products.find(p => p.id === transferForm.producto_id);
     if (!prod) return;
 
+    const availableStock = Number(prod.stock_actual) || 0;
+    if (qty > availableStock) {
+      showToast?.(`La cantidad a transferir (${qty}) supera el stock disponible (${availableStock})`, 'error');
+      return;
+    }
+
     const almOrigen = almacenes.find(a => a.id === transferForm.almacen_origen_id);
     const almDestino = almacenes.find(a => a.id === transferForm.almacen_destino_id);
+
+    if (activeCompanyId) {
+      try {
+        await dbActualizarStockAtomico(
+          activeCompanyId,
+          prod.id,
+          qty,
+          'transferencia',
+          {
+            almacenOrigenId: transferForm.almacen_origen_id,
+            almacenDestinoId: transferForm.almacen_destino_id,
+            referencia: transferForm.referencia.trim() || `Transferencia de ${almOrigen?.codigo || 'DEP'} a ${almDestino?.codigo || 'DEP'}`,
+            usuario: 'Administrador'
+          }
+        );
+      } catch (err) {
+        console.warn('Error en transferencia atómica de stock:', err);
+      }
+    }
+
+    // Actualizar depósito asignado del producto si correspondía a dicho depósito
+    const updatedProd: ProductModel = {
+      ...prod,
+      almacen_id: transferForm.almacen_destino_id,
+      almacen_nombre: almDestino?.nombre,
+      updated_at: new Date().toISOString()
+    };
+    onSave?.('products', updatedProd);
 
     onSave?.('movimientosInventario', {
       id: crypto.randomUUID(),
@@ -1021,10 +1207,10 @@ export default function Inventory({
       almacen_origen_id: transferForm.almacen_origen_id,
       almacen_destino_id: transferForm.almacen_destino_id,
       cantidad: qty,
-      stock_anterior: Number(prod.stock_actual) || 0,
-      stock_resultante: Number(prod.stock_actual) || 0,
+      stock_anterior: availableStock,
+      stock_resultante: availableStock,
       costo_unitario: prod.costo_unitario,
-      referencia: transferForm.referencia.trim() || `Transferencia de ${almOrigen?.codigo} a ${almDestino?.codigo}`,
+      referencia: transferForm.referencia.trim() || `Transferencia de ${almOrigen?.codigo || 'DEP'} a ${almDestino?.codigo || 'DEP'}`,
       fecha: getTodayLocalDate(),
       usuario: 'Administrador',
       created_at: new Date().toISOString()
@@ -1035,75 +1221,77 @@ export default function Inventory({
   };
 
   return (
-    <div className="px-3 sm:px-6 pt-1 pb-10 max-w-7xl mx-auto space-y-3 animate-in fade-in duration-300">
+    <div className="px-3 sm:px-6 pt-3 pb-12 max-w-7xl mx-auto space-y-3.5 animate-in fade-in duration-300">
       
-      {/* 1. TOP BAR: RETORNO + CONTROL MULTIMONEDA BCV */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-        <BackButton to="/" label="Volver al Menú Principal" />
-
-        <div className="flex items-center gap-2 self-end sm:self-auto bg-white border border-slate-200/80 px-3 py-1 rounded-xl shadow-2xs">
-          <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
-            <span className="text-[10px] uppercase font-bold text-slate-400">Tasa BCV:</span>
-            <span className="font-bold text-indigo-900">Bs. {exchangeRate.toFixed(2)}</span>
-            <button
-              type="button"
-              onClick={handleSyncBcv}
-              disabled={isSyncingBcv}
-              title="Sincronizar tasa oficial en vivo"
-              className="p-1 text-slate-400 hover:text-indigo-600 rounded-md transition cursor-pointer"
-            >
-              <RefreshCw size={12} className={isSyncingBcv ? 'animate-spin text-indigo-600' : ''} />
-            </button>
-          </div>
-
-          <div className="w-px h-3.5 bg-slate-200"></div>
-
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-[11px] font-bold">
-            <button
-              type="button"
-              onClick={() => setDisplayCurrency('USD')}
-              className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                displayCurrency === 'USD' ? 'bg-white text-indigo-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              USD ($)
-            </button>
-            <button
-              type="button"
-              onClick={() => setDisplayCurrency('VES')}
-              className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                displayCurrency === 'VES' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Bs. (VES)
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 2. ENCABEZADO PRINCIPAL (LIMPIO Y ELEGANTE AL ESTILO SISTEMA JT) */}
-      <div className="bg-white rounded-2xl p-5 shadow-xs border border-slate-200/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. HEADER DE PÁGINA CONSOLIDADO (UNIFIED PAGE HEADER) */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/90 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        {/* Izquierda: Retorno + Título + Badges de Estado */}
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-md shadow-orange-500/20 shrink-0">
-            <Package className="w-6 h-6" />
+          <BackButton to="/inventory" label="Volver a Inventario" />
+          <div className="w-px h-7 bg-slate-200 hidden sm:block" />
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+            <Boxes size={20} />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-                Inventario & Productos
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">
+                Inventario & Existencias
               </h1>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                PRO ERP
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/80 uppercase tracking-wider">
+                Multi-Depósito
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/80">
+                {stats.availabilityRate}% Stock Saludable
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-medium mt-0.5">
-              Control de artículos, existencias, precios de venta y auditoría de inventario
+            <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+              Control de artículos, valorización bimonetaria, trazabilidad analítica en Kardex y auditoría física.
             </p>
           </div>
         </div>
 
-        {/* Botones de Acción */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Derecha: Control Multimoneda BCV + Acciones de Negocio */}
+        <div className="flex items-center gap-2 flex-wrap self-end lg:self-auto">
+          {/* Píldora de Tasa Oficial BCV */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+            <span className="text-[10px] uppercase font-bold text-slate-400">BCV:</span>
+            <span className="font-mono font-black text-slate-900">Bs. {exchangeRate.toFixed(2)}</span>
+            <button
+              type="button"
+              onClick={handleSyncBcv}
+              disabled={isSyncingBcv}
+              title="Sincronizar tasa oficial en vivo con el Banco Central"
+              className="p-0.5 text-slate-400 hover:text-indigo-600 transition cursor-pointer"
+            >
+              <RefreshCw size={11} className={isSyncingBcv ? 'animate-spin text-indigo-600' : ''} />
+            </button>
+          </div>
+
+          {/* Toggle de Moneda */}
+          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl text-xs font-bold border border-slate-200/60">
+            <button
+              type="button"
+              onClick={() => setDisplayCurrency('USD')}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                displayCurrency === 'USD' ? 'bg-white text-indigo-700 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              $ USD
+            </button>
+            <button
+              type="button"
+              onClick={() => setDisplayCurrency('VES')}
+              className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                displayCurrency === 'VES' ? 'bg-white text-emerald-700 shadow-2xs font-black' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              Bs. VES
+            </button>
+          </div>
+
+          <div className="w-px h-6 bg-slate-200 hidden sm:block" />
+
+          {/* Botones de Acción */}
           <button
             onClick={() => {
               setTransferProduct(products[0] || null);
@@ -1116,7 +1304,7 @@ export default function Inventory({
               });
               setIsTransferModalOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 transition-all border border-slate-200/90 shadow-xs cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 transition border border-slate-200 shadow-2xs cursor-pointer active:scale-95"
             title="Transferir existencias entre almacenes"
           >
             <ArrowLeftRight className="w-3.5 h-3.5 text-slate-500" />
@@ -1124,8 +1312,17 @@ export default function Inventory({
           </button>
 
           <button
+            onClick={handleExportProductsCSV}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 transition border border-slate-200 shadow-2xs cursor-pointer active:scale-95"
+            title="Exportar catálogo filtrado a CSV"
+          >
+            <Download className="w-3.5 h-3.5 text-slate-500" />
+            <span>Exportar</span>
+          </button>
+
+          <button
             onClick={handleOpenNewProduct}
-            className="btn-primary text-xs py-2.5 px-4 shadow-xs hover:shadow-md cursor-pointer flex items-center gap-2"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition cursor-pointer active:scale-95"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
             <span>Nuevo Artículo</span>
@@ -1133,348 +1330,666 @@ export default function Inventory({
         </div>
       </div>
 
-      {/* 3. PESTAÑAS DE NAVEGACIÓN COMPACTAS */}
-      <div className="flex border-b border-slate-200 gap-6 text-xs font-bold select-none overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('catalogo')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'catalogo'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Package size={15} />
-          <span>Catálogo de Artículos ({products.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('categorias')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'categorias'
-              ? 'border-indigo-600 text-indigo-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Tag size={15} />
-          <span>Categorías ({categorias.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('auditoria')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'auditoria'
-              ? 'border-purple-600 text-purple-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <ShieldCheck size={15} />
-          <span>Auditoría de Inventario</span>
-          {auditMetrics.differencesCount > 0 && (
-            <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">
-              {auditMetrics.differencesCount} descuadres
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('kardex')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'kardex'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <History size={15} />
-          <span>Kardex Analítico ({movimientosInventario.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('almacenes')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'almacenes'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Warehouse size={15} />
-          <span>Depósitos ({almacenes.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('precios')}
-          className={`pb-2.5 transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border-b-2 ${
-            activeTab === 'precios'
-              ? 'border-indigo-600 text-indigo-600'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Printer size={15} />
-          <span>Lista de Precios</span>
-        </button>
-      </div>
-
-      {/* ========================================================================= */}
-      {/* PESTAÑA 1: CATÁLOGO DE ARTÍCULOS */}
-      {/* ========================================================================= */}
-      {activeTab === 'catalogo' && (
-        <div className="space-y-3">
+      {/* 2. BANDA EJECUTIVA DE MÉTRICAS CONTINUA (UNIFIED KPI HORIZON) */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100">
           
-          {/* BARRA DE CONTROL Y FILTROS INTEGRADOS */}
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 space-y-3">
-            {/* Buscador + Selector de Categoría + Filtro Estado + Selector de Vista */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 flex-1 flex-wrap sm:flex-nowrap">
-                <div className="relative flex-1 min-w-[200px]">
-                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    placeholder="Buscar por código SKU, nombre, código de barra, marca..."
-                    className="w-full pl-9.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Selector Compacto de Categoría (reemplaza las pills sobrecargadas) */}
-                <div className="relative shrink-0 w-full sm:w-auto">
-                  <Tag className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  <select
-                    value={selectedCategory}
-                    onChange={e => setSelectedCategory(e.target.value)}
-                    className="w-full sm:w-auto pl-8.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer"
-                  >
-                    <option value="Todos">Todas las Categorías ({products.length})</option>
-                    {categoriesList.filter(c => c !== 'Todos').map(cat => {
-                      const count = products.filter(p => p.categoria === cat).length;
-                      return (
-                        <option key={cat} value={cat}>
-                          {cat} ({count})
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-              </div>
-
-              {/* Filtros de Existencia */}
-              <div className="flex items-center gap-1.5 text-xs overflow-x-auto w-full sm:w-auto">
-                <button
-                  onClick={() => setStockStatusFilter('todos')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    stockStatusFilter === 'todos' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  Todos ({products.length})
-                </button>
-                <button
-                  onClick={() => setStockStatusFilter('en_stock')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    stockStatusFilter === 'en_stock' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  }`}
-                >
-                  En Stock
-                </button>
-                <button
-                  onClick={() => setStockStatusFilter('bajo_stock')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    stockStatusFilter === 'bajo_stock' ? 'bg-amber-600 text-white' : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
-                  }`}
-                >
-                  Bajo Stock ({stats.lowStockCount})
-                </button>
-                <button
-                  onClick={() => setStockStatusFilter('agotados')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    stockStatusFilter === 'agotados' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                  }`}
-                >
-                  Agotados ({stats.outOfStockCount})
-                </button>
-              </div>
-
-              {/* Toggle de Vista: Tabla vs Tarjetas */}
-              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shrink-0">
-                <button
-                  onClick={() => setViewMode('table')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <List className="w-3.5 h-3.5" />
-                  <span>Tabla</span>
-                </button>
-                <button
-                  onClick={() => setViewMode('grid')}
-                  className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    viewMode === 'grid' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
-                  }`}
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                  <span>Tarjetas</span>
-                </button>
+          {/* Col 1: Capital Inmovilizado a Costo */}
+          <div className="p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Capital en Stock (Costo)
+              </span>
+              <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+                <DollarSign size={14} />
               </div>
             </div>
-
-            {/* Tira Mínima de Resumen Ejecutivo (sin tarjetas gigantes) */}
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-              <div className="flex items-center gap-4">
-                <span>Registros: <strong className="text-slate-800 font-bold">{filteredProducts.length} artículos</strong></span>
-                <span>•</span>
-                <span>Unidades totales: <strong className="text-slate-800 font-bold">{stats.totalUnits.toLocaleString('es-VE')}</strong></span>
-                <span>•</span>
-                <span>Valorización a Costo: <strong className="text-slate-900 font-bold">
-                  {displayCurrency === 'USD' ? `$${stats.totalCostValuationUSD.toFixed(2)}` : `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(stats.totalCostValuationUSD * exchangeRate)}`}
-                </strong></span>
+            <div className="my-1.5">
+              <div className="text-lg font-black text-slate-900 tracking-tight font-mono">
+                ${stats.totalCostValuationUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
-              <div className="text-[11px] font-medium text-slate-400">
-                Tasa BCV oficial: Bs. {exchangeRate.toFixed(2)}
+              <div className="text-[10px] font-semibold text-slate-400 mt-0.5 font-mono">
+                Bs. {(stats.totalCostValuationUSD * exchangeRate).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1.5 border-t border-slate-50">
+              <span>Capital neto inmovilizado</span>
+              <span className="font-mono font-bold text-slate-700">{products.length} SKUs</span>
             </div>
           </div>
 
-          {/* VISTA EN TABLA (ALTA DENSIDAD, MODERNA, SIN MONOSPACE RETRO) */}
-          {viewMode === 'table' && (
-            <div className="table-container">
-              <table className="table-odoo">
-                <thead>
-                  <tr>
-                    <th className="w-28">Código SKU</th>
-                    <th>Artículo / Descripción</th>
-                    <th>Categoría</th>
-                    <th className="text-right">Costo ($)</th>
-                    <th className="text-right">Precio Detal</th>
-                    <th className="text-center">Existencia</th>
-                    <th>Ubicación</th>
-                    <th className="text-right w-28">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan={8} className="py-12 text-center text-slate-400">
-                        No se encontraron artículos registrados con los filtros seleccionados.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredProducts.map(prod => {
-                      const stock = Number(prod.stock_actual) || 0;
-                      const costo = Number(prod.costo_unitario) || 0;
-                      const pvp = Number(prod.precio_venta) || 0;
-                      const pvpBs = pvp * exchangeRate;
-                      const reorder = Number(prod.punto_reorden) || 10;
+          {/* Col 2: Valorización a Venta & Margen */}
+          <div className="p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Valorización a Venta (PVP)
+              </span>
+              <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
+                <TrendingUp size={14} />
+              </div>
+            </div>
+            <div className="my-1.5">
+              <div className="text-lg font-black text-emerald-950 tracking-tight font-mono">
+                ${stats.totalRetailValuationUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200/60 font-mono">
+                  +{stats.avgMarginPercent.toFixed(1)}% margen
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  (+${stats.totalMarginUSD.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ganancia)
+                </span>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1.5 border-t border-slate-50">
+              <span>Ingreso bruto estimado</span>
+              <span className="font-bold text-emerald-700">Margen Saludable</span>
+            </div>
+          </div>
 
-                      return (
-                        <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="font-mono font-bold text-slate-800">
-                            <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs">
-                              {prod.codigo}
-                            </span>
-                            {prod.codigo_barra && (
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                {prod.codigo_barra}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <div className="font-bold text-slate-900 flex items-center gap-2">
-                              <span>{prod.nombre}</span>
-                              {prod.activo === false && (
-                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
-                                  Inactivo
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-400 mt-0.5">
-                              {prod.marca && <span>Marca: {prod.marca}</span>}
-                              {prod.marca && <span>•</span>}
-                              <span className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded border border-slate-200/60" title="Cuentas Contables NIIF: Inventario / Costo / Ingreso">
-                                <BookOpen size={10} className="text-indigo-500 shrink-0" />
-                                <span>{getAccCode(prod.cuenta_inventario_id)}</span>
-                                <span className="text-slate-300">|</span>
-                                <span>{getAccCode(prod.cuenta_costo_id)}</span>
-                                <span className="text-slate-300">|</span>
-                                <span>{getAccCode(prod.cuenta_ingreso_id || prod.cuenta_venta_id)}</span>
-                              </span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold">
-                              {prod.categoria}
-                            </span>
-                          </td>
-                          <td className="text-right font-semibold text-slate-700">
-                            ${costo.toFixed(2)}
-                          </td>
-                          <td className="text-right">
-                            <div className="font-bold text-slate-900">
-                              {displayCurrency === 'USD' ? `$${pvp.toFixed(2)}` : `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(pvpBs)}`}
-                            </div>
-                            <div className="text-[10px] text-slate-400">
-                              {displayCurrency === 'USD' ? `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(pvpBs)}` : `$${pvp.toFixed(2)}`}
-                            </div>
-                          </td>
-                          <td className="text-center">
-                            {stock <= 0 ? (
-                              <span className="badge-modern-error">
-                                0 {prod.unidad_medida} (Agotado)
-                              </span>
-                            ) : stock <= reorder ? (
-                              <span className="badge-modern-warning">
-                                {stock} {prod.unidad_medida} (Bajo)
-                              </span>
-                            ) : (
-                              <span className="badge-modern-success">
-                                {stock} {prod.unidad_medida}
-                              </span>
-                            )}
-                          </td>
-                          <td className="text-slate-600 text-xs">
-                            {prod.ubicacion || 'Central'}
-                          </td>
-                          <td className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                onClick={() => handleOpenEditProduct(prod)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
-                                title="Editar ficha técnica"
-                              >
-                                <Edit2 size={14} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProduct(prod)}
-                                className={`p-1.5 rounded-lg transition cursor-pointer ${
-                                  movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
-                                    ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
-                                    : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
-                                }`}
-                                title={
-                                  movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
-                                    ? 'Artículo con movimientos en inventario (Bloqueado para eliminar)'
-                                    : 'Eliminar artículo'
-                                }
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
+          {/* Col 3: Unidades Físicas & Depósitos */}
+          <div className="p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Unidades Físicas
+              </span>
+              <div className="w-7 h-7 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600">
+                <Package size={14} />
+              </div>
+            </div>
+            <div className="my-1.5">
+              <div className="text-lg font-black text-slate-900 tracking-tight font-mono">
+                {stats.totalUnits.toLocaleString('es-VE')} <span className="text-xs font-bold text-slate-400">UND</span>
+              </div>
+              <div className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                Distribuidas en <strong className="text-slate-700">{almacenes.length} depósitos</strong>
+              </div>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1.5 border-t border-slate-50">
+              <span>Trazabilidad</span>
+              <span className="font-mono font-bold text-purple-700">{movimientosInventario.length} movs</span>
+            </div>
+          </div>
+
+          {/* Col 4: Alertas de Abastecimiento (Interactivas) */}
+          <div className="p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Alertas de Stock
+              </span>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center border ${
+                stats.outOfStockCount > 0 ? 'bg-rose-50 border-rose-200 text-rose-600' : stats.lowStockCount > 0 ? 'bg-amber-50 border-amber-200 text-amber-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'
+              }`}>
+                <AlertTriangle size={14} />
+              </div>
+            </div>
+            <div className="my-1.5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('catalogo');
+                  setStockStatusFilter('bajo_stock');
+                }}
+                className="flex-1 px-2.5 py-1 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/70 text-left transition cursor-pointer"
+                title="Filtrar artículos con stock bajo"
+              >
+                <span className="text-[9px] font-bold text-amber-800 uppercase block">Bajo Stock</span>
+                <span className="text-sm font-black text-amber-900 font-mono">{stats.lowStockCount}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('catalogo');
+                  setStockStatusFilter('agotados');
+                }}
+                className="flex-1 px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200/70 text-left transition cursor-pointer"
+                title="Filtrar artículos agotados"
+              >
+                <span className="text-[9px] font-bold text-rose-800 uppercase block">Agotados</span>
+                <span className="text-sm font-black text-rose-900 font-mono">{stats.outOfStockCount}</span>
+              </button>
+            </div>
+            <div className="text-[10px] text-slate-400 flex items-center justify-between pt-1.5 border-t border-slate-50">
+              <span>Nivel óptimo</span>
+              <span className="font-bold text-emerald-700">{stats.inStockCount} artículos</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      {/* 3. SELECTOR DE LOS 4 MÓDULOS DE INVENTARIO (CON ICONOS TAMAÑO PEQUEÑO-MEDIANO) */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 select-none">
+        {/* 1. MÓDULO: CATÁLOGO */}
+        <button
+          type="button"
+          onClick={() => {
+            if (!['catalogo', 'categorias', 'almacenes'].includes(activeTab)) {
+              setActiveTab('catalogo');
+            }
+            navigate('/inventory/catalogo');
+          }}
+          className={`group flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer text-left ${
+            ['catalogo', 'categorias', 'almacenes'].includes(activeTab)
+              ? 'bg-white border-indigo-600 shadow-sm ring-2 ring-indigo-500/10'
+              : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-2xs hover:border-indigo-200'
+          }`}
+        >
+          <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br from-blue-600 to-indigo-700 shadow-md shadow-blue-500/20 shrink-0 group-hover:scale-105 transition-transform">
+            <Boxes size={20} strokeWidth={2} className="text-white relative z-10 drop-shadow-xs" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1">
+              <span className={`text-xs sm:text-sm font-black truncate ${
+                ['catalogo', 'categorias', 'almacenes'].includes(activeTab) ? 'text-indigo-900' : 'text-slate-800'
+              }`}>
+                Catálogo
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/70 shrink-0">
+                3 áreas
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+              Productos, Categorías, Depósitos
+            </p>
+          </div>
+        </button>
+
+        {/* 2. MÓDULO: AUDITORÍA FÍSICA */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('auditoria');
+            navigate('/inventory/auditoria');
+          }}
+          className={`group flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer text-left ${
+            activeTab === 'auditoria'
+              ? 'bg-white border-purple-600 shadow-sm ring-2 ring-purple-500/10'
+              : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-2xs hover:border-purple-200'
+          }`}
+        >
+          <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br from-purple-600 to-indigo-700 shadow-md shadow-purple-500/20 shrink-0 group-hover:scale-105 transition-transform">
+            <ShieldCheck size={20} strokeWidth={2} className="text-white relative z-10 drop-shadow-xs" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1">
+              <span className={`text-xs sm:text-sm font-black truncate ${
+                activeTab === 'auditoria' ? 'text-purple-900' : 'text-slate-800'
+              }`}>
+                Auditoría Física
+              </span>
+              {auditMetrics.differencesCount > 0 ? (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-rose-50 text-rose-700 border border-rose-200 shrink-0 font-mono">
+                  {auditMetrics.differencesCount} descuadres
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-purple-50 text-purple-700 border border-purple-200/70 shrink-0">
+                  Toma
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+              Conteo físico y ajustes de stock
+            </p>
+          </div>
+        </button>
+
+        {/* 3. MÓDULO: KARDEX */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('kardex');
+            navigate('/inventory/kardex');
+          }}
+          className={`group flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer text-left ${
+            activeTab === 'kardex'
+              ? 'bg-white border-amber-600 shadow-sm ring-2 ring-amber-500/10'
+              : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-2xs hover:border-amber-200'
+          }`}
+        >
+          <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br from-amber-500 to-orange-600 shadow-md shadow-amber-500/20 shrink-0 group-hover:scale-105 transition-transform">
+            <History size={20} strokeWidth={2} className="text-white relative z-10 drop-shadow-xs" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1">
+              <span className={`text-xs sm:text-sm font-black truncate ${
+                activeTab === 'kardex' ? 'text-amber-900' : 'text-slate-800'
+              }`}>
+                Kardex
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-amber-50 text-amber-700 border border-amber-200/70 shrink-0 font-mono">
+                {movimientosInventario.length} movs
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+              Historial y trazabilidad de SKU
+            </p>
+          </div>
+        </button>
+
+        {/* 4. MÓDULO: LISTA DE PRECIOS */}
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('precios');
+            navigate('/inventory/precios');
+          }}
+          className={`group flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border transition-all cursor-pointer text-left ${
+            activeTab === 'precios'
+              ? 'bg-white border-emerald-600 shadow-sm ring-2 ring-emerald-500/10'
+              : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-2xs hover:border-emerald-200'
+          }`}
+        >
+          <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-xl flex items-center justify-center bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md shadow-emerald-500/20 shrink-0 group-hover:scale-105 transition-transform">
+            <Printer size={20} strokeWidth={2} className="text-white relative z-10 drop-shadow-xs" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-1">
+              <span className={`text-xs sm:text-sm font-black truncate ${
+                activeTab === 'precios' ? 'text-emerald-900' : 'text-slate-800'
+              }`}>
+                Lista de Precios
+              </span>
+              <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/70 shrink-0">
+                PVP
+              </span>
+            </div>
+            <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+              Márgenes y emisión para impresión
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {/* 4. ESTACIÓN MAESTRA DE TRABAJO (UNIFIED DATA WORKBENCH) */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs overflow-hidden flex flex-col">
+        
+        {/* SUB-PESTAÑAS CUANDO ESTÁ ACTIVO EL MÓDULO CATÁLOGO */}
+        {['catalogo', 'categorias', 'almacenes'].includes(activeTab) && (
+          <div className="border-b border-slate-200 bg-slate-50/70 px-4 pt-2.5 flex items-center gap-1.5 overflow-x-auto scrollbar-none select-none">
+            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 mr-2 flex items-center gap-1 shrink-0">
+              <Boxes size={13} className="text-indigo-600" />
+              <span>Vistas de Catálogo:</span>
+            </div>
+
+            <button
+              onClick={() => setActiveTab('catalogo')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer shrink-0 border-t-2 border-x ${
+                activeTab === 'catalogo'
+                  ? 'bg-white text-indigo-700 border-t-indigo-600 border-x-slate-200 border-b-white -mb-px shadow-2xs font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <Package size={14} />
+              <span>Catálogo ({products.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('categorias')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer shrink-0 border-t-2 border-x ${
+                activeTab === 'categorias'
+                  ? 'bg-white text-indigo-700 border-t-indigo-600 border-x-slate-200 border-b-white -mb-px shadow-2xs font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <Tag size={14} />
+              <span>Categorías ({categorias.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('almacenes')}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-t-xl text-xs font-bold transition-all cursor-pointer shrink-0 border-t-2 border-x ${
+                activeTab === 'almacenes'
+                  ? 'bg-white text-indigo-700 border-t-indigo-600 border-x-slate-200 border-b-white -mb-px shadow-2xs font-extrabold'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+              }`}
+            >
+              <Warehouse size={14} />
+              <span>Depósitos ({almacenes.length})</span>
+            </button>
+          </div>
+        )}
+
+        {/* CUERPO INTERNO DEL WORKBENCH */}
+        <div className="flex-1 bg-white">
+          {activeTab === 'catalogo' && (
+            <div className="flex flex-col">
+              
+              {/* BARRA DE CONTROL Y FILTROS INTEGRADOS (SIN SCROLL HORIZONTAL) */}
+              <div className="p-4 border-b border-slate-100 bg-white space-y-3">
+                {/* Fila 1: Búsqueda Omnicanal + Selector de Categoría + Selector de Almacén */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                  {/* Buscador omnicanal */}
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={e => setSearchTerm(e.target.value)}
+                      placeholder="Buscar por código SKU, nombre, código de barra, marca..."
+                      className="w-full pl-9.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:bg-white focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Selector de Categoría */}
+                  <div className="relative shrink-0 sm:w-56">
+                    <Tag className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <select
+                      value={selectedCategory}
+                      onChange={e => setSelectedCategory(e.target.value)}
+                      className="w-full pl-8.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="Todos">Todas las Categorías ({products.length})</option>
+                      {categoriesList.filter(c => c !== 'Todos').map(cat => {
+                        const count = products.filter(p => p.categoria === cat).length;
+                        return (
+                          <option key={cat} value={cat}>
+                            {cat} ({count})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Selector de Almacén */}
+                  <div className="relative shrink-0 sm:w-52">
+                    <Warehouse className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <select
+                      value={selectedWarehouseFilter}
+                      onChange={e => setSelectedWarehouseFilter(e.target.value)}
+                      className="w-full pl-8.5 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-indigo-600 outline-none cursor-pointer"
+                    >
+                      <option value="Todos">Todos los Almacenes</option>
+                      {almacenes.map(alm => {
+                        const count = products.filter(p => p.almacen_id === alm.id).length;
+                        return (
+                          <option key={alm.id} value={alm.id}>
+                            {alm.codigo} - {alm.nombre} ({count})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Fila 2: Segmented Control de Estados de Stock + Toggle de Vista */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+                  {/* Segmented Control de Existencia (Cero Scroll, diseño integrado moderno) */}
+                  <div className="flex items-center bg-slate-100/90 p-1 rounded-xl text-xs font-bold gap-1 flex-wrap sm:flex-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => setStockStatusFilter('todos')}
+                      className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        stockStatusFilter === 'todos'
+                          ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Todos ({products.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockStatusFilter('en_stock')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        stockStatusFilter === 'en_stock'
+                          ? 'bg-white text-emerald-800 shadow-2xs font-extrabold'
+                          : 'text-slate-600 hover:text-emerald-700'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                      <span>En Stock ({stats.inStockCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockStatusFilter('bajo_stock')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        stockStatusFilter === 'bajo_stock'
+                          ? 'bg-white text-amber-800 shadow-2xs font-extrabold'
+                          : 'text-slate-600 hover:text-amber-700'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                      <span>Bajo Stock ({stats.lowStockCount})</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStockStatusFilter('agotados')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                        stockStatusFilter === 'agotados'
+                          ? 'bg-white text-rose-800 shadow-2xs font-extrabold'
+                          : 'text-slate-600 hover:text-rose-700'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                      <span>Agotados ({stats.outOfStockCount})</span>
+                    </button>
+                  </div>
+
+                  {/* Lado Derecho: Toggle de Vista (Tabla / Tarjetas) */}
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                    <div className="flex items-center bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('table')}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          viewMode === 'table' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <List className="w-3.5 h-3.5" />
+                        <span>Tabla</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewMode('grid')}
+                        className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          viewMode === 'grid' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        <LayoutGrid className="w-3.5 h-3.5" />
+                        <span>Tarjetas</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tira de Resumen Ejecutivo y Totales del Filtro */}
+                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span>Mostrando: <strong className="text-slate-800 font-bold">{filteredProducts.length} artículos</strong></span>
+                    <span>•</span>
+                    <span>Unidades: <strong className="text-slate-800 font-bold font-mono">
+                      {filteredProducts.reduce((sum, p) => sum + (Number(p.stock_actual) || 0), 0).toLocaleString('es-VE')} UND
+                    </strong></span>
+                    <span>•</span>
+                    <span>Valorización a Costo: <strong className="text-slate-900 font-bold font-mono">
+                      {displayCurrency === 'USD' 
+                        ? `$${filteredProducts.reduce((sum, p) => sum + (Number(p.stock_actual) || 0) * (Number(p.costo_unitario) || 0), 0).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                        : `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(filteredProducts.reduce((sum, p) => sum + (Number(p.stock_actual) || 0) * (Number(p.costo_unitario) || 0), 0) * exchangeRate)}`}
+                    </strong></span>
+                  </div>
+                  <div className="text-[11px] text-slate-400">
+                    Tasa BCV oficial: <strong className="font-mono text-slate-700">Bs. {exchangeRate.toFixed(2)}</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* VISTA EN TABLA (ALTA DENSIDAD, PROFESIONAL, SIN SCROLL FORZADO) */}
+              {viewMode === 'table' && (
+                <div className="overflow-x-auto scrollbar-none">
+                  <table className="table-odoo">
+                    <thead>
+                      <tr>
+                        <th className="w-24">Código SKU</th>
+                        <th>Artículo / Descripción</th>
+                        <th>Categoría</th>
+                        <th className="text-right">Costo</th>
+                        <th className="text-right">Precio Detal (PVP)</th>
+                        <th className="text-right">Margen</th>
+                        <th className="text-center">Existencia</th>
+                        <th>Depósito</th>
+                        <th className="text-right w-28">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan={9} className="py-12 text-center text-slate-400">
+                            No se encontraron artículos registrados con los filtros seleccionados.
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+                      ) : (
+                        filteredProducts.map(prod => {
+                          const stock = Number(prod.stock_actual) || 0;
+                          const costo = Number(prod.costo_unitario) || 0;
+                          const pvp = Number(prod.precio_venta) || 0;
+                          const pvpBs = pvp * exchangeRate;
+                          const reorder = Number(prod.punto_reorden) || 10;
+                          const marginPct = pvp > 0 ? ((pvp - costo) / pvp) * 100 : 0;
+                          const almNombre = almacenes.find(a => a.id === prod.almacen_id)?.nombre || prod.ubicacion || 'Central';
 
-          {/* VISTA EN TARJETAS (GRID) */}
+                          return (
+                            <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
+                              <td className="font-mono font-bold text-slate-800 whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-xs">
+                                  {prod.codigo}
+                                </span>
+                                {prod.codigo_barra && (
+                                  <div className="text-[10px] text-slate-400 font-mono mt-0.5">
+                                    {prod.codigo_barra}
+                                  </div>
+                                )}
+                              </td>
+                              <td>
+                                <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                                  <span>{prod.nombre}</span>
+                                  {prod.activo === false && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                                      Inactivo
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
+                                  {prod.marca && <span>Marca: {prod.marca}</span>}
+                                  {prod.marca && prod.cuenta_inventario_id && <span>•</span>}
+                                  {prod.cuenta_inventario_id && (
+                                    <span 
+                                      className="inline-flex items-center gap-1 font-mono text-[10px] text-slate-500 bg-slate-100/80 px-1.5 py-0.2 rounded border border-slate-200/60 cursor-help" 
+                                      title={`Cuentas Contables NIIF:\n• Inventario: ${getAccCode(prod.cuenta_inventario_id)}\n• Costo: ${getAccCode(prod.cuenta_costo_id)}\n• Venta: ${getAccCode(prod.cuenta_ingreso_id || prod.cuenta_venta_id)}`}
+                                    >
+                                      <BookOpen size={9} className="text-indigo-500 shrink-0" />
+                                      <span>NIIF {getAccCode(prod.cuenta_inventario_id)}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap">
+                                <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold">
+                                  {prod.categoria}
+                                </span>
+                              </td>
+                              <td className="text-right font-mono font-semibold text-slate-700 whitespace-nowrap">
+                                ${costo.toFixed(2)}
+                              </td>
+                              <td className="text-right whitespace-nowrap">
+                                <div className="font-bold text-slate-900 font-mono">
+                                  {displayCurrency === 'USD' ? `$${pvp.toFixed(2)}` : `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(pvpBs)}`}
+                                </div>
+                                <div className="text-[10px] text-slate-400 font-mono">
+                                  {displayCurrency === 'USD' ? `Bs. ${new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2 }).format(pvpBs)}` : `$${pvp.toFixed(2)}`}
+                                </div>
+                              </td>
+                              <td className="text-right whitespace-nowrap">
+                                <span className={`inline-flex items-center gap-0.5 font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md ${
+                                  marginPct >= 30 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                                  marginPct > 15 ? 'bg-blue-50 text-blue-700 border border-blue-200' :
+                                  marginPct > 0 ? 'bg-amber-50 text-amber-700 border border-amber-200' :
+                                  'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}>
+                                  <Percent size={10} />
+                                  {marginPct.toFixed(1)}%
+                                </span>
+                              </td>
+                              <td className="text-center whitespace-nowrap">
+                                {stock <= 0 ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                    0 {prod.unidad_medida} (Agotado)
+                                  </span>
+                                ) : stock <= reorder ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                    {stock} {prod.unidad_medida} (Bajo)
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                    {stock} {prod.unidad_medida}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="text-slate-600 text-xs whitespace-nowrap">
+                                <span className="truncate max-w-[120px] block" title={almNombre}>
+                                  {almNombre}
+                                </span>
+                              </td>
+                              <td className="text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-1">
+                                  <button
+                                    onClick={() => handleViewProductKardex(prod.id)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                    title="Ver trazabilidad y movimientos en Kardex"
+                                  >
+                                    <History size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenTransferForProduct(prod)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                    title="Transferir a otro depósito"
+                                  >
+                                    <ArrowLeftRight size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenEditProduct(prod)}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition cursor-pointer"
+                                    title="Editar ficha técnica"
+                                  >
+                                    <Edit2 size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteProduct(prod)}
+                                    className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                      movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
+                                        ? 'text-slate-300 hover:text-amber-600 hover:bg-amber-50'
+                                        : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
+                                    }`}
+                                    title={
+                                      movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
+                                        ? 'Artículo con movimientos en inventario (Bloqueado para eliminar)'
+                                        : 'Eliminar artículo'
+                                    }
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+          {/* VISTA EN TARJETAS (GRID PRO) */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
               {filteredProducts.map(prod => {
@@ -1482,20 +1997,31 @@ export default function Inventory({
                 const pvp = Number(prod.precio_venta) || 0;
                 const costo = Number(prod.costo_unitario) || 0;
                 const reorder = Number(prod.punto_reorden) || 10;
+                const marginPct = pvp > 0 ? ((pvp - costo) / pvp) * 100 : 0;
+                const almNombre = almacenes.find(a => a.id === prod.almacen_id)?.nombre || prod.ubicacion || 'Central';
 
                 return (
-                  <div key={prod.id} className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between">
+                  <div key={prod.id} className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:shadow-md hover:border-slate-300 transition-all flex flex-col justify-between">
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-2">
                         <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
                           {prod.codigo}
                         </span>
                         {stock <= 0 ? (
-                          <span className="badge-modern-error text-[10px]">Agotado</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                            Agotado
+                          </span>
                         ) : stock <= reorder ? (
-                          <span className="badge-modern-warning text-[10px]">Bajo Stock</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            Bajo Stock ({stock} {prod.unidad_medida})
+                          </span>
                         ) : (
-                          <span className="badge-modern-success text-[10px]">{stock} {prod.unidad_medida}</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {stock} {prod.unidad_medida}
+                          </span>
                         )}
                       </div>
 
@@ -1516,37 +2042,55 @@ export default function Inventory({
                       <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
                         <div>
                           <span className="text-[10px] text-slate-400 uppercase font-semibold block">Precio Venta</span>
-                          <span className="text-base font-bold text-slate-900">${pvp.toFixed(2)}</span>
+                          <span className="text-base font-bold text-slate-900 font-mono">${pvp.toFixed(2)}</span>
+                          <span className="text-[10px] text-slate-400 block font-mono">
+                            Bs. {(pvp * exchangeRate).toFixed(2)}
+                          </span>
                         </div>
                         <div className="text-right">
-                          <span className="text-[10px] text-slate-400 uppercase font-semibold block">Costo</span>
-                          <span className="text-xs font-semibold text-slate-600">${costo.toFixed(2)}</span>
+                          <span className="text-[10px] text-slate-400 uppercase font-semibold block">Costo / Margen</span>
+                          <span className="text-xs font-semibold text-slate-600 font-mono">${costo.toFixed(2)}</span>
+                          <span className="text-[10px] font-bold text-emerald-700 block font-mono">
+                            +{marginPct.toFixed(1)}%
+                          </span>
                         </div>
                       </div>
                     </div>
 
                     <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                      <span className="text-slate-400 text-[11px]">📍 {prod.ubicacion || 'Central'}</span>
+                      <span className="text-slate-400 text-[11px] truncate max-w-[120px]" title={almNombre}>
+                        📍 {almNombre}
+                      </span>
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => handleViewProductKardex(prod.id)}
+                          className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                          title="Ver Kardex"
+                        >
+                          <History size={13} />
+                        </button>
+                        <button
+                          onClick={() => handleOpenTransferForProduct(prod)}
+                          className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                          title="Transferir"
+                        >
+                          <ArrowLeftRight size={13} />
+                        </button>
+                        <button
                           onClick={() => handleOpenEditProduct(prod)}
-                          className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                          className="p-1.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
                           title="Editar"
                         >
                           <Edit2 size={13} />
                         </button>
                         <button
                           onClick={() => handleDeleteProduct(prod)}
-                          className={`p-1 rounded cursor-pointer transition ${
+                          className={`p-1.5 rounded cursor-pointer transition ${
                             movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
-                              ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                              ? 'text-slate-300 hover:text-amber-600 hover:bg-amber-50'
                               : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50'
                           }`}
-                          title={
-                            movimientosInventario.some(m => m.producto_id === prod.id || (prod.codigo && m.producto_codigo === prod.codigo)) || Number(prod.stock_actual) > 0
-                              ? 'Artículo con movimientos en inventario (Bloqueado para eliminar)'
-                              : 'Eliminar'
-                          }
+                          title="Eliminar"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -1565,18 +2109,18 @@ export default function Inventory({
       {/* PESTAÑA: GESTIÓN DE CATEGORÍAS */}
       {/* ========================================================================= */}
       {activeTab === 'categorias' && (
-        <div className="space-y-3">
+        <div className="flex flex-col">
           {/* BARRA DE CONTROL Y BÚSQUEDA DE CATEGORÍAS */}
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 space-y-3">
+          <div className="p-4 border-b border-slate-100 bg-white">
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                 <input
                   type="text"
                   value={categorySearchTerm}
                   onChange={e => setCategorySearchTerm(e.target.value)}
                   placeholder="Buscar categoría por nombre o código..."
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-600 outline-none"
+                  className="w-full pl-9.5 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-600 outline-none"
                 />
               </div>
 
@@ -1591,26 +2135,10 @@ export default function Inventory({
                 </button>
               </div>
             </div>
-
-            {/* Tira Resumen de Categorías */}
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
-              <div className="flex items-center gap-4">
-                <span>Total Categorías: <strong className="text-slate-800 font-bold">{categorias.length}</strong></span>
-                <span>•</span>
-                <span>Activas: <strong className="text-emerald-700 font-bold">{categorias.filter(c => c.activo).length}</strong></span>
-                <span>•</span>
-                <span>Inactivas: <strong className="text-slate-600 font-bold">{categorias.filter(c => !c.activo).length}</strong></span>
-                <span>•</span>
-                <span>Artículos Clasificados: <strong className="text-indigo-900 font-bold">{products.length}</strong></span>
-              </div>
-              <div className="text-[11px] font-medium text-slate-400">
-                Las categorías activas se presentan automáticamente al registrar o editar artículos
-              </div>
-            </div>
           </div>
 
           {/* TABLA DE CATEGORÍAS */}
-          <div className="table-container">
+          <div className="overflow-x-auto scrollbar-none">
             <table className="table-odoo">
               <thead>
                 <tr>
@@ -1724,6 +2252,22 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
+
+          {/* BARRA DE ESTADO / FOOTER DE CATEGORÍAS */}
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-3">
+              <span>Total: <strong className="text-slate-800 font-bold">{categorias.length}</strong></span>
+              <span>•</span>
+              <span>Activas: <strong className="text-emerald-700 font-bold">{categorias.filter(c => c.activo).length}</strong></span>
+              <span>•</span>
+              <span>Inactivas: <strong className="text-slate-600 font-bold">{categorias.filter(c => !c.activo).length}</strong></span>
+              <span>•</span>
+              <span>Artículos Asociados: <strong className="text-indigo-900 font-bold">{products.length}</strong></span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Las categorías activas se presentan automáticamente al registrar o editar artículos
+            </div>
+          </div>
         </div>
       )}
 
@@ -1731,10 +2275,10 @@ export default function Inventory({
       {/* PESTAÑA 2: AUDITORÍA DE INVENTARIO (TOMA FÍSICA Y AJUSTE CON CLAVE) */}
       {/* ========================================================================= */}
       {activeTab === 'auditoria' && (
-        <div className="space-y-3">
+        <div className="flex flex-col">
           
           {/* BARRA DE CONTROL DE AUDITORÍA */}
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 space-y-3">
+          <div className="p-4 border-b border-slate-100 bg-white space-y-3">
             
             {/* Tira de Resumen de Avance del Conteo */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1788,12 +2332,12 @@ export default function Inventory({
                 )}
               </div>
 
-              <div className="flex items-center gap-1.5 text-xs overflow-x-auto w-full sm:w-auto">
+              <div className="flex items-center bg-slate-100/90 p-1 rounded-xl text-xs font-bold gap-1 flex-wrap sm:flex-nowrap">
                 <button
                   type="button"
                   onClick={() => setAuditStatusFilter('todos')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    auditStatusFilter === 'todos' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    auditStatusFilter === 'todos' ? 'bg-white text-slate-900 shadow-2xs font-extrabold' : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
                   Todos ({products.length})
@@ -1801,20 +2345,22 @@ export default function Inventory({
                 <button
                   type="button"
                   onClick={() => setAuditStatusFilter('diferencias')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    auditStatusFilter === 'diferencias' ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    auditStatusFilter === 'diferencias' ? 'bg-white text-rose-800 shadow-2xs font-extrabold' : 'text-slate-600 hover:text-rose-700'
                   }`}
                 >
-                  Con Descuadre ({auditMetrics.differencesCount})
+                  <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                  <span>Con Descuadre ({auditMetrics.differencesCount})</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setAuditStatusFilter('cuadrados')}
-                  className={`px-2.5 py-1.5 rounded-xl font-semibold transition cursor-pointer ${
-                    auditStatusFilter === 'cuadrados' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    auditStatusFilter === 'cuadrados' ? 'bg-white text-emerald-800 shadow-2xs font-extrabold' : 'text-slate-600 hover:text-emerald-700'
                   }`}
                 >
-                  Cuadrados ({auditMetrics.squaresCount})
+                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                  <span>Cuadrados ({auditMetrics.squaresCount})</span>
                 </button>
               </div>
 
@@ -1843,7 +2389,7 @@ export default function Inventory({
           </div>
 
           {/* TABLA DE AUDITORÍA: STOCK SISTEMA VS CONTEO FÍSICO VS DIFERENCIA */}
-          <div className="table-container">
+          <div className="overflow-x-auto scrollbar-none">
             <table className="table-odoo">
               <thead>
                 <tr>
@@ -1996,6 +2542,24 @@ export default function Inventory({
             </table>
           </div>
 
+          {/* BARRA DE ESTADO / FOOTER DE AUDITORÍA */}
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-3">
+              <span>Auditados: <strong className="text-slate-800 font-bold">{auditMetrics.counted} / {auditMetrics.totalProducts}</strong></span>
+              <span>•</span>
+              <span>Sin variación: <strong className="text-emerald-700 font-bold">{auditMetrics.squaresCount}</strong></span>
+              <span>•</span>
+              <span>Descuadres: <strong className="text-rose-700 font-bold">{auditMetrics.differencesCount}</strong></span>
+              <span>•</span>
+              <span>Impacto neto: <strong className={auditMetrics.netFinancialDiffUSD < 0 ? 'text-rose-600 font-bold font-mono' : 'text-slate-800 font-bold font-mono'}>
+                {auditMetrics.netFinancialDiffUSD > 0 ? '+' : ''}${Math.abs(auditMetrics.netFinancialDiffUSD).toFixed(2)}
+              </strong></span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {auditMetrics.differencesCount > 0 ? 'Requiere clave de supervisor para autorizar ajustes' : 'Inventario 100% conciliado'}
+            </div>
+          </div>
+
         </div>
       )}
 
@@ -2003,9 +2567,9 @@ export default function Inventory({
       {/* PESTAÑA 3: KARDEX DE MOVIMIENTOS (FILTRO POR ARTÍCULO OPTIMIZADO) */}
       {/* ========================================================================= */}
       {activeTab === 'kardex' && (
-        <div className="space-y-3">
+        <div className="flex flex-col">
           {/* BARRA DE FILTROS DEL KARDEX */}
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 space-y-3">
+          <div className="p-4 border-b border-slate-100 bg-white space-y-3">
             <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 text-xs">
               
               {/* Selector Principal de Producto */}
@@ -2177,7 +2741,7 @@ export default function Inventory({
 
           {/* VISTA CUANDO NO SE HA SELECCIONADO NINGÚN PRODUCTO */}
           {!selectedKardexProductId ? (
-            <div className="bg-white rounded-2xl p-8 border border-dashed border-slate-300 text-center space-y-4 shadow-xs">
+            <div className="p-12 text-center space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-inner">
                 <History className="w-7 h-7" />
               </div>
@@ -2218,7 +2782,7 @@ export default function Inventory({
             </div>
           ) : (
             /* TABLA DE MOVIMIENTOS CUANDO HAY UN PRODUCTO O "TODOS" SELECCIONADO */
-            <div className="table-container">
+            <div className="overflow-x-auto scrollbar-none">
               <table className="table-odoo">
                 <thead>
                   <tr>
@@ -2282,6 +2846,22 @@ export default function Inventory({
               </table>
             </div>
           )}
+
+          {/* BARRA DE ESTADO / FOOTER DE KARDEX */}
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-3">
+              <span>Registros: <strong className="text-slate-800 font-bold">{filteredKardexMovements.length}</strong></span>
+              <span>•</span>
+              <span>Entradas: <strong className="text-emerald-700 font-bold">{filteredKardexMovements.filter(m => m.tipo === 'entrada' || m.tipo === 'ajuste_positivo').length}</strong></span>
+              <span>•</span>
+              <span>Salidas: <strong className="text-rose-700 font-bold">{filteredKardexMovements.filter(m => m.tipo === 'salida' || m.tipo === 'ajuste_negativo').length}</strong></span>
+              <span>•</span>
+              <span>Transferencias: <strong className="text-indigo-700 font-bold">{filteredKardexMovements.filter(m => m.tipo === 'transferencia').length}</strong></span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              {selectedKardexProduct ? `Kardex individual de [${selectedKardexProduct.codigo}] ${selectedKardexProduct.nombre}` : 'Historial general de movimientos'}
+            </div>
+          </div>
         </div>
       )}
 
@@ -2289,8 +2869,8 @@ export default function Inventory({
       {/* PESTAÑA 4: ALMACENES / DEPÓSITOS */}
       {/* ========================================================================= */}
       {activeTab === 'almacenes' && (
-        <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+        <div className="flex flex-col">
+          <div className="p-4 border-b border-slate-100 bg-white flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
               <h3 className="font-bold text-slate-900 text-sm">Almacenes y Centros de Distribución</h3>
               <p className="text-xs text-slate-500 mt-0.5">Control de depósitos físicos, bodegas y ubicaciones de stock de la empresa.</p>
@@ -2304,59 +2884,75 @@ export default function Inventory({
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-            {almacenes.map(alm => {
-              const countProds = products.filter(p => p.almacen_id === alm.id).length;
-              return (
-                <div key={alm.id} className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
-                        {alm.codigo}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        {alm.es_principal && (
-                          <span className="badge-modern-info text-[10px]">Principal</span>
-                        )}
-                        <button
-                          onClick={() => handleOpenEditAlmacen(alm)}
-                          className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                          title="Editar Almacén"
-                        >
-                          <Edit2 size={13} />
-                        </button>
-                        {!alm.es_principal && (
+          <div className="p-4 bg-slate-50/40">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+              {almacenes.map(alm => {
+                const countProds = products.filter(p => p.almacen_id === alm.id).length;
+                return (
+                  <div key={alm.id} className="bg-white rounded-2xl border border-slate-200/90 p-4 shadow-xs hover:border-slate-300 transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700">
+                          {alm.codigo}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {alm.es_principal && (
+                            <span className="badge-modern-info text-[10px]">Principal</span>
+                          )}
                           <button
-                            onClick={() => handleDeleteAlmacen(alm)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                            title="Eliminar Almacén"
+                            onClick={() => handleOpenEditAlmacen(alm)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
+                            title="Editar Almacén"
                           >
-                            <Trash2 size={13} />
+                            <Edit2 size={13} />
                           </button>
-                        )}
+                          {!alm.es_principal && (
+                            <button
+                              onClick={() => handleDeleteAlmacen(alm)}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Eliminar Almacén"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <h3 className="font-bold text-slate-900 text-sm">{alm.nombre}</h3>
-                    <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                      <span>📍</span>
-                      <span>{alm.ubicacion || 'Sin ubicación especificada'}</span>
-                    </p>
-                    {alm.responsable && (
-                      <p className="text-[11px] text-slate-400 mt-0.5">
-                        Responsable: <span className="text-slate-600 font-medium">{alm.responsable}</span>
+                      <h3 className="font-bold text-slate-900 text-sm">{alm.nombre}</h3>
+                      <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                        <span>📍</span>
+                        <span>{alm.ubicacion || 'Sin ubicación especificada'}</span>
                       </p>
-                    )}
-                  </div>
+                      {alm.responsable && (
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Responsable: <span className="text-slate-600 font-medium">{alm.responsable}</span>
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="mt-3 pt-3 border-t border-slate-100 text-xs flex justify-between items-center">
-                    <span className="text-slate-500">Artículos asignados:</span>
-                    <strong className="text-slate-800 font-bold bg-slate-100 px-2 py-0.5 rounded-full text-[11px]">
-                      {countProds}
-                    </strong>
+                    <div className="mt-3 pt-3 border-t border-slate-100 text-xs flex justify-between items-center">
+                      <span className="text-slate-500">Artículos asignados:</span>
+                      <strong className="text-slate-800 font-bold bg-slate-100 px-2 py-0.5 rounded-full text-[11px]">
+                        {countProds}
+                      </strong>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* BARRA DE ESTADO / FOOTER DE ALMACENES */}
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-3">
+              <span>Depósitos registrados: <strong className="text-slate-800 font-bold">{almacenes.length}</strong></span>
+              <span>•</span>
+              <span>Depósito principal: <strong className="text-indigo-700 font-bold">{almacenes.find(a => a.es_principal)?.nombre || 'Principal'}</strong></span>
+              <span>•</span>
+              <span>Artículos con stock: <strong className="text-slate-800 font-bold">{products.length}</strong></span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Soporte multi-depósito activo con transferencias internas inmediatas
+            </div>
           </div>
         </div>
       )}
@@ -2365,8 +2961,8 @@ export default function Inventory({
       {/* PESTAÑA 5: LISTA DE PRECIOS */}
       {/* ========================================================================= */}
       {activeTab === 'precios' && (
-        <div className="space-y-3">
-          <div className="bg-white rounded-2xl p-4 shadow-xs border border-slate-200/90 flex justify-between items-center text-xs">
+        <div className="flex flex-col">
+          <div className="p-4 border-b border-slate-100 bg-white flex justify-between items-center text-xs">
             <span className="font-bold text-slate-700">Catálogo de Tarifas y Precios Oficiales</span>
             <button
               onClick={() => window.print()}
@@ -2377,7 +2973,7 @@ export default function Inventory({
             </button>
           </div>
 
-          <div className="table-container">
+          <div className="overflow-x-auto scrollbar-none">
             <table className="table-odoo">
               <thead>
                 <tr>
@@ -2416,8 +3012,23 @@ export default function Inventory({
               </tbody>
             </table>
           </div>
+
+          {/* BARRA DE ESTADO / FOOTER DE LISTA DE PRECIOS */}
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200/80 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500 font-medium">
+            <div className="flex items-center gap-3">
+              <span>Tarifas vigentes: <strong className="text-slate-800 font-bold">{products.length} artículos</strong></span>
+              <span>•</span>
+              <span>Tasa de cambio referencial BCV: <strong className="text-indigo-700 font-mono font-bold">Bs. {exchangeRate.toFixed(4)}</strong></span>
+            </div>
+            <div className="text-[11px] text-slate-400">
+              Valores calculados en tiempo real listos para emisión física o digital
+            </div>
+          </div>
         </div>
       )}
+
+        </div>
+      </div>
 
       {/* ========================================================================= */}
       {/* MODAL FICHA TÉCNICA DE PRODUCTO (CREAR / EDITAR) */}
@@ -2650,6 +3261,60 @@ export default function Inventory({
                       </select>
                     </div>
                   </div>
+
+                  {/* Calculadora en Tiempo Real de Rentabilidad y Precios */}
+                  {(() => {
+                    const costVal = parseFloat(productForm.costo_unitario) || 0;
+                    const priceVal = parseFloat(productForm.precio_venta) || 0;
+                    const profitVal = priceVal - costVal;
+                    const marginPercent = priceVal > 0 ? (profitVal / priceVal) * 100 : 0;
+                    const markupPercent = costVal > 0 ? (profitVal / costVal) * 100 : 0;
+                    const priceBs = priceVal * exchangeRate;
+
+                    return (
+                      <div className="bg-gradient-to-r from-slate-50 to-indigo-50/40 border border-slate-200/90 rounded-2xl p-3.5 space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] uppercase font-black text-indigo-900 tracking-wider flex items-center gap-1.5">
+                            <Percent size={12} className="text-indigo-600" />
+                            Rentabilidad Comercial & Conversión BCV en Vivo
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500 font-mono">
+                            Tasa Oficial: Bs. {exchangeRate.toFixed(2)}
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                          <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[10px] text-slate-400 block font-bold">Margen Bruto</span>
+                            <span className={`text-xs font-black font-mono ${marginPercent >= 30 ? 'text-emerald-700' : marginPercent > 0 ? 'text-amber-700' : 'text-slate-700'}`}>
+                              {marginPercent.toFixed(1)}%
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[10px] text-slate-400 block font-bold">Ganancia / Und</span>
+                            <span className={`text-xs font-black font-mono ${profitVal >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                              ${profitVal.toFixed(2)}
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[10px] text-slate-400 block font-bold">Markup s/ Costo</span>
+                            <span className="text-xs font-black font-mono text-indigo-700">
+                              {markupPercent.toFixed(1)}%
+                            </span>
+                          </div>
+
+                          <div className="bg-white p-2 rounded-xl border border-slate-200/80 shadow-2xs">
+                            <span className="text-[10px] text-slate-400 block font-bold">PVP en Bolívares</span>
+                            <span className="text-xs font-black font-mono text-slate-900">
+                              Bs. {new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(priceBs)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Resumen de cuentas contables vinculadas */}
                   <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/80 p-2.5 rounded-xl border border-slate-200/60">

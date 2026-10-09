@@ -5,7 +5,7 @@ import {
   Save, AlertTriangle, User, Building2, DollarSign, Calendar, 
   BookOpen, Eye, X, HelpCircle, Package, ShieldCheck, ShieldAlert, KeyRound,
   CreditCard, Landmark, Check, CornerDownRight, Coins, 
-  Clock, ArrowRight, Sparkles, RefreshCw, Mail, Phone, Lock, Printer,
+  Clock, ArrowRight, Sparkles, RefreshCw, Mail, Phone, Lock, Unlock, Tag, ChevronDown, Printer,
   ScanBarcode, Barcode, Settings, Info
 } from 'lucide-react';
 import BackButton from '../components/common/BackButton';
@@ -16,7 +16,15 @@ import MasterAuthModal from '../components/common/MasterAuthModal';
 import VoucherPreviewModal from '../components/common/VoucherPreviewModal';
 import InvoicePrintModal from '../components/invoicing/InvoicePrintModal';
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
-import { dbFetchTerminalesPos, dbFetchLotesPos, dbSaveLotePos, dbObtenerSiguienteCorrelativo, isUUID } from '../services/db';
+import { 
+  dbFetchTerminalesPos, 
+  dbFetchLotesPos, 
+  dbSaveLotePos, 
+  dbObtenerSiguienteCorrelativo, 
+  dbActualizarStockLoteAtomico,
+  dbAcumularTransaccionLotePosAtomico,
+  isUUID 
+} from '../services/db';
 import { FacturaVentaModel, FacturaItemModel, ProductModel, TerminalPosModel, LotePosTransaccion } from '../types/database';
 import { formatDate, getTodayLocalDate, addDaysToDate } from '../utils/dateUtils';
 import { formatDocumentNumber, getNextCorrelativo, parseMoney } from '../utils/numberFormat';
@@ -195,6 +203,14 @@ export default function InvoiceForm({
   // Autorización de Stock 0 con Clave Especial de Operaciones Master
   const [isZeroStockAuthorized, setIsZeroStockAuthorized] = useState(false);
   const [isMasterAuthModalOpen, setIsMasterAuthModalOpen] = useState(false);
+
+  // Modal de Selección de Tarifas de Precios de Inventario
+  const [priceModalItemIndex, setPriceModalItemIndex] = useState<number | null>(null);
+
+  // Desbloqueo de Precio Manual por Renglón con Clave Especial / Supervisor
+  const [isPriceUnlockAuthOpen, setIsPriceUnlockAuthOpen] = useState(false);
+  const [priceUnlockTargetIndex, setPriceUnlockTargetIndex] = useState<number | null>(null);
+  const [unlockedPriceRows, setUnlockedPriceRows] = useState<Record<number, boolean>>({});
 
   // Artículos con stock 0 o insuficiente
   const zeroStockItems = useMemo(() => {
@@ -467,7 +483,40 @@ export default function InvoiceForm({
     setIsProductModalOpen(true);
   };
 
-  const addProductToItems = (prod: ProductModel, targetIndex: number | null = null) => {
+  // Obtener el precio base en USD según la tarifa establecida en el inventario
+  const getProductPriceForTier = (prod: ProductModel, tier?: 'detal' | 'mayor' | 'vip' | 'minimo' | string) => {
+    if (!prod) return 0;
+    switch (tier) {
+      case 'mayor':
+        return (Number(prod.precio_mayor) > 0 ? Number(prod.precio_mayor) : Number(prod.precio_venta)) || 0;
+      case 'vip':
+        return (Number(prod.precio_vip) > 0 ? Number(prod.precio_vip) : Number(prod.precio_venta)) || 0;
+      case 'minimo':
+        return (Number(prod.precio_minimo) > 0 ? Number(prod.precio_minimo) : Number(prod.precio_venta)) || 0;
+      case 'detal':
+      default:
+        return Number(prod.precio_venta) || 0;
+    }
+  };
+
+  // Obtener lista de tarifas de precios establecidas en inventario para un producto
+  const getAvailablePriceTiers = (prod: ProductModel) => {
+    const tiers: Array<{ id: 'detal' | 'mayor' | 'vip' | 'minimo'; label: string; priceUSD: number }> = [
+      { id: 'detal', label: 'PVP (Detal)', priceUSD: Number(prod.precio_venta) || 0 }
+    ];
+    if (Number(prod.precio_mayor) > 0) {
+      tiers.push({ id: 'mayor', label: 'Mayorista', priceUSD: Number(prod.precio_mayor) });
+    }
+    if (Number(prod.precio_vip) > 0) {
+      tiers.push({ id: 'vip', label: 'VIP / Especial', priceUSD: Number(prod.precio_vip) });
+    }
+    if (Number(prod.precio_minimo) > 0) {
+      tiers.push({ id: 'minimo', label: 'Precio Mínimo', priceUSD: Number(prod.precio_minimo) });
+    }
+    return tiers;
+  };
+
+  const addProductToItems = (prod: ProductModel, targetIndex: number | null = null, tier: 'detal' | 'mayor' | 'vip' | 'minimo' = 'detal') => {
     let idx = targetIndex;
 
     // Si no había índice activo (ej. botón global "+ Buscar en Catálogo"), buscamos una línea vacía o agregamos una nueva
@@ -485,15 +534,18 @@ export default function InvoiceForm({
       const existingLine = idx !== null && idx < updated.length ? updated[idx] : null;
       const qty = existingLine ? (Number(existingLine.cantidad) || 1) : 1;
 
-      // Calcular precio unitario según la moneda de emisión (USD o VES)
-      let price = Number(prod.precio_venta) || 0;
+      // Calcular precio unitario bloqueado según la tarifa establecida y la moneda de emisión (USD o VES)
+      const baseUSD = getProductPriceForTier(prod, tier);
+      let price = baseUSD;
       if (currency === 'VES' && exchangeRate > 0) {
-        price = price * exchangeRate;
+        price = Number((baseUSD * exchangeRate).toFixed(2));
+      } else {
+        price = Number(baseUSD.toFixed(2));
       }
 
-      const lineSubtotal = qty * price;
+      const lineSubtotal = Number((qty * price).toFixed(2));
       const isExempt = !prod.aplica_iva;
-      const iva = isExempt ? 0 : lineSubtotal * 0.16;
+      const iva = isExempt ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
       const cleanName = (prod.nombre || '').replace(/\s*\(E\)\s*$/i, '').trim();
       const itemDescription = isExempt ? `${cleanName} (E)` : cleanName;
 
@@ -504,10 +556,11 @@ export default function InvoiceForm({
         descripcion: itemDescription,
         cantidad: qty,
         precio_unitario: price,
+        tipo_precio: tier,
         exento: isExempt,
         subtotal: lineSubtotal,
         iva_monto: iva,
-        total: lineSubtotal + iva,
+        total: Number((lineSubtotal + iva).toFixed(2)),
         cuenta_ingreso_id: prod.cuenta_venta_id || '4.1.01.001',
         cuenta_costo_id: prod.cuenta_costo_id || '5.1.01.001',
         cuenta_inventario_id: prod.cuenta_inventario_id || '1.1.04.001'
@@ -522,8 +575,80 @@ export default function InvoiceForm({
     });
   };
 
-  const handleSelectProductFromModal = (prod: ProductModel) => {
-    addProductToItems(prod, activeItemIndexForProduct);
+  // Manejar cambio de tarifa de precio establecida en inventario para una fila
+  const handlePriceTierChange = (index: number, tier: 'detal' | 'mayor' | 'vip' | 'minimo') => {
+    setItems(prev => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+      const prod = products.find(p => p.id === item.producto_id || (item.codigo && p.codigo && p.codigo.trim().toLowerCase() === item.codigo.trim().toLowerCase()));
+      if (!prod) return prev;
+
+      const baseUSD = getProductPriceForTier(prod, tier);
+      let price = baseUSD;
+      if (currency === 'VES' && exchangeRate > 0) {
+        price = Number((baseUSD * exchangeRate).toFixed(2));
+      } else {
+        price = Number(baseUSD.toFixed(2));
+      }
+
+      const qty = typeof item.cantidad === 'number' ? item.cantidad : parseMoney(item.cantidad);
+      const lineSubtotal = Number((qty * price).toFixed(2));
+      const iva = item.exento ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+
+      item.tipo_precio = tier;
+      item.precio_unitario = price;
+      item.subtotal = lineSubtotal;
+      item.iva_monto = iva;
+      item.total = Number((lineSubtotal + iva).toFixed(2));
+
+      updated[index] = item;
+      return updated;
+    });
+  };
+
+  // Manejo de edición manual de precio para una fila desbloqueada con clave de supervisor
+  const handleManualPriceChange = (index: number, rawVal: string) => {
+    const cleanVal = rawVal.replace(/[^0-9.,]/g, '');
+    const parsed = parseMoney(cleanVal);
+    setItems(prev => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+      const qty = typeof item.cantidad === 'number' ? item.cantidad : parseMoney(item.cantidad);
+      const lineSubtotal = Number((qty * parsed).toFixed(2));
+      const iva = item.exento ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+
+      item.tipo_precio = 'manual';
+      item.precio_unitario = cleanVal as any;
+      item.subtotal = lineSubtotal;
+      item.iva_monto = iva;
+      item.total = Number((lineSubtotal + iva).toFixed(2));
+
+      updated[index] = item;
+      return updated;
+    });
+  };
+
+  const handleManualPriceBlur = (index: number) => {
+    setItems(prev => {
+      const updated = [...prev];
+      const item = { ...updated[index] };
+      const numPrice = parseMoney(item.precio_unitario);
+      const qty = typeof item.cantidad === 'number' ? item.cantidad : parseMoney(item.cantidad);
+      const lineSubtotal = Number((qty * numPrice).toFixed(2));
+      const iva = item.exento ? 0 : Number((lineSubtotal * 0.16).toFixed(2));
+
+      item.precio_unitario = numPrice;
+      item.subtotal = lineSubtotal;
+      item.iva_monto = iva;
+      item.total = Number((lineSubtotal + iva).toFixed(2));
+
+      updated[index] = item;
+      return updated;
+    });
+  };
+
+  const handleSelectProductFromModal = (prod: ProductModel, tier: 'detal' | 'mayor' | 'vip' | 'minimo' = 'detal') => {
+    addProductToItems(prod, activeItemIndexForProduct, tier);
     setIsProductModalOpen(false);
     setActiveItemIndexForProduct(null);
     showToast?.(`Artículo "${prod.nombre}" añadido a la factura`, 'success');
@@ -611,16 +736,17 @@ export default function InvoiceForm({
         let newUnitPrice = Number(item.precio_unitario) || 0;
 
         if (newCurrency === 'VES') {
-          // AL CAMBIAR A BOLÍVARES: Tomar el precio del producto y multiplicarlo por la tasa de cambio
-          if (prod && Number(prod.precio_venta) > 0) {
-            newUnitPrice = Number(prod.precio_venta) * exchangeRate;
+          // AL CAMBIAR A BOLÍVARES: Tomar la tarifa seleccionada del producto y multiplicarla por la tasa de cambio
+          if (prod && item.tipo_precio !== 'manual') {
+            const baseUSD = getProductPriceForTier(prod, item.tipo_precio || 'detal');
+            newUnitPrice = baseUSD * exchangeRate;
           } else if (newUnitPrice > 0 && exchangeRate > 0) {
             newUnitPrice = newUnitPrice * exchangeRate;
           }
         } else {
-          // AL CAMBIAR A DÓLARES: Restaurar el precio base del producto en USD o dividir por la tasa
-          if (prod && Number(prod.precio_venta) > 0) {
-            newUnitPrice = Number(prod.precio_venta);
+          // AL CAMBIAR A DÓLARES: Restaurar la tarifa seleccionada del producto en USD o dividir por la tasa
+          if (prod && item.tipo_precio !== 'manual') {
+            newUnitPrice = getProductPriceForTier(prod, item.tipo_precio || 'detal');
           } else if (newUnitPrice > 0 && exchangeRate > 0) {
             newUnitPrice = newUnitPrice / exchangeRate;
           }
@@ -665,8 +791,9 @@ export default function InvoiceForm({
         const prod = products.find(p => p.id === item.producto_id);
 
         let newUnitPrice = Number(item.precio_unitario) || 0;
-        if (prod && Number(prod.precio_venta) > 0) {
-          newUnitPrice = Number(prod.precio_venta) * rate;
+        if (prod && item.tipo_precio !== 'manual') {
+          const baseUSD = getProductPriceForTier(prod, item.tipo_precio || 'detal');
+          newUnitPrice = baseUSD * rate;
         } else if (currency === 'VES' && newUnitPrice > 0 && exchangeRate > 0) {
           newUnitPrice = (newUnitPrice / exchangeRate) * rate;
         }
@@ -784,6 +911,18 @@ export default function InvoiceForm({
       return;
     }
     setItems(prev => prev.filter((_, idx) => idx !== index));
+    setUnlockedPriceRows(prev => {
+      const next: Record<number, boolean> = {};
+      Object.keys(prev).forEach(k => {
+        const rowIdx = Number(k);
+        if (rowIdx < index) {
+          next[rowIdx] = prev[rowIdx];
+        } else if (rowIdx > index) {
+          next[rowIdx - 1] = prev[rowIdx];
+        }
+      });
+      return next;
+    });
   };
 
   const handleProductSelect = (index: number, productId: string) => {
@@ -1451,9 +1590,10 @@ export default function InvoiceForm({
 
       // Asignar correlativo atómico con bloqueo pesimista en PostgreSQL para evitar colisiones
       let finalInvoiceNumber = invoiceNumber.trim().toUpperCase();
+      let atomicResult: any = null;
       if (currentCompanyId) {
         try {
-          const atomicResult = await dbObtenerSiguienteCorrelativo(currentCompanyId, docType);
+          atomicResult = await dbObtenerSiguienteCorrelativo(currentCompanyId, docType);
           if (atomicResult && atomicResult.numero_formateado) {
             finalInvoiceNumber = atomicResult.numero_formateado;
           }
@@ -1537,39 +1677,42 @@ export default function InvoiceForm({
 
       await onSave?.('facturasVenta', newFactura);
 
-      // 2. Descontar Stock de Inventario y Registrar Kardex
-      for (const item of items) {
-        if (item.producto_id) {
-          const originalProd = products.find(p => p.id === item.producto_id);
+      // 2. Descontar Stock de Inventario y Registrar Kardex de Forma Atómica (Bloqueo Pesimista FOR UPDATE en Postgres)
+      const batchStockItems = items
+        .filter(it => it.producto_id)
+        .map(it => {
+          const originalProd = products.find(p => p.id === it.producto_id);
+          const cantFacturada = typeof it.cantidad === 'number' ? it.cantidad : parseMoney(it.cantidad);
+          return {
+            producto_id: it.producto_id!,
+            cantidad: cantFacturada,
+            costo_unitario: originalProd?.costo_unitario || 0,
+            almacen_origen_id: isUUID(originalProd?.almacen_id) ? originalProd?.almacen_id : null
+          };
+        });
+
+      if (batchStockItems.length > 0 && currentCompanyId) {
+        await dbActualizarStockLoteAtomico(
+          currentCompanyId,
+          batchStockItems,
+          'venta',
+          {
+            referencia: `Venta Factura ${newFactura.numero}`,
+            usuario: 'Vendedor',
+            permitirNegativo: true // Ya validado con clave maestra si correspondía
+          }
+        );
+
+        // Actualizar el estado visual del cliente en memoria React sin sobreescribir la fila completa en Supabase
+        for (const bItem of batchStockItems) {
+          const originalProd = products.find(p => p.id === bItem.producto_id);
           if (originalProd) {
             const currentStock = Number(originalProd.stock_actual) || 0;
-            const cantFacturada = typeof item.cantidad === 'number' ? item.cantidad : parseMoney(item.cantidad);
-            // Permitir stock resultante negativo cuando se autorizó con stock 0
-            const newStock = currentStock - cantFacturada;
-
-            await onSave?.('products', {
+            const newStock = currentStock - bItem.cantidad;
+            onSave?.('products', {
               ...originalProd,
               stock_actual: newStock,
-              updated_at: new Date().toISOString()
-            });
-
-            const fueSinStock = currentStock <= 0 || (currentStock - cantFacturada < 0);
-            await onSave?.('movimientosInventario', {
-              id: crypto.randomUUID(),
-              empresa_id: currentCompanyId,
-              producto_id: originalProd.id,
-              producto_nombre: originalProd.nombre,
-              producto_codigo: originalProd.codigo,
-              tipo: 'venta',
-              almacen_origen_id: isUUID(originalProd.almacen_id) ? originalProd.almacen_id : null,
-              cantidad: cantFacturada,
-              stock_anterior: currentStock,
-              stock_resultante: newStock,
-              costo_unitario: originalProd.costo_unitario,
-              referencia: `Venta Factura ${newFactura.numero}${fueSinStock ? ' [Stock 0 Aut. Master]' : ''}`,
-              fecha: issueDate,
-              usuario: 'Administrador',
-              created_at: new Date().toISOString()
+              _localOnly: true
             });
           }
         }
@@ -1630,39 +1773,18 @@ export default function InvoiceForm({
 
       // 4. Registrar Cobranza y Movimiento Bancario o Lote POS si fue de Contado
       if (selectedCondition === 'contado') {
-        cobranzaForm.pagos.forEach(async (pago, idx) => {
+        for (const pago of cobranzaForm.pagos) {
           const isPos = pago.metodoPago === 'Punto de Venta';
           const pagoMontoNum = parseFloat(pago.monto) || totals.netoCobrarUSD;
           const pagoMontoBsNum = parseFloat(pago.montoBs) || totals.netoCobrarBs;
 
           if (isPos) {
-            // Acumular en el Lote Abierto del Terminal POS
+            // Acumular atómicamente en el Lote del Terminal POS (Bloqueo Pesimista FOR UPDATE)
             const termId = pago.terminalId || (terminalesPos.length > 0 ? terminalesPos[0].id : 'pos_term_1');
             const termObj = terminalesPos.find(t => t.id === termId);
-            
-            try {
-              const existingLotes = await dbFetchLotesPos(currentCompanyId);
-              let openLote = existingLotes.find((l: any) => l.terminal_id === termId && l.estado === 'abierto');
-              if (!openLote) {
-                openLote = {
-                  id: crypto.randomUUID(),
-                  company_id: currentCompanyId,
-                  terminal_id: termId,
-                  terminal_nombre: termObj ? termObj.nombre : 'Punto de Venta',
-                  banco_id: termObj ? termObj.banco_id : (bancos.length > 0 ? bancos[0].id : ''),
-                  lote_numero: 'EN CURSO',
-                  fecha_apertura: issueDate,
-                  total_operaciones: 0,
-                  monto_bruto_sistema: 0,
-                  monto_bruto_ticket: 0,
-                  diferencia: 0,
-                  comision_monto: 0,
-                  monto_neto_banco: 0,
-                  estado: 'abierto',
-                  transacciones: []
-                };
-              }
+            const bancoEfectivo = termObj ? termObj.banco_id : (bancos.length > 0 ? bancos[0].id : '');
 
+            try {
               const newTx: LotePosTransaccion = {
                 id: crypto.randomUUID(),
                 factura_id: newFactura.id,
@@ -1675,27 +1797,22 @@ export default function InvoiceForm({
                 fecha: issueDate
               };
 
-              const updatedLote = {
-                ...openLote,
-                company_id: currentCompanyId,
-                total_operaciones: (openLote.transacciones?.length || 0) + 1,
-                monto_bruto_sistema: Number(((openLote.monto_bruto_sistema || 0) + pagoMontoBsNum).toFixed(2)),
-                monto_bruto_usd: Number(((openLote.monto_bruto_usd || 0) + pagoMontoNum).toFixed(2)),
-                transacciones: [...(openLote.transacciones || []), newTx],
-                updated_at: new Date().toISOString()
-              };
+              await dbAcumularTransaccionLotePosAtomico(
+                currentCompanyId,
+                termId,
+                newTx,
+                pagoMontoBsNum,
+                pagoMontoNum
+              );
 
-              await dbSaveLotePos(updatedLote, currentCompanyId);
-              onSave?.('lotesPos', updatedLote);
-              
-              onSave?.('cobranzas', {
+              await onSave?.('cobranzas', {
                 id: crypto.randomUUID(),
                 reciboNumero: pago.referencia || newFactura.numero,
                 clienteId: effectiveCustomerId || newFactura.cliente_id,
                 clienteNombre: customerName,
                 fecha: issueDate,
                 montoTotal: pagoMontoNum,
-                bancoId: openLote.banco_id,
+                bancoId: bancoEfectivo,
                 comprobanteId: voucherId,
                 retencionIva: totals.retIvaMontoUSD,
                 retencionIslr: totals.retIslrMontoUSD,
@@ -1705,13 +1822,13 @@ export default function InvoiceForm({
                 estado: 'activo'
               });
             } catch (err) {
-              console.error("Error acumulando en lote POS:", err);
+              console.error("Error acumulando atómicamente en lote POS:", err);
             }
           } else {
             const bank = bancos.find(b => b.id === pago.bancoId) || (pago.metodoPago === 'efectivo' || pago.metodoPago === 'Efectivo' ? bancos.find(b => b.es_caja || (b.tipo || '').toLowerCase().includes('caja')) : null) || (bancos && bancos.length > 0 ? bancos[0] : null);
             if (bank) {
               const movId = crypto.randomUUID();
-              onSave?.('movimientosBancos', {
+              await onSave?.('movimientosBancos', {
                 id: movId,
                 banco_id: bank.id,
                 fecha: issueDate,
@@ -1726,7 +1843,7 @@ export default function InvoiceForm({
                 created_at: new Date().toISOString()
               });
               
-              onSave?.('cobranzas', {
+              await onSave?.('cobranzas', {
                 id: crypto.randomUUID(),
                 reciboNumero: pago.referencia || newFactura.numero,
                 clienteId: effectiveCustomerId || newFactura.cliente_id,
@@ -1744,20 +1861,21 @@ export default function InvoiceForm({
               });
             }
           }
-        });
+        }
       }
 
-      // 5. Incrementar correlativo
+      // 5. Incrementar / sincronizar correlativo
       let nextCorrelativo = '000002';
       if (configContable) {
+        const assignedNext = atomicResult?.siguiente_correlativo_str;
         if (docType === 'nota_entrega') {
-          nextCorrelativo = getNextCorrelativo(configContable.correlativoNotaEntrega, 6);
+          nextCorrelativo = assignedNext || getNextCorrelativo(configContable.correlativoNotaEntrega, 6);
           await onSave?.('configContable', {
             ...configContable,
             correlativoNotaEntrega: nextCorrelativo
           });
         } else if (docType === 'factura') {
-          nextCorrelativo = getNextCorrelativo(configContable.correlativoFactura, 6);
+          nextCorrelativo = assignedNext || getNextCorrelativo(configContable.correlativoFactura, 6);
           await onSave?.('configContable', {
             ...configContable,
             correlativoFactura: nextCorrelativo
@@ -2696,7 +2814,12 @@ export default function InvoiceForm({
                   <th className="px-3 py-2">Descripción / Concepto</th>
                   <th className="px-2 py-2 w-24 text-center">Stock</th>
                   <th className="px-2 py-2 w-20 text-center">Cant.</th>
-                  <th className="px-2 py-2 w-28 text-right">P. Unitario ({currency === 'USD' ? '$' : 'Bs.'})</th>
+                  <th className="px-2 py-2 w-36 text-right">
+                    <span className="inline-flex items-center gap-1 justify-end">
+                      <Lock size={10} className="text-slate-400" />
+                      <span>P. Unitario ({currency === 'USD' ? '$' : 'Bs.'})</span>
+                    </span>
+                  </th>
                   <th className="px-2 py-2 w-20 text-center">IVA</th>
                   <th className="px-3 py-2 w-28 text-right">Total ({currency === 'USD' ? '$' : 'Bs.'})</th>
                   <th className="px-2 py-2 w-10 text-center"></th>
@@ -2815,19 +2938,106 @@ export default function InvoiceForm({
                         />
                       </td>
 
-                      {/* Precio Unitario */}
+                      {/* Precio Unitario Bloqueado & Selector Modal de Tarifas / Candado con Clave */}
                       <td className="px-2 py-2 text-right align-middle">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          placeholder="0,00"
-                          value={item.precio_unitario !== undefined && item.precio_unitario !== null && item.precio_unitario !== '' ? String(item.precio_unitario).replace('.', ',') : ''}
-                          onChange={(e) => {
-                            const raw = e.target.value.replace(/[^0-9.,]/g, '');
-                            handleItemFieldChange(idx, 'precio_unitario', raw);
-                          }}
-                          className="w-24 px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-black text-right text-slate-900 focus:border-indigo-600 outline-none font-mono"
-                        />
+                        <div className="flex flex-col items-end gap-1 min-w-[130px]">
+                          {selectedProd ? (
+                            <button
+                              type="button"
+                              onClick={() => setPriceModalItemIndex(idx)}
+                              className={`w-full text-[10px] font-black rounded-md px-2 py-0.5 border flex items-center justify-between gap-1 transition cursor-pointer shadow-2xs ${
+                                item.tipo_precio === 'manual'
+                                  ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                                  : item.tipo_precio === 'mayor'
+                                  ? 'bg-blue-50 text-blue-800 border-blue-200 hover:bg-blue-100'
+                                  : item.tipo_precio === 'vip'
+                                  ? 'bg-purple-50 text-purple-800 border-purple-200 hover:bg-purple-100'
+                                  : item.tipo_precio === 'minimo'
+                                  ? 'bg-rose-50 text-rose-800 border-rose-200 hover:bg-rose-100'
+                                  : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                              }`}
+                              title="Haga clic para abrir el modal de tarifas de inventario y seleccionar un precio"
+                            >
+                              <span className="flex items-center gap-1 truncate">
+                                <Tag size={10} className="shrink-0" />
+                                <span>
+                                  {item.tipo_precio === 'manual'
+                                    ? 'Tarifa: Manual'
+                                    : item.tipo_precio === 'mayor'
+                                    ? 'Mayorista'
+                                    : item.tipo_precio === 'vip'
+                                    ? 'VIP'
+                                    : item.tipo_precio === 'minimo'
+                                    ? 'Mínimo'
+                                    : 'PVP (Detal)'}
+                                </span>
+                              </span>
+                              <ChevronDown size={10} className="shrink-0 opacity-60" />
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">Sin producto</span>
+                          )}
+
+                          <div className="relative w-full flex items-center">
+                            {unlockedPriceRows[idx] ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setUnlockedPriceRows(prev => ({ ...prev, [idx]: false }));
+                                  showToast?.('Precio bloqueado nuevamente', 'info');
+                                }}
+                                title="Precio manual desbloqueado. Haga clic para volver a bloquear"
+                                className="absolute left-1 text-emerald-600 hover:text-emerald-700 transition cursor-pointer p-1 rounded hover:bg-emerald-100 z-10"
+                              >
+                                <Unlock size={12} />
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPriceUnlockTargetIndex(idx);
+                                  setIsPriceUnlockAuthOpen(true);
+                                }}
+                                title="Precio unitario bloqueado. Haga clic en el candado para ingresar la clave y desbloquear precio manual"
+                                className="absolute left-1 text-slate-400 hover:text-indigo-600 transition cursor-pointer p-1 rounded hover:bg-slate-200 z-10"
+                              >
+                                <Lock size={12} />
+                              </button>
+                            )}
+
+                            <input
+                              type="text"
+                              readOnly={!unlockedPriceRows[idx]}
+                              tabIndex={unlockedPriceRows[idx] ? 0 : -1}
+                              placeholder="0,00"
+                              value={
+                                unlockedPriceRows[idx]
+                                  ? (item.precio_unitario !== undefined && item.precio_unitario !== null ? String(item.precio_unitario).replace('.', ',') : '')
+                                  : (item.precio_unitario !== undefined && item.precio_unitario !== null && item.precio_unitario !== '' ? String(Number(item.precio_unitario).toFixed(2)).replace('.', ',') : '0,00')
+                              }
+                              onChange={(e) => {
+                                if (unlockedPriceRows[idx]) {
+                                  handleManualPriceChange(idx, e.target.value);
+                                }
+                              }}
+                              onBlur={() => {
+                                if (unlockedPriceRows[idx]) {
+                                  handleManualPriceBlur(idx);
+                                }
+                              }}
+                              className={`w-full pl-6 pr-2 py-1 rounded-lg text-xs font-black text-right outline-none font-mono transition ${
+                                unlockedPriceRows[idx]
+                                  ? 'bg-amber-50/50 border border-amber-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-200 text-slate-900 cursor-text shadow-2xs'
+                                  : 'bg-slate-100/90 border border-slate-200 text-slate-800 cursor-not-allowed select-none'
+                              }`}
+                              title={
+                                unlockedPriceRows[idx]
+                                  ? 'Precio manual editable. Ingrese el valor unitario.'
+                                  : 'Precio bloqueado. Clic en el candado para autorizar precio manual con clave.'
+                              }
+                            />
+                          </div>
+                        </div>
                       </td>
 
                       {/* IVA (Toggle 16% / Exento E) */}
@@ -4012,8 +4222,29 @@ export default function InvoiceForm({
                             <td className="px-3.5 py-3 text-right font-mono font-bold text-slate-600">
                               ${Number(prod.precio_venta || 0).toFixed(2)}
                             </td>
-                            <td className="px-3.5 py-3 text-right font-mono font-black text-slate-900">
-                              {formatMoney(displayPriceInCurrency, currency)}
+                            <td className="px-3.5 py-3 text-right">
+                              <div className="flex flex-col items-end gap-0.5 font-mono">
+                                <div className="flex items-center gap-1">
+                                  <span className="text-[9px] font-bold text-slate-400">PVP:</span>
+                                  <span className="font-black text-slate-900">{formatMoney(displayPriceInCurrency, currency)}</span>
+                                </div>
+                                {Number(prod.precio_mayor) > 0 && (
+                                  <div className="flex items-center gap-1 text-[10px]">
+                                    <span className="text-[9px] font-bold text-indigo-600">Mayor:</span>
+                                    <span className="font-semibold text-slate-700">
+                                      {formatMoney(currency === 'VES' && exchangeRate > 0 ? Number(prod.precio_mayor) * exchangeRate : Number(prod.precio_mayor), currency)}
+                                    </span>
+                                  </div>
+                                )}
+                                {Number(prod.precio_vip) > 0 && (
+                                  <div className="flex items-center gap-1 text-[10px]">
+                                    <span className="text-[9px] font-bold text-purple-600">VIP:</span>
+                                    <span className="font-semibold text-slate-700">
+                                      {formatMoney(currency === 'VES' && exchangeRate > 0 ? Number(prod.precio_vip) * exchangeRate : Number(prod.precio_vip), currency)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3.5 py-3 text-center">
                               <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
@@ -4025,17 +4256,46 @@ export default function InvoiceForm({
                               </span>
                             </td>
                             <td className="px-3.5 py-3 text-center">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectProductFromModal(prod);
-                                }}
-                                className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-xs shadow-xs group-hover:scale-105 transition flex items-center gap-1 mx-auto cursor-pointer"
-                              >
-                                <Check size={13} />
-                                <span>Seleccionar</span>
-                              </button>
+                              <div className="flex flex-col gap-1 items-center max-w-[90px] mx-auto">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSelectProductFromModal(prod, 'detal');
+                                  }}
+                                  className="w-full px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-bold text-[10px] shadow-xs transition flex items-center justify-center gap-1 cursor-pointer"
+                                  title="Cargar con Precio PVP (Detal)"
+                                >
+                                  <Check size={11} />
+                                  <span>PVP</span>
+                                </button>
+                                {Number(prod.precio_mayor) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectProductFromModal(prod, 'mayor');
+                                    }}
+                                    className="w-full px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded text-[9px] font-bold transition cursor-pointer"
+                                    title="Cargar con Precio Mayorista"
+                                  >
+                                    Mayor
+                                  </button>
+                                )}
+                                {Number(prod.precio_vip) > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleSelectProductFromModal(prod, 'vip');
+                                    }}
+                                    className="w-full px-2 py-0.5 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded text-[9px] font-bold transition cursor-pointer"
+                                    title="Cargar con Precio VIP"
+                                  >
+                                    VIP
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -4281,6 +4541,201 @@ export default function InvoiceForm({
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL: SELECCIÓN DE PRECIOS ESTABLECIDOS EN INVENTARIO */}
+      {/* ========================================================================= */}
+      {priceModalItemIndex !== null && items[priceModalItemIndex] && (() => {
+        const item = items[priceModalItemIndex];
+        const prod = products.find(p => p.id === item.producto_id || (item.codigo && p.codigo && p.codigo.trim().toLowerCase() === item.codigo.trim().toLowerCase()));
+        if (!prod) return null;
+
+        const tiers = getAvailablePriceTiers(prod);
+
+        return (
+          <div className="fixed inset-0 z-[500] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+            <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-150 flex flex-col">
+              {/* Header */}
+              <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 shrink-0">
+                    <Tag size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black tracking-tight text-white">Precios Establecidos en Inventario</h3>
+                    <p className="text-xs text-indigo-200 font-semibold mt-0.5 truncate max-w-xs" title={prod.nombre}>
+                      {prod.codigo ? `[${prod.codigo}] ` : ''}{prod.nombre}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPriceModalItemIndex(null)}
+                  className="w-8 h-8 rounded-full hover:bg-white/10 text-slate-300 hover:text-white flex items-center justify-center transition cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Subheader: Stock e información */}
+              <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 text-slate-600 font-medium">
+                  <span>Stock disponible:</span>
+                  <span className={`font-mono font-black px-2 py-0.5 rounded text-[11px] ${
+                    Number(prod.stock_actual) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                  }`}>
+                    {prod.stock_actual} {prod.unidad_medida || 'unid.'}
+                  </span>
+                </div>
+                <div className="text-slate-500 font-medium text-[11px]">
+                  Moneda actual: <b className="text-slate-800 font-bold">{currency === 'USD' ? 'Dólares ($)' : 'Bolívares (Bs.)'}</b>
+                </div>
+              </div>
+
+              {/* Body: Lista de Tarifas de Precios Establecidos */}
+              <div className="p-5 space-y-2.5 max-h-[60vh] overflow-y-auto">
+                <p className="text-xs text-slate-500 mb-2 font-medium">
+                  Seleccione una de las tarifas oficiales establecidas para este producto para aplicarla al renglón:
+                </p>
+
+                {tiers.map((tier) => {
+                  const isSelected = item.tipo_precio === tier.id;
+                  const priceUSD = tier.priceUSD;
+                  const priceBs = exchangeRate > 0 ? priceUSD * exchangeRate : 0;
+                  const mainPriceFormatted = currency === 'USD' ? `$${priceUSD.toFixed(2)}` : `Bs. ${priceBs.toFixed(2)}`;
+                  const secondaryPriceFormatted = currency === 'USD' ? `Equiv: Bs. ${priceBs.toFixed(2)}` : `Equiv: $${priceUSD.toFixed(2)}`;
+
+                  let tierBadgeColor = 'bg-indigo-100 text-indigo-800 border-indigo-200';
+                  let tierDescription = 'Precio de venta al público estándar';
+
+                  if (tier.id === 'mayor') {
+                    tierBadgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
+                    tierDescription = 'Tarifa especial para compras al mayor';
+                  } else if (tier.id === 'vip') {
+                    tierBadgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
+                    tierDescription = 'Tarifa preferencial para clientes VIP';
+                  } else if (tier.id === 'minimo') {
+                    tierBadgeColor = 'bg-rose-100 text-rose-800 border-rose-200';
+                    tierDescription = 'Precio piso de venta mínimo autorizado';
+                  }
+
+                  return (
+                    <div
+                      key={tier.id}
+                      onClick={() => {
+                        handlePriceTierChange(priceModalItemIndex, tier.id);
+                        setUnlockedPriceRows(prev => ({ ...prev, [priceModalItemIndex]: false }));
+                        setPriceModalItemIndex(null);
+                        showToast?.(`Tarifa "${tier.label}" seleccionada (${mainPriceFormatted})`, 'success');
+                      }}
+                      className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 group ${
+                        isSelected
+                          ? 'bg-indigo-50/80 border-indigo-500 ring-2 ring-indigo-200 shadow-sm'
+                          : 'bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 transition ${
+                          isSelected ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-100 text-slate-600 group-hover:bg-indigo-100 group-hover:text-indigo-700'
+                        }`}>
+                          {isSelected ? <Check size={16} /> : <Tag size={15} />}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-black text-xs text-slate-900">{tier.label}</span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full border ${tierBadgeColor}`}>
+                              {tier.id.toUpperCase()}
+                            </span>
+                            {isSelected && (
+                              <span className="text-[9px] font-black uppercase px-2 py-0.2 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-0.5">
+                                <Check size={10} /> Activo
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-0.5">{tierDescription}</p>
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="font-mono font-black text-sm text-slate-900 group-hover:text-indigo-600 transition">
+                          {mainPriceFormatted}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-400">
+                          {secondaryPriceFormatted}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Opción de Desbloqueo de Precio Manual con Clave de Supervisor */}
+                <div className="pt-2">
+                  <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs text-slate-600">
+                      <Lock size={14} className="text-slate-400 shrink-0" />
+                      <div>
+                        <p className="font-bold text-slate-700 text-xs">¿Desea ingresar un precio manual libre?</p>
+                        <p className="text-[10px] text-slate-500">Requiere clave especial de operaciones / supervisor.</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetIdx = priceModalItemIndex;
+                        setPriceModalItemIndex(null);
+                        setPriceUnlockTargetIndex(targetIdx);
+                        setIsPriceUnlockAuthOpen(true);
+                      }}
+                      className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                    >
+                      <KeyRound size={12} />
+                      <span>Desbloquear con Clave</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-3.5 px-5 bg-slate-50 border-t border-slate-100 flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPriceModalItemIndex(null)}
+                  className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================================= */}
+      {/* MODAL: AUTORIZACIÓN PARA DESBLOQUEO DE PRECIO MANUAL CON CLAVE */}
+      {/* ========================================================================= */}
+      <MasterAuthModal
+        isOpen={isPriceUnlockAuthOpen}
+        onClose={() => {
+          setIsPriceUnlockAuthOpen(false);
+          setPriceUnlockTargetIndex(null);
+        }}
+        title="Desbloqueo de Precio Manual"
+        subtitle="Se requiere Clave Especial de Operaciones / Supervisor"
+        actionName="Modificación Manual de Precio Unitario"
+        actionDetails={
+          priceUnlockTargetIndex !== null && items[priceUnlockTargetIndex]
+            ? `Renglón #${priceUnlockTargetIndex + 1}: ${items[priceUnlockTargetIndex].descripcion || items[priceUnlockTargetIndex].codigo || 'Artículo'} | Precio actual: ${currency === 'USD' ? '$' : 'Bs.'}${Number(items[priceUnlockTargetIndex].precio_unitario || 0).toFixed(2)}`
+            : undefined
+        }
+        onSuccess={() => {
+          if (priceUnlockTargetIndex !== null) {
+            setUnlockedPriceRows(prev => ({ ...prev, [priceUnlockTargetIndex]: true }));
+            showToast?.(`Precio del renglón #${priceUnlockTargetIndex + 1} desbloqueado. Ahora puede editar el precio manualmente.`, 'success');
+          }
+          setIsPriceUnlockAuthOpen(false);
+          setPriceUnlockTargetIndex(null);
+        }}
+      />
 
       </div>
     </div>

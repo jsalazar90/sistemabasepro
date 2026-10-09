@@ -66,7 +66,9 @@ export default defineConfig(({mode}) => {
             'vendor-supabase': ['@supabase/supabase-js'],
             'vendor-charts': ['recharts'],
             'vendor-docs': ['xlsx', 'pdf-lib'],
-            'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge']
+            'vendor-ui': ['lucide-react', 'clsx', 'tailwind-merge'],
+            'vendor-motion': ['motion'],
+            'vendor-auth-crypto': ['bcryptjs', 'idb-keyval']
           }
         }
       }

@@ -10,7 +10,7 @@ import {
   ExternalLink, DollarSign, ArrowDownLeft, FileSpreadsheet, Send, BarChart2, Coins, RotateCcw,
   Lock, TrendingUp, ChevronRight, MoreVertical, CreditCard } from 'lucide-react';
 import { PrintPreview } from '../components/PrintPreview';
-import { dbResetAllTestData, dbFetchTerminalesPos, isUUID } from '../services/db';
+import { dbResetAllTestData, dbFetchTerminalesPos, dbRegistrarAbonoCxcAtomico, isUUID } from '../services/db';
 import { TerminalPosModel } from '../types/database';
 import { useCompany } from '../context/CompanyContext';
 import MasterAuthModal from '../components/common/MasterAuthModal';
@@ -855,36 +855,50 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
             let tAnticiposAplicados = 0;
       
             if (onSave) {
-              onSave('comprobantes', finalComprobante);
+              await onSave('comprobantes', finalComprobante);
               
               for (const mov of draftMovs) {
-                onSave('movimientosBancos', mov);
+                await onSave('movimientosBancos', mov);
               }
               
               if (draftAnticipoSobrante) {
-                onSave('cxc', draftAnticipoSobrante);
+                await onSave('cxc', draftAnticipoSobrante);
               }
       
-              Object.entries(abonos).forEach(([docId, val]) => {
+              for (const [docId, val] of Object.entries(abonos)) {
                 const montoNum = Number(val) || 0;
                 if (montoNum > 0) {
                   const doc = cxc.find(d => d.id === docId);
                   if (doc) {
-                    const newSaldo = doc.saldo - montoNum;
-                    const newEstado = newSaldo <= 0.01 ? 'pagada' : 'parcial';
-                    const newFechaPago = newSaldo <= 0.01 ? cobranzaForm.fecha : (doc.fechaPago || null);
-                    
                     abonosLog.push({ docId: doc.id, facturaId: doc.factura_id, montoAbonado: montoNum });
                     tFacturasAplicadas += montoNum;
-                    
+
+                    // Registro atómico con bloqueo pesimista FOR UPDATE en PostgreSQL
+                    const abonoRes = await dbRegistrarAbonoCxcAtomico(
+                      activeCompanyId || '',
+                      doc.id,
+                      montoNum,
+                      cobranzaForm.fecha,
+                      cobranzaForm.referencia || `REC-${Date.now().toString().slice(-6)}`
+                    );
+
+                    const finalSaldo = abonoRes.success && abonoRes.nuevo_saldo !== undefined
+                      ? abonoRes.nuevo_saldo
+                      : Math.max(0, doc.saldo - montoNum);
+                    const finalEstado = finalSaldo <= 0.009 ? 'pagada' : 'parcial';
+                    const finalFechaPago = finalSaldo <= 0.009 ? cobranzaForm.fecha : (doc.fechaPago || null);
+
+                    // Actualizar el estado visual en React sin sobreescribir la fila en Supabase
                     onSave('cxc', {
                       ...doc,
-                      saldo: newSaldo,
-                      estado: newEstado,
-                      fechaPago: newFechaPago
+                      saldo: finalSaldo,
+                      saldo_pendiente: finalSaldo,
+                      estado: finalEstado,
+                      fechaPago: finalFechaPago,
+                      _localOnly: true
                     });
 
-                    // Sincronizar factura de venta si existe
+                    // Sincronizar factura de venta visualmente si existe
                     if (facturas && Array.isArray(facturas)) {
                       const matchedFac = facturas.find((f: any) => {
                         const facIdStr = String(f.id || '').toLowerCase();
@@ -901,8 +915,8 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                       });
 
                       if (matchedFac) {
-                        const targetFacEstado = newSaldo <= 0.009 ? 'cobrada' : 'parcial';
-                        const targetSaldoUSD = Math.max(0, newSaldo);
+                        const targetFacEstado = finalSaldo <= 0.009 ? 'cobrada' : 'parcial';
+                        const targetSaldoUSD = Math.max(0, finalSaldo);
                         const targetSaldoBs = targetSaldoUSD * (matchedFac.tasa_cambio || 1);
                         onSave('facturasVenta', {
                           ...matchedFac,
@@ -910,13 +924,13 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                           saldo_pendiente: targetSaldoUSD,
                           saldo_pendiente_bs: targetSaldoBs,
                           cxc_id: doc.id,
-                          updated_at: new Date().toISOString()
+                          _localOnly: true
                         });
                       }
                     }
                   }
                 }
-              });
+              }
       
               let remainingAnticipoToConsume = Number(anticipoGlobal) || 0;
               
@@ -991,7 +1005,7 @@ export default function Receivables({ cxc = [], cobranzas = [], comprobantes = [
                 anticipoSobranteId: draftAnticipoSobrante ? draftAnticipoSobrante.id : null
               };
               
-              onSave('cobranzas', newCobranza);
+              await onSave('cobranzas', newCobranza);
             }
       
             showToast?.('Cobro procesado exitosamente', 'success');

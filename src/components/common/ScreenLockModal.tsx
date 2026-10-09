@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, Unlock, AlertCircle, Shield, LogOut } from 'lucide-react';
 import { useCompany } from '../../context/CompanyContext';
+import { dbVerifyMasterClaveOperaciones } from '../../services/db';
 import { APP_NAME, APP_VERSION } from '../../config/version';
 
 interface ScreenLockModalProps {
@@ -43,13 +44,17 @@ export const ScreenLockModal: React.FC<ScreenLockModalProps> = ({
       }
 
       // 2. O verificar si coincide con la clave de operaciones del usuario o master
-      if (
-        currentUser?.claveOperaciones &&
-        currentUser.claveOperaciones === password.trim()
-      ) {
-        setPassword('');
-        onUnlock();
-        return;
+      if (currentUser?.role === 'Master') {
+        const claveRes = await dbVerifyMasterClaveOperaciones(password.trim());
+        if (claveRes.success) {
+          setPassword('');
+          onUnlock();
+          return;
+        }
+        if (claveRes.error) {
+          setError(claveRes.error);
+          return;
+        }
       }
 
       setError('Contraseña o clave de operaciones incorrecta');

@@ -154,6 +154,7 @@ export interface FacturaItemModel {
   cantidad: number;
   precio_unitario: number;
   precio_unitario_bs?: number;
+  tipo_precio?: 'detal' | 'mayor' | 'vip' | 'minimo' | string;
   exento: boolean;
   subtotal: number;
   subtotal_bs?: number;

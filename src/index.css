@@ -147,11 +147,11 @@ a, button, img {
   }
 
   .table-odoo th {
-    @apply bg-slate-50/90 border-b border-slate-200/80 text-[11px] uppercase tracking-wider text-slate-500 font-extrabold py-3.5 px-4 select-none whitespace-nowrap;
+    @apply bg-slate-50/90 border-b border-slate-200/80 text-[11px] uppercase tracking-wider text-slate-500 font-extrabold py-2.5 sm:py-3 px-2.5 sm:px-3 select-none whitespace-nowrap;
   }
 
   .table-odoo td {
-    @apply py-3 px-4 border-b border-slate-100 text-slate-700 font-medium;
+    @apply py-2.5 px-2.5 sm:px-3 border-b border-slate-100 text-slate-700 font-medium;
   }
 
   .table-odoo tbody tr:hover {
@@ -179,21 +179,28 @@ a, button, img {
 }
 
 .scrollbar-hide::-webkit-scrollbar,
-.no-scrollbar::-webkit-scrollbar {
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
   display: none !important;
 }
 
 .scrollbar-hide,
-.no-scrollbar {
+.no-scrollbar,
+.scrollbar-none {
   -ms-overflow-style: none !important;
   scrollbar-width: none !important;
+}
+
+/* Ocultar en pantalla el portal de impresión puro */
+#reporte-imprimible-root {
+  display: none;
 }
 
 /* --- SISTEMA PROFESIONAL DE IMPRESIÓN --- */
 @media print {
   @page {
     size: auto;
-    margin: 15mm !important;
+    margin: 10mm !important;
   }
 
   body {
@@ -208,15 +215,15 @@ a, button, img {
     print-color-adjust: exact !important;
   }
 
-  body > div:not(#reporte-imprimible-root),
+  body:has(#reporte-imprimible-root) > div:not(#reporte-imprimible-root),
+  body > div:not(#reporte-imprimible-root):not(#root),
   .no-print,
   .print\:hidden,
   button,
   nav,
   aside,
-  header,
-  footer,
-  .fixed,
+  header:not(.print-header),
+  footer:not(.print-footer),
   .modal-overlay {
     display: none !important;
     visibility: hidden !important;
@@ -241,7 +248,7 @@ a, button, img {
     padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
-    background: transparent !important;
+    background: #ffffff !important;
     overflow: visible !important;
   }
 

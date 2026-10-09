@@ -220,8 +220,113 @@ async function executeRemoteMutation(item: SyncQueueItem): Promise<boolean> {
   // UPSERT
   if (!payload) return true;
 
-  // Sanitización de claves foráneas no UUID para evitar errores 22P02 / 23503 en Postgres
+  // Manejo relacional especializado para Facturas de Venta
+  if (entity === 'facturas_venta') {
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const factRow: any = {
+      id: targetId,
+      empresa_id: payload.empresa_id,
+      numero: payload.numero || '',
+      control_numero: payload.control_numero || null,
+      tipo_documento: payload.tipo_documento || 'factura',
+      condicion: payload.condicion || 'contado',
+      dias_credito: Number(payload.dias_credito) || 0,
+      fecha_emision: payload.fecha_emision,
+      fecha_vencimiento: payload.fecha_vencimiento,
+      moneda: payload.moneda || 'USD',
+      tasa_cambio: Number(payload.tasa_cambio) || 1.0,
+      subtotal: Number(payload.subtotal) || 0,
+      base_imponible: Number(payload.base_imponible) || Number(payload.subtotal) || 0,
+      monto_exento: Number(payload.monto_exento) || 0,
+      iva_porcentaje: Number(payload.iva_porcentaje) || 16,
+      iva_monto: Number(payload.iva_monto) || 0,
+      igtf_porcentaje: Number(payload.igtf_porcentaje) || 0,
+      igtf_monto: Number(payload.igtf_monto) || 0,
+      total: Number(payload.total) || 0,
+      saldo_pendiente: Number(payload.saldo_pendiente) || 0,
+      estado: payload.estado || 'emitida',
+      notas: payload.notas || null
+    };
+    if (isUUID(payload.cliente_id)) factRow.cliente_id = payload.cliente_id;
+    if (isUUID(payload.comprobante_id)) factRow.comprobante_id = payload.comprobante_id;
+    if (isUUID(payload.banco_id)) factRow.banco_id = payload.banco_id;
+
+    const { error: fErr } = await supabase.from('facturas_venta').upsert(factRow, { onConflict: 'id' });
+    if (fErr) return false;
+
+    if (rawItems.length > 0) {
+      const itemsPayload = rawItems.map((it: any) => ({
+        id: (it.id && isUUID(it.id)) ? it.id : crypto.randomUUID(),
+        factura_id: targetId,
+        producto_id: (it.producto_id && isUUID(it.producto_id)) ? it.producto_id : null,
+        descripcion: it.descripcion || it.nombre || 'Artículo',
+        cantidad: Number(it.cantidad) || 1,
+        precio_unitario: Number(it.precio_unitario) || 0,
+        exento: it.exento ?? false,
+        subtotal: Number(it.subtotal) || 0,
+        iva_monto: Number(it.iva_monto) || 0,
+        total: Number(it.total) || 0,
+        cuenta_ingreso_id: (it.cuenta_ingreso_id && isUUID(it.cuenta_ingreso_id)) ? it.cuenta_ingreso_id : null,
+        cuenta_costo_id: (it.cuenta_costo_id && isUUID(it.cuenta_costo_id)) ? it.cuenta_costo_id : null,
+        cuenta_inventario_id: (it.cuenta_inventario_id && isUUID(it.cuenta_inventario_id)) ? it.cuenta_inventario_id : null
+      }));
+      await supabase.from('facturas_venta_items').delete().eq('factura_id', targetId);
+      await supabase.from('facturas_venta_items').insert(itemsPayload);
+    }
+    return true;
+  }
+
+  // Manejo relacional especializado para Facturas de Compra
+  if (entity === 'facturas_compra') {
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const compraRow: any = {
+      id: targetId,
+      empresa_id: payload.empresa_id,
+      numero: payload.numero || '',
+      control_numero: payload.control_numero || null,
+      condicion: payload.condicion || 'contado',
+      dias_credito: Number(payload.dias_credito) || 0,
+      fecha_emision: payload.fecha_emision,
+      fecha_vencimiento: payload.fecha_vencimiento,
+      moneda: payload.moneda || 'USD',
+      tasa_cambio: Number(payload.tasa_cambio) || 1.0,
+      subtotal: Number(payload.subtotal) || 0,
+      base_imponible: Number(payload.base_imponible) || Number(payload.subtotal) || 0,
+      monto_exento: Number(payload.monto_exento) || 0,
+      iva_porcentaje: Number(payload.iva_porcentaje) || 16,
+      iva_monto: Number(payload.iva_monto) || 0,
+      total: Number(payload.total) || 0,
+      saldo_pendiente: Number(payload.saldo_pendiente) || 0,
+      estado: payload.estado || 'emitida',
+      notas: payload.notas || null
+    };
+    if (isUUID(payload.proveedor_id)) compraRow.proveedor_id = payload.proveedor_id;
+    if (isUUID(payload.comprobante_id)) compraRow.comprobante_id = payload.comprobante_id;
+
+    const { error: cErr } = await supabase.from('facturas_compra').upsert(compraRow, { onConflict: 'id' });
+    if (cErr) return false;
+
+    if (rawItems.length > 0) {
+      const itemsPayload = rawItems.map((it: any) => ({
+        id: (it.id && isUUID(it.id)) ? it.id : crypto.randomUUID(),
+        factura_id: targetId,
+        producto_id: (it.producto_id && isUUID(it.producto_id)) ? it.producto_id : null,
+        codigo: it.codigo || it.producto_codigo || '',
+        descripcion: it.descripcion || '',
+        cantidad: Number(it.cantidad) || 1,
+        costo_unitario: Number(it.costo_unitario) || 0,
+        subtotal: Number(it.subtotal) || 0,
+        total: Number(it.total) || 0
+      }));
+      await supabase.from('facturas_compra_items').delete().eq('factura_id', targetId);
+      await supabase.from('facturas_compra_items').insert(itemsPayload);
+    }
+    return true;
+  }
+
+  // Sanitización general de claves foráneas no UUID para evitar errores 22P02 / 23503 en Postgres
   const sanitized = { ...payload };
+  delete sanitized.items;
   Object.keys(sanitized).forEach(k => {
     if (k.endsWith('_id') && sanitized[k] && !isUUID(sanitized[k])) {
       sanitized[k] = null;
@@ -230,7 +335,6 @@ async function executeRemoteMutation(item: SyncQueueItem): Promise<boolean> {
 
   const { error } = await supabase.from(entity).upsert(sanitized, { onConflict: 'id' });
   if (error) {
-    // Si fue conflicto o duplicado, intentar update directo
     if (error.code === '23505' || (error as any).status === 409) {
       const { error: updErr } = await supabase.from(entity).update(sanitized).eq('id', targetId);
       return !updErr;

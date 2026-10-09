@@ -197,11 +197,45 @@ export function runSystemAudit() {
     estado: 'Contabilizado',
     lineas: [
       { cuentaId: '4.1.1.01', descripcion: 'Cancelación de Ingresos Operacionales', debe: ingresosCierre, haber: 0 },
-      { cuentaId: '5.1.1.01', descripcion: 'Cancelación de Gastos Operacionales', debe: 0, haber: gastosCierre },
-      { cuentaId: '3.1.3.01', descripcion: 'Utilidad Neta del Ejercicio 2026', debe: 0, haber: utilidadEjercicio }
+      { cuentaId: '5.1.1.01', descripcion: 'Cancelación de Costos y Gastos', debe: 0, haber: gastosCierre },
+      { cuentaId: '3.1.3.01', descripcion: 'Utilidad del Ejercicio No Distribuida', debe: 0, haber: utilidadEjercicio }
     ]
   };
-  assertBalanced('8. Cierre Contable -> Cancelación de Cuentas de Resultados vs Patrimonio', compCierre);
+  assertBalanced('8. Cierre Fiscal -> Cancelación de Cuentas Nominales', compCierre);
+
+  // 9. Prueba: Ajuste Físico de Inventario (Auditoría de Existencias)
+  const costoAjusteSobrante = 75.00;
+  const compAjusteInv: Comprobante = {
+    id: 'comp-aud-1',
+    fecha: '2026-08-15',
+    tipo: 'Diario',
+    descripcion: 'Ajuste de Auditoría: Producto A (Sobrante)',
+    referencia: 'AUD-000001',
+    total: costoAjusteSobrante,
+    estado: 'Contabilizado',
+    lineas: [
+      { cuentaId: '1.1.04.001', descripcion: 'Inventario de Mercancías', debe: costoAjusteSobrante, haber: 0 },
+      { cuentaId: '4.2.01.001', descripcion: 'Ganancia por Ajuste Físico', debe: 0, haber: costoAjusteSobrante }
+    ]
+  };
+  assertBalanced('9. Inventario & Auditoría -> Asiento de Ajuste Físico de Inventario NIIF', compAjusteInv);
+
+  // 10. Prueba: Ajuste Físico Faltante de Inventario (Baja de Stock)
+  const costoAjusteFaltante = 120.00;
+  const compAjusteFaltante: Comprobante = {
+    id: 'comp-aud-2',
+    fecha: '2026-08-15',
+    tipo: 'Diario',
+    descripcion: 'Ajuste de Auditoría: Producto B (Faltante)',
+    referencia: 'AUD-000002',
+    total: costoAjusteFaltante,
+    estado: 'Contabilizado',
+    lineas: [
+      { cuentaId: '6.1.05.001', descripcion: 'Pérdida por Ajuste Físico de Inventario', debe: costoAjusteFaltante, haber: 0 },
+      { cuentaId: '1.1.04.001', descripcion: 'Baja de Inventario de Mercancías', debe: 0, haber: costoAjusteFaltante }
+    ]
+  };
+  assertBalanced('10. Inventario & Auditoría -> Asiento de Merma / Faltante de Inventario NIIF', compAjusteFaltante);
 
   return results;
 }

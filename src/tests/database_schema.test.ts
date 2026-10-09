@@ -60,11 +60,15 @@ describe('Auditoría de Esquema SQL y RPCs (Fase 4)', () => {
   it('debe incluir las funciones RPC atómicas en schema.sql y functions_rpc.sql', () => {
     expect(schemaContent).toContain('FUNCTION obtener_siguiente_correlativo');
     expect(schemaContent).toContain('FUNCTION registrar_factura_venta_atomica');
+    expect(schemaContent).toContain('FUNCTION registrar_abono_cxc_atomico');
+    expect(schemaContent).toContain('FUNCTION acumular_transaccion_lote_pos_atomico');
     expect(rpcContent).toContain('FUNCTION obtener_siguiente_correlativo');
     expect(rpcContent).toContain('FUNCTION registrar_factura_venta_atomica');
+    expect(rpcContent).toContain('FUNCTION registrar_abono_cxc_atomico');
+    expect(rpcContent).toContain('FUNCTION acumular_transaccion_lote_pos_atomico');
   });
 
-  it('debe incluir bloqueo FOR UPDATE en la función obtener_siguiente_correlativo', () => {
+  it('debe incluir bloqueo FOR UPDATE en la función obtener_siguiente_correlativo y funciones concurrentes', () => {
     expect(schemaContent).toContain('FOR UPDATE');
     expect(rpcContent).toContain('FOR UPDATE');
   });

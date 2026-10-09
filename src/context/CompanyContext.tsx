@@ -6,8 +6,9 @@ import {
   useEffect,
 } from "react";
 
+import bcrypt from 'bcryptjs';
 import { UserSession, INITIAL_DEFAULT_USERS } from "../data/defaultUsers";
-import { dbFetchEmpresas, dbFetchUsuarioEmpresas, dbFetchUsuarios } from "../services/db";
+import { dbFetchEmpresas, dbFetchUsuarioEmpresas, dbFetchUsuarios, dbSaveUsuario } from "../services/db";
 import { supabase, isSupabaseConfigured } from "../lib/supabase";
 
 export type { UserSession };
@@ -40,6 +41,8 @@ interface CompanyContextType {
   availableCompanies: Company[];
   setAvailableCompanies: (companies: Company[]) => void;
   refreshCompanies: () => Promise<void>;
+  syncVersion: number;
+  triggerDataReload: () => void;
   userRole: string;
   userPermissions: Record<
     string,
@@ -90,6 +93,11 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const [availableCompanies, setAvailableCompanies] = useState<Company[]>([]);
   const [dbUsers, setDbUsers] = useState<UserSession[]>(INITIAL_DEFAULT_USERS);
   const [currentUserEmpresas, setCurrentUserEmpresas] = useState<any[]>([]);
+  const [syncVersion, setSyncVersion] = useState<number>(0);
+
+  const triggerDataReload = () => {
+    setSyncVersion(v => v + 1);
+  };
 
   // Guardar activeCompanyId en localStorage para que nuevas pestañas y ventanas popup lo reconozcan de inmediato
   useEffect(() => {
@@ -122,6 +130,15 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
   const refreshCompanies = async (userParam?: UserSession | null) => {
     try {
       const activeUser = userParam !== undefined ? userParam : currentUser;
+
+      // Si Supabase está configurado pero no hay usuario autenticado activo,
+      // no cargamos empresas ni asignamos IDs por defecto para evitar contaminar la sesión en PCs nuevas
+      if (isSupabaseConfigured && !activeUser) {
+        setAvailableCompanies([]);
+        setActiveCompanyId(null);
+        return;
+      }
+
       const dbList = await dbFetchEmpresas();
       
       let userPermittedCompanies = dbList;
@@ -149,18 +166,20 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
           : (userPermittedCompanies.length > 0 ? userPermittedCompanies[0].id : null);
         if (selected) {
           localStorage.setItem("erp_active_company_id", selected);
-        }
-        const found = userPermittedCompanies.find(c => c.id === selected);
-        if (found) {
-          try {
-            localStorage.setItem("erp_cached_active_company", JSON.stringify(found));
-          } catch {}
-          if ((found as any).workingYear || (found as any).anoInicio) {
-            setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+          const found = userPermittedCompanies.find(c => c.id === selected);
+          if (found) {
+            try {
+              localStorage.setItem("erp_cached_active_company", JSON.stringify(found));
+            } catch {}
+            if ((found as any).workingYear || (found as any).anoInicio) {
+              setWorkingYear((found as any).workingYear || (found as any).anoInicio);
+            }
           }
         }
         return selected;
       });
+
+      setSyncVersion(v => v + 1);
     } catch (e) {
       console.warn("Error cargando empresas de Supabase:", e);
       setAvailableCompanies([]);
@@ -185,7 +204,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         if (session?.user && isMounted) {
           const email = session.user.email?.toLowerCase();
           if (email) {
-            const { data: userData } = await supabase.from('usuarios').select('*').eq('email', email).maybeSingle();
+            const { data: userData } = await supabase.from('usuarios').select('id, email, nombre, role, activo').eq('email', email).maybeSingle();
             const isSuperAdmin = email === 'jhoansg@gmail.com';
             const user: UserSession = {
               id: userData?.id || session.user.id,
@@ -198,12 +217,20 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             };
             setCurrentUser(user);
             sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+            localStorage.setItem("erp_active_user", JSON.stringify(user));
             await refreshCompanies(user);
-          } else {
+            setSyncVersion(v => v + 1);
+          } else if (currentUser) {
             await refreshCompanies(currentUser);
+          } else {
+            setAvailableCompanies([]);
+            setActiveCompanyId(null);
           }
-        } else {
+        } else if (currentUser) {
           await refreshCompanies(currentUser);
+        } else {
+          setAvailableCompanies([]);
+          setActiveCompanyId(null);
         }
 
         // 2. Suscribirse reactivamente a cambios de sesión de Supabase Auth
@@ -213,7 +240,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
             if (currentSession?.user) {
               const email = currentSession.user.email?.toLowerCase();
               if (email) {
-                const { data: userData } = await supabase.from('usuarios').select('*').eq('email', email).maybeSingle();
+                const { data: userData } = await supabase.from('usuarios').select('id, email, nombre, role, activo').eq('email', email).maybeSingle();
                 const isSuperAdmin = email === 'jhoansg@gmail.com';
                 const user: UserSession = {
                   id: userData?.id || currentSession.user.id,
@@ -226,15 +253,20 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
                 };
                 setCurrentUser(user);
                 sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+                localStorage.setItem("erp_active_user", JSON.stringify(user));
                 await refreshCompanies(user);
+                setSyncVersion(v => v + 1);
               }
             }
           } else if (event === 'SIGNED_OUT') {
             setCurrentUser(null);
             sessionStorage.removeItem("erp_active_user");
             localStorage.removeItem("erp_active_user");
+            localStorage.removeItem("erp_active_company_id");
+            localStorage.removeItem("erp_cached_active_company");
             setAvailableCompanies([]);
             setActiveCompanyId(null);
+            setSyncVersion(v => v + 1);
           }
         });
 
@@ -287,87 +319,91 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
 
     try {
       if (isSupabaseConfigured && supabase) {
-        // 1. Autenticación Segura con Supabase Auth
-        let { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        // 1. Autenticación Segura con Supabase Auth (estrictamente signIn, jamás signUp libre)
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
           password: cleanPass
         });
 
         if (authError) {
-          // Si el usuario no ha sido provisionado en auth.users, intentar signUp
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          // Si el servidor de autenticación respondió explícitamente con credenciales inválidas, rechazar de inmediato
+          const isCredError = authError.message?.toLowerCase().includes('credential') || 
+                              authError.message?.toLowerCase().includes('invalid') ||
+                              authError.status === 400;
+
+          if (isCredError) {
+            return {
+              success: false,
+              error: 'Credenciales inválidas. Por favor verifique su correo electrónico y contraseña.'
+            };
+          }
+          // Solo se permite el acceso offline ante fallos reales de conexión (no ante límites de intentos u otros errores)
+          const status = (authError as any).status;
+          const isConnectivityError =
+            (authError as any).name === 'AuthRetryableFetchError' ||
+            status === 0 ||
+            (typeof status === 'number' && status >= 502 && status <= 504);
+
+          if (!isConnectivityError) {
+            return {
+              success: false,
+              error: status === 429
+                ? 'Demasiados intentos. Espere unos minutos antes de volver a intentar.'
+                : 'No se pudo iniciar sesión: ' + (authError.message || 'error del servidor') + '.'
+            };
+          }
+          console.warn("Fallo temporal de conexión con Supabase Auth, intentando verificación local...", authError.message);
+        } else if (authData?.user) {
+          // 2. Obtener metadatos del usuario desde public.usuarios
+          const { data: userData } = await supabase.from('usuarios').select('id, email, nombre, role, activo').eq('email', cleanEmail).maybeSingle();
+          
+          if (userData && userData.activo === false) {
+            await supabase.auth.signOut();
+            return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
+          }
+
+          const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com';
+          const assignedRole = isSuperAdmin ? 'Master' : (userData?.role || 'Operador');
+
+          const user: UserSession = {
+            id: userData?.id || authData.user.id,
             email: cleanEmail,
-            password: cleanPass
-          });
+            name: userData?.nombre || cleanEmail.split('@')[0],
+            role: assignedRole,
+            activo: true,
+            companyRoles: {},
+            companyConfigs: {}
+          };
 
-          if (!signUpError && signUpData.user) {
-            const retry = await supabase.auth.signInWithPassword({
-              email: cleanEmail,
-              password: cleanPass
-            });
-            if (retry.data?.user) {
-              authData = retry.data;
-              authError = null;
-            }
-          }
-        }
-
-        if (authError || !authData?.user) {
-           return { 
-             success: false, 
-             error: authError?.message?.includes('credentials') 
-               ? 'Contraseña incorrecta o usuario no registrado en el sistema de seguridad.' 
-               : (authError?.message || 'Error de autenticación.')
-           };
-        }
-
-        // 2. Obtener metadatos del usuario desde public.usuarios
-        const { data: userData } = await supabase.from('usuarios').select('*').eq('email', cleanEmail).maybeSingle();
-        
-        if (userData && userData.activo === false) {
-          await supabase.auth.signOut();
-          return { success: false, error: "Esta cuenta de usuario ha sido suspendida. Contacte al Administrador Master." };
-        }
-
-        // Si el usuario es el administrador principal legal, forzar rol Master para que vea todas las empresas
-        const isSuperAdmin = cleanEmail === 'jhoansg@gmail.com';
-        const assignedRole = isSuperAdmin ? 'Master' : (userData?.role || 'Operador');
-
-        // Auto-registrar al Master en la base de datos pública si es su primera vez
-        if (isSuperAdmin && !userData) {
+          // Guardar hash bcrypt local para permitir inicio seguro offline futuro
           try {
-            await supabase.from('usuarios').upsert({
-              id: authData.user.id,
+            const localUsers = await dbFetchUsuarios();
+            const existingLocal = localUsers.find(u => u.email?.toLowerCase() === cleanEmail);
+            const hashed = bcrypt.hashSync(cleanPass, 10);
+            await dbSaveUsuario({
+              ...(existingLocal || {}),
+              id: user.id,
               email: cleanEmail,
-              nombre: 'Jhoan SG',
-              role: 'Master',
-              activo: true
+              name: user.name,
+              role: assignedRole,
+              activo: true,
+              password_hash: hashed
             });
-          } catch (e) {
-            console.warn("No se pudo auto-registrar al master:", e);
-          }
+          } catch {}
+
+          setCurrentUser(user);
+          sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+          localStorage.setItem("erp_active_user", JSON.stringify(user));
+          await refreshCompanies(user);
+          setSyncVersion(v => v + 1);
+          return { success: true };
         }
-
-        const user: UserSession = {
-          id: userData?.id || authData.user.id,
-          email: cleanEmail,
-          name: userData?.nombre || cleanEmail.split('@')[0],
-          role: assignedRole,
-          activo: true,
-          companyRoles: {},
-          companyConfigs: {}
-        };
-
-        setCurrentUser(user);
-        sessionStorage.setItem("erp_active_user", JSON.stringify(user));
-        await refreshCompanies(user);
-        return { success: true };
       }
     } catch (e: any) {
-      console.warn("Fallo de red o Supabase Auth, intentando fallback local...", e);
+      console.warn("Fallo de red al conectar con Supabase Auth, procediendo a verificación local...", e);
     }
 
-    // --- FALLBACK LOCAL OFFLINE ---
+    // --- FALLBACK LOCAL OFFLINE SEGURO ---
     let usersList = dbUsers;
     try {
       const remoteUsers = await dbFetchUsuarios();
@@ -379,7 +415,7 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       // fallback to memory
     }
 
-    let user = usersList.find(u => u.email.toLowerCase() === cleanEmail);
+    const user = usersList.find(u => u.email.toLowerCase() === cleanEmail);
 
     if (!user) {
       return { success: false, error: "El correo electrónico ingresado no se encuentra registrado en el sistema." };
@@ -389,14 +425,40 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
       return { success: false, error: "Esta cuenta de usuario ha sido suspendida." };
     }
 
-    if (user.password && user.password !== cleanPass) {
-      return { success: false, error: "Contraseña local incorrecta. Por favor intente nuevamente." };
+    // Validación estricta de contraseña en modo local
+    const storedPass = user.password_hash;
+    if (!storedPass) {
+      return {
+        success: false,
+        error: "Este equipo no cuenta con credenciales locales guardadas para este usuario. Inicie sesión al menos una vez con conexión a internet para habilitar el acceso offline."
+      };
+    }
+
+    let isPasswordValid = false;
+    if (storedPass.startsWith('$2a$') || storedPass.startsWith('$2b$')) {
+      try {
+        isPasswordValid = bcrypt.compareSync(cleanPass, storedPass);
+      } catch {
+        isPasswordValid = false;
+      }
+    } else {
+      // Ya no se aceptan contraseñas en texto plano: se exige iniciar sesión con conexión para regenerar el acceso offline
+      return {
+        success: false,
+        error: "Las credenciales guardadas en este equipo están desactualizadas. Inicie sesión con conexión a internet para renovarlas."
+      };
+    }
+
+    if (!isPasswordValid) {
+      return { success: false, error: "Contraseña incorrecta. Por favor intente nuevamente." };
     }
 
     // Login Exitoso Local
     setCurrentUser(user);
     sessionStorage.setItem("erp_active_user", JSON.stringify(user));
+    localStorage.setItem("erp_active_user", JSON.stringify(user));
     await refreshCompanies(user);
+    setSyncVersion(v => v + 1);
     return { success: true };
   };
 
@@ -410,8 +472,12 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
     setCurrentUser(null);
     setCurrentUserEmpresas([]);
     setActiveCompanyId(null);
+    setAvailableCompanies([]);
     sessionStorage.removeItem("erp_active_user");
     localStorage.removeItem("erp_active_user");
+    localStorage.removeItem("erp_active_company_id");
+    localStorage.removeItem("erp_cached_active_company");
+    setSyncVersion(v => v + 1);
   };
 
   // Cálculo reactivo de rol y permisos según usuario y empresa activa
@@ -436,6 +502,8 @@ export function CompanyProvider({ children }: { children: ReactNode }) {
         availableCompanies,
         setAvailableCompanies,
         refreshCompanies: () => refreshCompanies(currentUser),
+        syncVersion,
+        triggerDataReload,
         userRole,
         userPermissions,
         isUserInactive,
@@ -472,6 +540,8 @@ const defaultFallbackContext: CompanyContextType = {
   ],
   setAvailableCompanies: () => {},
   refreshCompanies: async () => {},
+  syncVersion: 0,
+  triggerDataReload: () => {},
   userRole: 'Administrador',
   userPermissions: fullPermissions,
   isUserInactive: false,

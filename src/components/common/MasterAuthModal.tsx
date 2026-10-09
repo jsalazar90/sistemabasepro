@@ -46,7 +46,7 @@ export default function MasterAuthModal({
         onClose();
         await onSuccess();
       } else {
-        setErrorMsg('Clave especial de operaciones incorrecta. Acción denegada.');
+        setErrorMsg(result.error || 'Clave especial de operaciones incorrecta. Acción denegada.');
       }
     } catch (err: any) {
       console.error(err);

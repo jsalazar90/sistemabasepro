@@ -4,7 +4,6 @@ export interface UserSession {
   name: string;
   role: string;
   password?: string;
-  claveOperaciones?: string;
   activo?: boolean;
   companyRoles: Record<string, string>;
   companyConfigs?: Record<

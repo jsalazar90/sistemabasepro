@@ -59,22 +59,7 @@ export async function dbFetchFacturasVenta(empresaId?: string): Promise<any[]> {
     if (local) {
       const parsed = local;
       if (Array.isArray(parsed)) {
-        let modified = false;
-        const normalized = parsed.map((fac: any) => {
-          if (fac.fecha_emision === '2026-09-13') {
-            modified = true;
-            return {
-              ...fac,
-              fecha_emision: '2026-09-12',
-              fecha_vencimiento: fac.fecha_vencimiento === '2026-09-13' ? '2026-09-12' : fac.fecha_vencimiento
-            };
-          }
-          return fac;
-        });
-        if (modified) {
-          await setLocal(`app_facturas_venta_${cid}`, normalized);
-        }
-        return normalized;
+        return parsed;
       }
     }
     return [];
@@ -130,6 +115,35 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
         if (isUUID(formatted.comprobante_id)) payload.comprobante_id = formatted.comprobante_id;
         if (isUUID(formatted.banco_id)) payload.banco_id = formatted.banco_id;
 
+        const itemsPayload = (Array.isArray(formatted.items) ? formatted.items : []).map((it: any) => ({
+          id: (it.id && isUUID(it.id)) ? it.id : crypto.randomUUID(),
+          factura_id: validId,
+          producto_id: (it.producto_id && isUUID(it.producto_id)) ? it.producto_id : null,
+          descripcion: it.descripcion || it.nombre || 'Artículo',
+          cantidad: Number(it.cantidad) || 1,
+          precio_unitario: Number(it.precio_unitario) || 0,
+          exento: it.exento ?? false,
+          subtotal: Number(it.subtotal) || 0,
+          iva_monto: Number(it.iva_monto) || 0,
+          total: Number(it.total) || 0,
+          cuenta_ingreso_id: (it.cuenta_ingreso_id && isUUID(it.cuenta_ingreso_id)) ? it.cuenta_ingreso_id : null,
+          cuenta_costo_id: (it.cuenta_costo_id && isUUID(it.cuenta_costo_id)) ? it.cuenta_costo_id : null,
+          cuenta_inventario_id: (it.cuenta_inventario_id && isUUID(it.cuenta_inventario_id)) ? it.cuenta_inventario_id : null
+        }));
+
+        // 1. Intentar registrar de forma atómica mediante RPC en Postgres (ACID)
+        try {
+          const { data: rpcRes, error: rpcErr } = await supabase.rpc('registrar_factura_venta_atomica', {
+            p_factura: payload,
+            p_items: itemsPayload,
+            p_cxc: null
+          });
+          if (!rpcErr && rpcRes && rpcRes.success) {
+            return true;
+          }
+        } catch {}
+
+        // 2. Fallback estándar si RPC aún no fue migrado en Postgres
         let { error } = await supabase.from('facturas_venta').upsert(payload, { onConflict: 'id' });
         if (error && error.code === '23503') {
           console.warn("Foreign key violation in dbSaveFacturaVenta, reintentando con fallback seguro:", error.message);
@@ -139,7 +153,6 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
           const retryRes = await supabase.from('facturas_venta').upsert(fallbackPayload, { onConflict: 'id' });
           error = retryRes.error;
           if (retryRes.error) console.error("Error in retry dbSaveFacturaVenta Supabase:", retryRes.error);
-          else console.log("Guardado exitoso de factura_venta en Supabase con fallback seguro");
         }
         if (error && (error.code === '23505' || (error as any).status === 409)) {
           const updateRes = await supabase.from('facturas_venta').update(payload).eq('id', validId);
@@ -149,23 +162,8 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
         }
 
         // Guardar renglones en facturas_venta_items
-        if (Array.isArray(formatted.items) && formatted.items.length > 0) {
+        if (itemsPayload.length > 0) {
           await supabase.from('facturas_venta_items').delete().eq('factura_id', validId);
-          const itemsPayload = formatted.items.map((it: any) => ({
-            id: (it.id && isUUID(it.id)) ? it.id : crypto.randomUUID(),
-            factura_id: validId,
-            producto_id: (it.producto_id && isUUID(it.producto_id)) ? it.producto_id : null,
-            descripcion: it.descripcion || it.nombre || 'Artículo',
-            cantidad: Number(it.cantidad) || 1,
-            precio_unitario: Number(it.precio_unitario) || 0,
-            exento: it.exento ?? false,
-            subtotal: Number(it.subtotal) || 0,
-            iva_monto: Number(it.iva_monto) || 0,
-            total: Number(it.total) || 0,
-            cuenta_ingreso_id: (it.cuenta_ingreso_id && isUUID(it.cuenta_ingreso_id)) ? it.cuenta_ingreso_id : null,
-            cuenta_costo_id: (it.cuenta_costo_id && isUUID(it.cuenta_costo_id)) ? it.cuenta_costo_id : null,
-            cuenta_inventario_id: (it.cuenta_inventario_id && isUUID(it.cuenta_inventario_id)) ? it.cuenta_inventario_id : null
-          }));
           const { error: itemsErr } = await supabase.from('facturas_venta_items').insert(itemsPayload);
           if (itemsErr) console.error("Error inserting facturas_venta_items Supabase:", itemsErr);
         }
@@ -633,6 +631,85 @@ export async function dbDeleteLotePos(id: string, empresaId?: string): Promise<b
     return false;
   }
 }
+
+export async function dbAcumularTransaccionLotePosAtomico(
+  empresaId: string,
+  terminalId: string,
+  transaccion: any,
+  montoBs: number,
+  montoUsd: number
+): Promise<{ success: boolean; lote_id?: string; total_operaciones?: number; error?: string }> {
+  const cid = empresaId || 'default';
+  const validTx = {
+    id: isUUID(transaccion.id) ? transaccion.id : crypto.randomUUID(),
+    factura_id: isUUID(transaccion.factura_id) ? transaccion.factura_id : null,
+    referencia: transaccion.referencia || 'VOUCHER',
+    fecha: transaccion.fecha || new Date().toISOString().slice(0, 10),
+    hora: transaccion.hora || new Date().toTimeString().slice(0, 8),
+    monto_bs: Number(montoBs) || 0,
+    monto_usd: Number(montoUsd) || 0
+  };
+
+  // 1. Ejecución atómica en PostgreSQL con bloqueo FOR UPDATE
+  if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
+    try {
+      const { data, error } = await supabase.rpc('acumular_transaccion_lote_pos_atomico', {
+        p_empresa_id: empresaId,
+        p_terminal_id: terminalId,
+        p_transaccion: validTx,
+        p_monto_bs: Number(montoBs) || 0,
+        p_monto_usd: Number(montoUsd) || 0
+      });
+
+      if (!error && data && data.success) {
+        return {
+          success: true,
+          lote_id: data.lote_id,
+          total_operaciones: Number(data.total_operaciones)
+        };
+      }
+      if (error) {
+        console.warn('RPC acumular_transaccion_lote_pos_atomico no disponible, aplicando fallback:', error.message);
+      }
+    } catch (e: any) {
+      console.warn('Excepción al invocar acumular_transaccion_lote_pos_atomico:', e?.message || e);
+    }
+  }
+
+  // 2. Fallback Local-First
+  try {
+    const existingLotes = await dbFetchLotesPos(cid);
+    let openLote = existingLotes.find((l: any) => l.terminal_id === terminalId && l.estado === 'abierto');
+    if (!openLote) {
+      openLote = {
+        id: crypto.randomUUID(),
+        empresa_id: cid,
+        terminal_id: terminalId,
+        lote_numero: 'EN CURSO',
+        estado: 'abierto',
+        fecha_apertura: new Date().toISOString().slice(0, 10),
+        total_operaciones: 0,
+        monto_bruto_sistema: 0,
+        monto_bruto_usd: 0,
+        transacciones: []
+      };
+    }
+
+    const updatedLote = {
+      ...openLote,
+      total_operaciones: (openLote.transacciones?.length || 0) + 1,
+      monto_bruto_sistema: Number(((openLote.monto_bruto_sistema || 0) + Number(montoBs || 0)).toFixed(2)),
+      monto_bruto_usd: Number(((openLote.monto_bruto_usd || 0) + Number(montoUsd || 0)).toFixed(2)),
+      transacciones: [...(openLote.transacciones || []), validTx]
+    };
+
+    await dbSaveLotePos(updatedLote, cid);
+    return { success: true, lote_id: updatedLote.id, total_operaciones: updatedLote.total_operaciones };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error en fallback local de lote POS' };
+  }
+}
+
 
 
 export async function dbRegistrarFacturaVentaAtomica(

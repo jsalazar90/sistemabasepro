@@ -21,9 +21,38 @@ let bcvCache: {
   timestamp: number;
 } | null = null;
 
+// Control de tasa de peticiones (Rate Limiting) para evitar DoS y bloqueo por BCV
+const rateLimitMap = new Map<string, { count: number; resetTime: number; lastForceTime: number }>();
+
+function checkRateLimit(ip: string, isForce: boolean): { allowed: boolean; message?: string } {
+  const now = Date.now();
+  const entry = rateLimitMap.get(ip) || { count: 0, resetTime: now + 60000, lastForceTime: 0 };
+
+  if (now > entry.resetTime) {
+    entry.count = 0;
+    entry.resetTime = now + 60000;
+  }
+
+  entry.count++;
+  if (entry.count > 40) {
+    return { allowed: false, message: 'Demasiadas solicitudes. Por favor intente más tarde (límite por minuto excedido).' };
+  }
+
+  if (isForce) {
+    if (now - entry.lastForceTime < 30000) {
+      return { allowed: false, message: 'La sincronización forzada en vivo solo se permite una vez cada 30 segundos.' };
+    }
+    entry.lastForceTime = now;
+  }
+
+  rateLimitMap.set(ip, entry);
+  return { allowed: true };
+}
+
 async function fetchFromBCVOfficial(): Promise<{ rate: number; date: string; source: string } | null> {
   return new Promise((resolve) => {
-    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: false, timeout: 9000 }, (res: any) => {
+    // Validación estricta TLS activada (rejectUnauthorized: true) para evitar ataques Man-In-The-Middle
+    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: true, timeout: 9000 }, (res: any) => {
       let data = '';
       res.on('data', (chunk: any) => data += chunk);
       res.on('end', () => {
@@ -78,9 +107,16 @@ async function fetchFromMirrorApi(): Promise<{ rate: number; date: string; sourc
   }
 }
 
-// Endpoint para consultar tasa oficial BCV en vivo
+// Endpoint para consultar tasa oficial BCV en vivo con rate limiting
 app.get('/api/bcv', async (req, res) => {
+  const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || '127.0.0.1';
   const force = req.query.force === 'true';
+
+  const check = checkRateLimit(clientIp, force);
+  if (!check.allowed) {
+    return res.status(429).json({ success: false, error: check.message });
+  }
+
   const now = Date.now();
 
   if (!force && bcvCache && (now - bcvCache.timestamp < 10 * 60 * 1000)) {
@@ -145,8 +181,9 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    // Defensa en profundidad: nunca servir /data aunque un archivo termine en dist/ por error
+    app.use('/data', (_req, res) => res.status(404).end());
     app.use(express.static(distPath));
-    app.use('/data', express.static(path.join(process.cwd(), 'data')));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });

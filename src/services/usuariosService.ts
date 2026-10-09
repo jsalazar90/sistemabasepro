@@ -1,68 +1,74 @@
+import bcrypt from 'bcryptjs';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
-import { isUUID, getLocal, setLocal } from './storageHelper';
+import { isUUID, getLocal, setLocal, delLocal } from './storageHelper';
 
 // ============================================================================
 // 10. USUARIOS Y PERMISOS RBAC
 // ============================================================================
 
-export async function dbGetMasterClaveOperaciones(): Promise<string> {
-  // 1. Intentar desde almacenamiento local persistente
-  try {
-    const directKey = await getLocal<string>('erp_master_clave_operaciones', '');
-    if (directKey && directKey.trim()) return directKey.trim();
-  } catch {}
 
-  if (typeof localStorage !== 'undefined') {
-    const lsKey = localStorage.getItem('sistema_master_clave_operaciones');
-    if (lsKey && lsKey.trim()) return lsKey.trim();
-  }
 
-  // 2. Intentar desde usuarios locales con rol Master
+/**
+ * Elimina restos de la clave de operaciones en texto plano que versiones anteriores
+ * guardaban en IndexedDB, localStorage y en la lista local de usuarios.
+ */
+export async function purgeLegacyClaveOperaciones(): Promise<void> {
   try {
+    await delLocal('erp_master_clave_operaciones');
+    if (typeof localStorage !== 'undefined') {
+      localStorage.removeItem('sistema_master_clave_operaciones');
+    }
     const localUsers = await getLocal<any[]>('erp_local_usuarios', []);
-    const master = (localUsers || []).find((u: any) => u.role === 'Master' && (u.claveOperaciones || u.clave_operaciones));
-    if (master) {
-      const key = (master.claveOperaciones || master.clave_operaciones || '').trim();
-      if (key) return key;
+    if (Array.isArray(localUsers) && localUsers.some(u => u && ('claveOperaciones' in u || 'clave_operaciones' in u || 'password' in u))) {
+      const cleaned = localUsers.map(u => {
+        if (!u) return u;
+        // Elimina también contraseñas en texto plano que versiones antiguas dejaron en el equipo
+        const { claveOperaciones, clave_operaciones, password, ...rest } = u;
+        return rest;
+      });
+      await setLocal('erp_local_usuarios', cleaned);
     }
   } catch {}
-
-  // 3. Fallback universal por defecto
-  return '19072828';
 }
 
-export async function dbSaveMasterClaveOperaciones(newClave: string): Promise<boolean> {
+/**
+ * Define o cambia la clave de operaciones de un usuario Master.
+ * La clave se convierte en hash dentro de la base de datos (nunca se guarda en claro).
+ * Requiere conexión y que quien llama sea Master.
+ */
+export async function dbSaveMasterClaveOperaciones(
+  newClave: string,
+  usuarioId: string
+): Promise<{ success: boolean; error?: string }> {
   const cleanKey = (newClave || '').trim();
-  if (!cleanKey) return false;
-
+  if (cleanKey.length < 6) {
+    return { success: false, error: 'La clave de operaciones debe tener al menos 6 caracteres.' };
+  }
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, error: 'Se requiere conexión con el servidor para cambiar la clave de operaciones.' };
+  }
+  if (!isUUID(usuarioId)) {
+    return { success: false, error: 'Usuario inválido: guarde primero el usuario en el servidor.' };
+  }
   try {
-    // 1. Guardar en IndexedDB y localStorage
-    await setLocal('erp_master_clave_operaciones', cleanKey);
-    if (typeof localStorage !== 'undefined') {
-      localStorage.setItem('sistema_master_clave_operaciones', cleanKey);
-    }
-
-    // 2. Actualizar en la lista local de usuarios
-    const localUsers = await getLocal<any[]>('erp_local_usuarios', []);
-    const updated = (localUsers || []).map((u: any) => {
-      if (u.role === 'Master') {
-        return { ...u, claveOperaciones: cleanKey, clave_operaciones: cleanKey };
-      }
-      return u;
+    const { error } = await supabase.rpc('set_clave_operaciones', {
+      p_usuario_id: usuarioId,
+      p_nueva: cleanKey
     });
-    await setLocal('erp_local_usuarios', updated);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'No se pudo guardar la clave de operaciones.' };
+  }
+}
 
-    // 3. Intentar persistir en Supabase si la columna clave_operaciones existe
-    if (isSupabaseConfigured && supabase) {
-      try {
-        await supabase.from('usuarios').update({ clave_operaciones: cleanKey }).eq('role', 'Master');
-      } catch (err) {
-        console.warn('Nota: usuarios.clave_operaciones aún no existe en Supabase, guardado en almacenamiento local redundante.', err);
-      }
-    }
-    return true;
-  } catch (e) {
-    console.error('Error dbSaveMasterClaveOperaciones:', e);
+/** Indica si un usuario Master ya tiene clave configurada (sin revelarla). */
+export async function dbClaveOperacionesConfigurada(usuarioId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase || !isUUID(usuarioId)) return false;
+  try {
+    const { data, error } = await supabase.rpc('clave_operaciones_configurada', { p_usuario_id: usuarioId });
+    return !error && data === true;
+  } catch {
     return false;
   }
 }
@@ -70,22 +76,20 @@ export async function dbSaveMasterClaveOperaciones(newClave: string): Promise<bo
 export async function dbFetchUsuarios(): Promise<any[]> {
   const local = await getLocal<any[]>('erp_local_usuarios', []);
   const localMap = new Map<string, any>((local || []).map(u => [u.email?.toLowerCase(), u]));
-  const globalMasterClave = await dbGetMasterClaveOperaciones();
+  await purgeLegacyClaveOperaciones();
 
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase.from('usuarios').select('*').order('created_at', { ascending: true });
+      const { data, error } = await supabase.from('usuarios').select('id, email, nombre, role, activo, created_at').order('created_at', { ascending: true });
       if (!error && data && data.length > 0) {
         const mappedUsers = (data || []).map((u: any) => {
           const localUser = localMap.get(u.email?.toLowerCase());
-          const claveOp = u.clave_operaciones || localUser?.claveOperaciones || localUser?.clave_operaciones || (u.role === 'Master' ? globalMasterClave : undefined);
           return {
             id: u.id,
             email: u.email,
             name: u.nombre || u.email.split('@')[0],
-            // ⚠️ IMPORTANTE DE SEGURIDAD: Nunca devolvemos el password_hash remoto al frontend
-            password: localUser?.password || null, 
-            claveOperaciones: claveOp,
+            // El hash para acceso offline es solo local: nunca viene del servidor
+            password_hash: localUser?.password_hash || null,
             role: u.role || 'Operador',
             activo: u.activo !== false,
             companyRoles: localUser?.companyRoles || {},
@@ -121,25 +125,24 @@ export async function dbFetchUsuarios(): Promise<any[]> {
 
 export async function dbSaveUsuario(usuario: any): Promise<boolean> {
   const list = await getLocal<any[]>('erp_local_usuarios', []);
-  const formatted = {
+  const rawPass = usuario.password || usuario.password_hash || '';
+  let passHash = '';
+  if (rawPass) {
+    passHash = (rawPass.startsWith('$2a$') || rawPass.startsWith('$2b$'))
+      ? rawPass
+      : bcrypt.hashSync(String(rawPass), 10);
+  }
+
+  // La clave de operaciones NO se guarda aquí: se gestiona con dbSaveMasterClaveOperaciones (hash en servidor)
+  const formatted: any = {
     id: (usuario.id && isUUID(usuario.id)) ? usuario.id : crypto.randomUUID(),
     email: usuario.email.trim().toLowerCase(),
     name: usuario.name || usuario.nombre || usuario.email.split('@')[0],
-    password: usuario.password || usuario.password_hash || '123456',
-    claveOperaciones: usuario.claveOperaciones || usuario.clave_operaciones || (usuario.role === 'Master' ? await dbGetMasterClaveOperaciones() : undefined),
     role: usuario.role || 'Operador',
     activo: usuario.activo !== false
   };
-
-  // Si es Master y trae claveOperaciones, guardar también como clave global
-  if (formatted.role === 'Master' && formatted.claveOperaciones) {
-    try {
-      await setLocal('erp_master_clave_operaciones', formatted.claveOperaciones);
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('sistema_master_clave_operaciones', formatted.claveOperaciones);
-      }
-    } catch {}
-  }
+  // El hash se guarda SOLO en este equipo (acceso offline); solo se sobrescribe si llega uno nuevo
+  if (passHash) formatted.password_hash = passHash;
 
   const idx = list.findIndex(u => u.id === formatted.id || u.email === formatted.email);
   if (idx >= 0) list[idx] = { ...list[idx], ...formatted };
@@ -148,30 +151,13 @@ export async function dbSaveUsuario(usuario: any): Promise<boolean> {
 
   if (isSupabaseConfigured && supabase) {
     try {
-      // 1. Intentar upsert incluyendo clave_operaciones
-      const payloadWithClave = {
+      await supabase.from('usuarios').upsert({
         id: formatted.id,
         email: formatted.email,
         nombre: formatted.name,
-        password_hash: formatted.password,
-        clave_operaciones: formatted.claveOperaciones,
         role: formatted.role,
         activo: formatted.activo
-      };
-      const { error } = await supabase.from('usuarios').upsert(payloadWithClave);
-      if (error) {
-        // 2. Si falló (ej. columna clave_operaciones no existe en Supabase), reintentar sin clave_operaciones
-        // para asegurar que el resto de los datos (password, nombre, role, activo) sí se guarden
-        const payloadWithoutClave = {
-          id: formatted.id,
-          email: formatted.email,
-          nombre: formatted.name,
-          password_hash: formatted.password,
-          role: formatted.role,
-          activo: formatted.activo
-        };
-        await supabase.from('usuarios').upsert(payloadWithoutClave);
-      }
+      });
     } catch (err) {
       console.warn('Error al sincronizar usuario con Supabase:', err);
     }
@@ -196,47 +182,105 @@ export async function dbDeleteUsuario(idOrEmail: string): Promise<boolean> {
   return true;
 }
 
-export async function dbVerifyMasterClaveOperaciones(claveInput: string): Promise<{ success: boolean; masterUser?: any }> {
-  if (!claveInput) return { success: false };
-  const trimmed = String(claveInput).trim();
+export async function dbVerifyMasterClaveOperaciones(
+  claveInput: string
+): Promise<{ success: boolean; error?: string }> {
+  const trimmed = String(claveInput || '').trim();
   if (!trimmed) return { success: false };
 
-  // 1. Clave de emergencia / super-fallback
-  if (trimmed === '19072828') {
-    return { success: true, masterUser: { name: 'Administrador Master', role: 'Master' } };
+  if (!isSupabaseConfigured || !supabase) {
+    return { success: false, error: 'Se requiere conexión con el servidor para autorizar esta operación.' };
   }
 
-  // 2. Clave maestra directa (IndexedDB y localStorage)
   try {
-    const directMasterKey = await dbGetMasterClaveOperaciones();
-    if (directMasterKey && directMasterKey === trimmed) {
-      return { success: true, masterUser: { name: 'Administrador Master', role: 'Master' } };
-    }
-  } catch {}
+    // La verificación ocurre en el servidor (hash bcrypt + límite de intentos)
+    const { data, error } = await supabase.rpc('verify_clave_operaciones', { p_clave: trimmed });
+    if (error) return { success: false, error: error.message };
+    return { success: data === true };
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'No se pudo verificar la clave de operaciones.' };
+  }
+}
 
-  // 3. Usuarios Master en Supabase o en caché local
-  try {
-    const allUsers = await dbFetchUsuarios();
-    const localUsers = await getLocal<any[]>('erp_local_usuarios', []);
-    const combined = [...(allUsers || []), ...(localUsers || [])];
-
-    const masterUsers = combined.filter(u => u.role === 'Master' && u.activo !== false);
-
-    const matched = masterUsers.find(u => 
-      (u.claveOperaciones && String(u.claveOperaciones).trim() === trimmed) ||
-      (u.clave_operaciones && String(u.clave_operaciones).trim() === trimmed) ||
-      (u.password && String(u.password).trim() === trimmed) ||
-      (u.password_hash && String(u.password_hash).trim() === trimmed)
-    );
-
-    if (matched) {
-      return { success: true, masterUser: matched };
-    }
-  } catch (e) {
-    console.error('Error verifying master operations key:', e);
+/**
+ * Crea un usuario con acceso al sistema. Solo un Master puede hacerlo.
+ * Con Supabase configurado, la cuenta se crea en el servidor (Supabase Auth) sin tocar la sesión actual.
+ * Sin Supabase (modo local), se crea solo en este equipo.
+ */
+export async function dbCrearUsuarioAdmin(params: {
+  email: string;
+  password: string;
+  nombre?: string;
+  role: string;
+}): Promise<{ success: boolean; id?: string; error?: string }> {
+  const email = params.email.trim().toLowerCase();
+  if ((params.password || '').length < 8) {
+    return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
   }
 
-  return { success: false };
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.rpc('admin_crear_usuario', {
+        p_email: email,
+        p_password: params.password,
+        p_nombre: params.nombre || email.split('@')[0],
+        p_role: params.role
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true, id: String(data) };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'No se pudo crear el usuario.' };
+    }
+  }
+
+  // Modo local (sin Supabase)
+  const id = crypto.randomUUID();
+  await dbSaveUsuario({
+    id,
+    email,
+    name: params.nombre || email.split('@')[0],
+    role: params.role,
+    activo: true,
+    password: params.password
+  });
+  return { success: true, id };
+}
+
+/**
+ * Cambia la contraseña de acceso de un usuario. Solo un Master puede hacerlo.
+ * Con Supabase configurado, cambia la contraseña real de Supabase Auth y cierra las sesiones de ese usuario.
+ */
+export async function dbCambiarPasswordAdmin(
+  usuarioId: string,
+  nuevaPassword: string
+): Promise<{ success: boolean; error?: string }> {
+  if ((nuevaPassword || '').length < 8) {
+    return { success: false, error: 'La contraseña debe tener al menos 8 caracteres.' };
+  }
+
+  if (isSupabaseConfigured && supabase) {
+    if (!isUUID(usuarioId)) {
+      return { success: false, error: 'Usuario inválido: no está registrado en el servidor.' };
+    }
+    try {
+      const { error } = await supabase.rpc('admin_cambiar_password', {
+        p_usuario_id: usuarioId,
+        p_password: nuevaPassword
+      });
+      if (error) return { success: false, error: error.message };
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'No se pudo cambiar la contraseña.' };
+    }
+  }
+
+  // Modo local (sin Supabase)
+  const list = await getLocal<any[]>('erp_local_usuarios', []);
+  const idx = list.findIndex(u => u.id === usuarioId);
+  if (idx < 0) return { success: false, error: 'Usuario no encontrado.' };
+  list[idx] = { ...list[idx], password_hash: bcrypt.hashSync(nuevaPassword, 10) };
+  await setLocal('erp_local_usuarios', list);
+  return { success: true };
 }
 
 export async function dbFetchUsuarioEmpresas(usuarioId?: string, empresaId?: string): Promise<any[]> {

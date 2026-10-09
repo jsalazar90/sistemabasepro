@@ -1,5 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, Filter, MoreVertical, FileText, ArrowLeft, Edit2, Trash2, CheckCircle2, XCircle, AlertCircle, X, ChevronDown } from 'lucide-react';
+import { 
+  Search, Plus, Filter, MoreVertical, FileText, ArrowLeft, Edit2, 
+  Trash2, CheckCircle2, XCircle, AlertCircle, X, ChevronDown, 
+  Eye, ShieldCheck, Scale, Check, Printer 
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useCompany } from '../context/CompanyContext';
 import CuentaContableModal from '../components/common/CuentaContableModal';
@@ -20,6 +24,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
   });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewingEntry, setViewingEntry] = useState<any | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
   
@@ -195,13 +200,19 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
       });
       const rawLines = (comp.lineas && comp.lineas.length > 0) 
         ? comp.lineas 
-        : ((comp.asientos && comp.asientos.length > 0) ? comp.asientos.map((a: any) => ({
+        : ((comp.detalles && comp.detalles.length > 0) ? comp.detalles.map((d: any) => ({
+            id: d.id || crypto.randomUUID(),
+            cuentaId: d.cuentaId || d.cuenta_id || d.cuenta_codigo || d.cuentaCodigo,
+            descripcion: d.descripcion || comp.descripcion || comp.concepto || '',
+            debe: Number(d.debe) || 0,
+            haber: Number(d.haber) || 0
+          })) : ((comp.asientos && comp.asientos.length > 0) ? comp.asientos.map((a: any) => ({
             id: a.id || crypto.randomUUID(),
             cuentaId: a.cuentaId || a.cuenta_id || a.cuenta_codigo || a.cuentaCodigo,
             descripcion: a.descripcion || comp.descripcion || comp.concepto || '',
             debe: Number(a.debe) || 0,
             haber: Number(a.haber) || 0
-          })) : []);
+          })) : []));
       setLines(rawLines);
     } else {
       setEditingId(null);
@@ -316,6 +327,39 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
     if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
     return d;
   };
+
+  const viewingLines = useMemo(() => {
+    if (!viewingEntry) return [];
+    const raw = (viewingEntry.lineas && viewingEntry.lineas.length > 0)
+      ? viewingEntry.lineas
+      : ((viewingEntry.detalles && viewingEntry.detalles.length > 0)
+        ? viewingEntry.detalles
+        : ((viewingEntry.asientos && viewingEntry.asientos.length > 0) ? viewingEntry.asientos : []));
+
+    return raw.map((l: any, idx: number) => {
+      const cuentaId = l.cuentaId || l.cuenta_id || l.cuenta_codigo || l.cuentaCodigo;
+      const matched = cuentasContables.find(c => c.id === cuentaId || c.codigo === cuentaId);
+      return {
+        id: l.id || `line-${idx}`,
+        codigo: matched ? matched.codigo : (l.cuenta_codigo || l.cuentaCodigo || cuentaId || '---'),
+        nombre: matched ? (matched.nombre || matched.name) : (l.nombreCuenta || l.cuenta_nombre || 'Cuenta Contable'),
+        descripcion: l.descripcion || viewingEntry.descripcion || viewingEntry.concepto || '',
+        debe: Number(l.debe) || 0,
+        haber: Number(l.haber) || 0
+      };
+    });
+  }, [viewingEntry, cuentasContables]);
+
+  const viewingTotalDebe = useMemo(() => {
+    return viewingLines.reduce((acc, l) => acc + (Number(l.debe) || 0), 0);
+  }, [viewingLines]);
+
+  const viewingTotalHaber = useMemo(() => {
+    return viewingLines.reduce((acc, l) => acc + (Number(l.haber) || 0), 0);
+  }, [viewingLines]);
+
+  const viewingDiff = Math.abs(viewingTotalDebe - viewingTotalHaber);
+  const viewingIsBalanced = viewingDiff < 0.01;
 
   return (
     <div className="px-3 sm:px-6 pt-1 pb-6 max-w-7xl mx-auto">
@@ -508,7 +552,7 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                     {comp.descripcion}
                   </td>
                   <td className="px-4 py-2.5 text-right font-black text-slate-800 text-xs sm:text-sm font-mono">
-                    ${formatoES(Number(comp.total) || (Array.isArray(comp.lineas) ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) : 0))}
+                    ${formatoES(Number(comp.total) || (Array.isArray(comp.lineas) && comp.lineas.length > 0 ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) : (Array.isArray(comp.detalles) ? comp.detalles.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) : 0)))}
                   </td>
                   <td className="px-4 py-2.5 text-center">
                     <span className={`inline-flex items-center gap-1 text-xs font-bold ${comp.estado === 'Descuadrado' ? 'text-rose-600' : 'text-emerald-600'}`}>
@@ -517,15 +561,25 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
                     </span>
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-end gap-1">
                       <button 
+                        type="button"
+                        onClick={() => setViewingEntry(comp)}
+                        className="p-1.5 text-indigo-600 hover:text-indigo-800 bg-indigo-50/70 hover:bg-indigo-100 rounded-lg transition-colors cursor-pointer shadow-2xs"
+                        title="Ver Asiento Contable (Solo Lectura)"
+                      >
+                        <Eye size={15} />
+                      </button>
+                      <button 
+                        type="button"
                         onClick={() => handleOpenModal(comp)}
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors cursor-pointer"
-                        title="Ver / Editar"
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                        title="Editar Comprobante"
                       >
                         <Edit2 size={15} />
                       </button>
                       <button 
+                        type="button"
                         onClick={() => handleDeleteEntry(comp)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
                         title="Eliminar Comprobante"
@@ -886,6 +940,198 @@ export default function AccountingEntries({ comprobantes = [], cuentasContables 
         cuentasContables={cuentasContables}
         selectedCuentaId={activeLineId ? lines.find(l => l.id === activeLineId)?.cuentaId : ''}
       />
+
+      {/* ========================================================================= */}
+      {/* MODAL DE SOLO LECTURA: DETALLE DEL ASIENTO CONTABLE YA REGISTRADO */}
+      {/* ========================================================================= */}
+      {viewingEntry && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
+            {/* Header del Asiento */}
+            <div className="bg-slate-900 px-6 py-4 text-white flex justify-between items-center shrink-0 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shrink-0">
+                  <Scale size={20} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm sm:text-base font-black tracking-tight text-white font-mono">
+                      {viewingEntry.numero}
+                    </span>
+                    <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider">
+                      SOLO LECTURA
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider border ${
+                      viewingEntry.estado === 'Descuadrado'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    }`}>
+                      {viewingEntry.estado || 'CONTABILIZADO'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Comprobante de {viewingEntry.tipo || 'Diario'} • Fecha: <b className="text-slate-300 font-bold">{formatSafeDate(viewingEntry.fecha)}</b>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setViewingEntry(null)}
+                className="w-8 h-8 rounded-full hover:bg-slate-800 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer"
+                title="Cerrar vista"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Contenido / Detalle */}
+            <div className="p-6 overflow-y-auto flex-1 space-y-5">
+              {/* Metadatos en Ficha */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Fecha Contable</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">{formatSafeDate(viewingEntry.fecha)}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Tipo de Asiento</span>
+                  <span className="font-bold text-slate-800 mt-0.5 block">{viewingEntry.tipo || 'Diario'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Número Correlativo</span>
+                  <span className="font-bold font-mono text-indigo-700 mt-0.5 block">{viewingEntry.numero}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Referencia / Origen</span>
+                  <span className="font-semibold text-slate-700 mt-0.5 block">{viewingEntry.referencia || 'Sin referencia'}</span>
+                </div>
+              </div>
+
+              {/* Concepto / Descripción General */}
+              <div className="bg-slate-50/70 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                  Concepto / Glosa General
+                </span>
+                <p className="text-slate-800 font-semibold leading-relaxed">
+                  {viewingEntry.descripcion || viewingEntry.concepto || 'Sin concepto especificado'}
+                </p>
+              </div>
+
+              {/* Tabla de Cuentas y Partida Doble */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                    <FileText size={14} className="text-indigo-600" />
+                    <span>Líneas del Asiento ({viewingLines.length} {viewingLines.length === 1 ? 'cuenta' : 'cuentas'})</span>
+                  </h3>
+                  <span className="text-[11px] font-bold text-slate-400 font-mono">
+                    Partida Doble NIIF
+                  </span>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200 select-none">
+                      <tr>
+                        <th className="px-3.5 py-2.5 w-10 text-center">#</th>
+                        <th className="px-3.5 py-2.5 w-28">Código</th>
+                        <th className="px-3.5 py-2.5">Cuenta Contable</th>
+                        <th className="px-3.5 py-2.5">Descripción / Glosa</th>
+                        <th className="px-3.5 py-2.5 text-right w-32">Debe ($)</th>
+                        <th className="px-3.5 py-2.5 text-right w-32">Haber ($)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white">
+                      {viewingLines.map((line, idx) => (
+                        <tr key={line.id || idx} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="px-3.5 py-2.5 text-center text-slate-400 font-mono font-bold text-[11px]">
+                            {idx + 1}
+                          </td>
+                          <td className="px-3.5 py-2.5 font-mono font-bold text-indigo-700 text-xs">
+                            {line.codigo}
+                          </td>
+                          <td className="px-3.5 py-2.5 font-bold text-slate-900 text-xs">
+                            {line.nombre}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-slate-600 text-xs">
+                            {line.descripcion || '-'}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right font-mono font-black text-xs text-emerald-700">
+                            {line.debe > 0 ? `$ ${formatoES(line.debe)}` : <span className="text-slate-300 font-normal">-</span>}
+                          </td>
+                          <td className="px-3.5 py-2.5 text-right font-mono font-black text-xs text-violet-700">
+                            {line.haber > 0 ? `$ ${formatoES(line.haber)}` : <span className="text-slate-300 font-normal">-</span>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totales y Estado de Balance */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  {viewingIsBalanced ? (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-black">
+                      <Check size={14} />
+                      <span>ASIENTO CUADRADO</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-100 text-rose-800 border border-rose-300 text-xs font-black">
+                      <AlertCircle size={14} />
+                      <span>ASIENTO DESCUADRADO</span>
+                    </div>
+                  )}
+                  {viewingDiff > 0 && (
+                    <span className="text-xs font-mono font-bold text-rose-600 ml-2">
+                      Diferencia: $ {formatoES(viewingDiff)}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-6">
+                  <div className="text-right">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                      TOTAL DEBE (DÉBITO)
+                    </span>
+                    <span className="font-mono font-black text-sm text-emerald-700 block">
+                      $ {formatoES(viewingTotalDebe)}
+                    </span>
+                  </div>
+                  <div className="w-px h-8 bg-slate-200" />
+                  <div className="text-right">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                      TOTAL HABER (CRÉDITO)
+                    </span>
+                    <span className="font-mono font-black text-sm text-violet-700 block">
+                      $ {formatoES(viewingTotalHaber)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer de solo lectura */}
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
+                <ShieldCheck size={16} className="text-emerald-600 shrink-0" />
+                <span>Vista de auditoría protegida. No se permiten modificaciones en este modo.</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setViewingEntry(null)}
+                  className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shadow-xs"
+                >
+                  Cerrar Vista
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

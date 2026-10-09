@@ -33,15 +33,19 @@ export async function dbFetchCxc(empresaId?: string): Promise<any[]> {
       if (!error && data) {
         const mappedFromDb = (data || []).map((row: any) => {
           const desc = row.descripcion || '';
-          const matchFac = desc.match(/(?:Factura(?:\s+de\s+Venta)?|Fact\.?)\s+([A-Za-z0-9\-_]+)/i);
-          const facturaNumero = matchFac ? matchFac[1] : (row.factura_id || '');
+          const directClientName = row.cliente?.name || row.cliente_nombre || (typeof row.cliente === 'string' ? row.cliente : '');
+          const directClientRif = row.cliente?.tax_id || row.cliente_rif || row.tax_id || '';
 
-          const matchClient = desc.match(/Cliente:\s*([^[–\-]+)(?:\[([A-Za-z0-9\-]+)\])?/i);
+          // Priorizar campos estructurados sobre parsing de texto
+          const matchFac = (!row.factura && !row.numero) ? desc.match(/(?:Factura(?:\s+de\s+Venta)?|Fact\.?)\s+([A-Za-z0-9\-_]+)/i) : null;
+          const facturaNumero = row.factura || row.numero || row.factura_numero || (matchFac ? matchFac[1] : (row.factura_id || ''));
+
+          const matchClient = (!directClientName) ? desc.match(/Cliente:\s*([^[–\-]+)(?:\[([A-Za-z0-9\-]+)\])?/i) : null;
           const clientNameFromDesc = matchClient ? matchClient[1].trim() : '';
           const clientRifFromDesc = matchClient && matchClient[2] ? matchClient[2].trim() : '';
 
-          const clienteNombre = row.cliente?.name || clientNameFromDesc || '';
-          const clienteRif = row.cliente?.tax_id || clientRifFromDesc || '';
+          const clienteNombre = directClientName || clientNameFromDesc || '';
+          const clienteRif = directClientRif || clientRifFromDesc || '';
 
           return {
             id: row.id,
@@ -763,4 +767,146 @@ export async function dbDeletePagoRealizado(id: string, empresaId?: string): Pro
   }
   return true;
 }
+
+export async function dbRegistrarAbonoCxcAtomico(
+  empresaId: string,
+  cxcId: string,
+  monto: number,
+  fecha?: string,
+  reciboNumero?: string,
+  notas?: string
+): Promise<{ success: boolean; nuevo_saldo?: number; error?: string }> {
+  const cid = empresaId || 'default';
+  const effectiveFecha = fecha || getTodayLocalDate();
+  const montoNum = Math.abs(Number(monto) || 0);
+
+  // 1. Ejecución atómica en PostgreSQL con bloqueo pesimista FOR UPDATE
+  if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
+    try {
+      const { data, error } = await supabase.rpc('registrar_abono_cxc_atomico', {
+        p_empresa_id: empresaId,
+        p_cxc_id: cxcId,
+        p_monto: montoNum,
+        p_fecha: effectiveFecha,
+        p_recibo_numero: reciboNumero || '',
+        p_notas: notas || ''
+      });
+
+      if (!error && data && data.success) {
+        // Reflejar cambio en almacenamiento local
+        const localList = await getLocal<any[]>(`erp_local_cxc_${cid}`, []);
+        const idx = localList.findIndex(c => c.id === cxcId);
+        if (idx >= 0) {
+          localList[idx] = {
+            ...localList[idx],
+            saldo: Number(data.saldo_resultante) || 0,
+            saldo_pendiente: Number(data.saldo_resultante) || 0,
+            estado: data.estado || localList[idx].estado
+          };
+          await setLocal(`erp_local_cxc_${cid}`, localList);
+        }
+        return { success: true, nuevo_saldo: Number(data.saldo_resultante) };
+      }
+      if (error) {
+        console.warn('RPC registrar_abono_cxc_atomico no disponible, aplicando fallback local:', error.message);
+      }
+    } catch (e: any) {
+      console.warn('Excepción al invocar registrar_abono_cxc_atomico:', e?.message || e);
+    }
+  }
+
+  // 2. Fallback Local-First
+  try {
+    const localList = await getLocal<any[]>(`erp_local_cxc_${cid}`, []);
+    const idx = localList.findIndex(c => c.id === cxcId);
+    if (idx >= 0) {
+      const currentSaldo = Number(localList[idx].saldo || localList[idx].saldo_pendiente || 0);
+      const newSaldo = Math.max(0, currentSaldo - montoNum);
+      const newEstado = newSaldo <= 0.009 ? 'pagada' : 'parcial';
+      localList[idx] = {
+        ...localList[idx],
+        saldo: newSaldo,
+        saldo_pendiente: newSaldo,
+        estado: newEstado,
+        fechaPago: newSaldo <= 0.009 ? effectiveFecha : (localList[idx].fechaPago || null)
+      };
+      await setLocal(`erp_local_cxc_${cid}`, localList);
+      return { success: true, nuevo_saldo: newSaldo };
+    }
+    return { success: false, error: 'Documento CxC no encontrado localmente' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error registrando abono local' };
+  }
+}
+
+export async function dbRegistrarAbonoCxpAtomico(
+  empresaId: string,
+  cxpId: string,
+  monto: number,
+  fecha?: string,
+  comprobanteNumero?: string,
+  notas?: string
+): Promise<{ success: boolean; nuevo_saldo?: number; error?: string }> {
+  const cid = empresaId || 'default';
+  const effectiveFecha = fecha || getTodayLocalDate();
+  const montoNum = Math.abs(Number(monto) || 0);
+
+  // 1. Ejecución atómica en PostgreSQL con bloqueo pesimista FOR UPDATE
+  if (isSupabaseConfigured && supabase && empresaId && isUUID(empresaId)) {
+    try {
+      const { data, error } = await supabase.rpc('registrar_abono_cxp_atomico', {
+        p_empresa_id: empresaId,
+        p_cxp_id: cxpId,
+        p_monto: montoNum,
+        p_fecha: effectiveFecha,
+        p_recibo_numero: comprobanteNumero || '',
+        p_notas: notas || ''
+      });
+
+      if (!error && data && data.success) {
+        const localList = await getLocal<any[]>(`erp_local_cxp_${cid}`, []);
+        const idx = localList.findIndex(c => c.id === cxpId);
+        if (idx >= 0) {
+          localList[idx] = {
+            ...localList[idx],
+            saldo: Number(data.saldo_resultante) || 0,
+            saldo_pendiente: Number(data.saldo_resultante) || 0,
+            estado: data.estado || localList[idx].estado
+          };
+          await setLocal(`erp_local_cxp_${cid}`, localList);
+        }
+        return { success: true, nuevo_saldo: Number(data.saldo_resultante) };
+      }
+      if (error) {
+        console.warn('RPC registrar_abono_cxp_atomico no disponible, aplicando fallback local:', error.message);
+      }
+    } catch (e: any) {
+      console.warn('Excepción al invocar registrar_abono_cxp_atomico:', e?.message || e);
+    }
+  }
+
+  // 2. Fallback Local-First
+  try {
+    const localList = await getLocal<any[]>(`erp_local_cxp_${cid}`, []);
+    const idx = localList.findIndex(c => c.id === cxpId);
+    if (idx >= 0) {
+      const currentSaldo = Number(localList[idx].saldo || localList[idx].saldo_pendiente || 0);
+      const newSaldo = Math.max(0, currentSaldo - montoNum);
+      const newEstado = newSaldo <= 0.009 ? 'pagada' : 'parcial';
+      localList[idx] = {
+        ...localList[idx],
+        saldo: newSaldo,
+        saldo_pendiente: newSaldo,
+        estado: newEstado,
+        fechaPago: newSaldo <= 0.009 ? effectiveFecha : (localList[idx].fechaPago || null)
+      };
+      await setLocal(`erp_local_cxp_${cid}`, localList);
+      return { success: true, nuevo_saldo: newSaldo };
+    }
+    return { success: false, error: 'Documento CxP no encontrado localmente' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Error registrando abono CxP local' };
+  }
+}
+
 

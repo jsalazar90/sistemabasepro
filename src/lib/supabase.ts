@@ -49,28 +49,20 @@ const resilientFetch: typeof fetch = async (input, init) => {
         continue;
       }
 
-      // Si fue un reintento tras un 504 y ahora devuelve 409 Conflict, significa que el primer intento sí se escribió en la base de datos
-      if (response.status === 409 && attempts > 0) {
-        return new Response(JSON.stringify({ message: "Successfully merged after gateway timeout retry" }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      }
-
+      // Si el servidor respondió con cualquier status (incluyendo 409, 400, etc.), devolver la respuesta real
       return response;
     } catch (err: any) {
       attempts++;
       if (attempts >= maxAttempts) {
-        // En caso de que se agoten los reintentos por falla de red/timeout/CORS de Cloudflare,
-        // devolver una respuesta limpia para que la librería de Supabase no lance una excepción no capturada
-        const isGet = !init?.method || init.method.toUpperCase() === 'GET';
-        return new Response(JSON.stringify(isGet ? [] : {
+        // En caso de agotarse los reintentos por falla de red/timeout/DNS, devolver error 504 claro
+        // para que la librería cliente de Supabase reciba el objeto de error y active el fallback local
+        return new Response(JSON.stringify({
           code: 'PGRST504',
-          message: 'Error temporal de conexión con el servidor Supabase (Gateway Timeout). Usando respaldo local.',
+          message: 'Error de conexión o tiempo de espera agotado con el servidor Supabase. Activando modo local.',
           details: err?.message || null,
           hint: null
         }), {
-          status: isGet ? 200 : 504,
+          status: 504,
           headers: { 'Content-Type': 'application/json' }
         });
       }
@@ -78,8 +70,13 @@ const resilientFetch: typeof fetch = async (input, init) => {
     }
   }
 
-  return new Response(JSON.stringify([]), {
-    status: 200,
+  return new Response(JSON.stringify({
+    code: 'PGRST504',
+    message: 'Error de conexión con el servidor Supabase tras reintentos.',
+    details: 'Network retry limit reached',
+    hint: null
+  }), {
+    status: 504,
     headers: { 'Content-Type': 'application/json' }
   });
 };

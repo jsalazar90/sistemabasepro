@@ -318,16 +318,33 @@ export async function dbFetchComprobantes(empresaId?: string): Promise<any[]> {
 export async function dbSaveComprobante(comp: any, empresaId: string): Promise<boolean> {
   const cid = empresaId || 'default';
   const list = await getLocal<any[]>(`erp_local_comprobantes_${cid}`, []);
-  const totalDebe = Array.isArray(comp.lineas) && comp.lineas.length > 0 
-    ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) 
+  
+  // Normalizar líneas desde comp.lineas, comp.detalles o comp.asientos
+  const rawIncomingLines = Array.isArray(comp.lineas) && comp.lineas.length > 0 
+    ? comp.lineas 
+    : (Array.isArray(comp.detalles) && comp.detalles.length > 0 
+      ? comp.detalles 
+      : (Array.isArray(comp.asientos) && comp.asientos.length > 0 ? comp.asientos : []));
+
+  const normalizedLines = rawIncomingLines.map((l: any, idx: number) => ({
+    id: isUUID(l.id) ? l.id : crypto.randomUUID(),
+    cuentaId: l.cuentaId || l.cuenta_id || '',
+    descripcion: (l.descripcion && String(l.descripcion).trim()) ? String(l.descripcion).trim() : (comp.descripcion || 'Línea de comprobante'),
+    debe: Number(l.debe) || 0,
+    haber: Number(l.haber) || 0,
+    orden: l.orden !== undefined ? Number(l.orden) : idx + 1
+  }));
+
+  const totalDebe = normalizedLines.length > 0 
+    ? normalizedLines.reduce((acc: number, l: any) => acc + (Number(l.debe) || 0), 0) 
     : 0;
-  const totalHaber = Array.isArray(comp.lineas) && comp.lineas.length > 0 
-    ? comp.lineas.reduce((acc: number, l: any) => acc + (Number(l.haber) || 0), 0) 
+  const totalHaber = normalizedLines.length > 0 
+    ? normalizedLines.reduce((acc: number, l: any) => acc + (Number(l.haber) || 0), 0) 
     : 0;
   const diferencia = Math.abs(totalDebe - totalHaber);
   const estadoFinal = comp.estado 
-    ? (comp.estado === 'Contabilizado' && diferencia > 0.01 && (comp.lineas?.length || 0) > 0 ? 'Descuadrado' : comp.estado)
-    : (diferencia > 0.01 && (comp.lineas?.length || 0) > 0 ? 'Descuadrado' : 'Contabilizado');
+    ? (comp.estado === 'Contabilizado' && diferencia > 0.01 && normalizedLines.length > 0 ? 'Descuadrado' : comp.estado)
+    : (diferencia > 0.01 && normalizedLines.length > 0 ? 'Descuadrado' : 'Contabilizado');
 
   const formatted = {
     id: comp.id || `diar_${Date.now()}`,
@@ -339,7 +356,8 @@ export async function dbSaveComprobante(comp: any, empresaId: string): Promise<b
     total: Number(comp.total) || totalDebe,
     estado: estadoFinal,
     createdBy: comp.createdBy || comp.created_by || 'Sistema',
-    lineas: comp.lineas || []
+    lineas: normalizedLines,
+    detalles: normalizedLines
   };
   const validVoucherId = isUUID(comp.id) ? comp.id : (isUUID(formatted.id) ? formatted.id : crypto.randomUUID());
   formatted.id = validVoucherId;
@@ -393,7 +411,7 @@ export async function dbSaveComprobante(comp: any, empresaId: string): Promise<b
       }
 
       // 2. Guardar líneas del comprobante
-      if (Array.isArray(comp.lineas) && comp.lineas.length > 0) {
+      if (normalizedLines.length > 0) {
         await supabase.from('lineas_comprobante').delete().eq('comprobante_id', targetVoucherId);
 
         let accounts: any[] = (await getLocal<any[]>(`erp_local_cuentas_${cid}`, [])) || [];
@@ -403,7 +421,7 @@ export async function dbSaveComprobante(comp: any, empresaId: string): Promise<b
           } catch {}
         }
 
-        const linesPayload = comp.lineas.map((l: any, lineIdx: number) => {
+        const linesPayload = normalizedLines.map((l: any, lineIdx: number) => {
           let accountUUID: string | null = null;
           const rawAcc = l.cuentaId || l.cuenta_id;
           if (isUUID(rawAcc)) {

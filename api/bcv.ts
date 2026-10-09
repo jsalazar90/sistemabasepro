@@ -10,7 +10,7 @@ let bcvCache: {
 
 async function fetchFromBCVOfficial(): Promise<{ rate: number; date: string; source: string } | null> {
   return new Promise((resolve) => {
-    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: false, timeout: 8000 }, (res: any) => {
+    const req = https.get('https://www.bcv.org.ve/', { rejectUnauthorized: true, timeout: 8000 }, (res: any) => {
       let data = '';
       res.on('data', (chunk: any) => data += chunk);
       res.on('end', () => {
