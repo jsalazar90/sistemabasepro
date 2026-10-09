@@ -13,38 +13,70 @@ export async function dbFetchFacturasVenta(empresaId?: string): Promise<any[]> {
   try {
     if (isSupabaseConfigured && supabase && empresaId) {
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('facturas_venta')
           .select(`
             *,
-            cliente:contactos(id, name, tax_id, phone, address),
+            cliente:contactos!cliente_id(id, name, tax_id, phone, address),
             items:facturas_venta_items(*)
           `)
           .eq('empresa_id', cid)
           .order('fecha_emision', { ascending: false });
-        if (!error && data && data.length > 0) {
-          const mapped = data.map((row: any) => ({
-            ...row,
-            cliente_nombre: row.cliente_nombre || row.cliente?.name || '',
-            cliente_rif: row.cliente_rif || row.cliente?.tax_id || '',
-            cliente_telefono: row.cliente_telefono || row.cliente?.phone || '',
-            cliente_direccion: row.cliente_direccion || row.cliente?.address || '',
-            items: Array.isArray(row.items) ? row.items.map((it: any) => ({
-              ...it,
-              id: it.id,
-              producto_id: it.producto_id,
-              descripcion: it.descripcion || '',
-              cantidad: Number(it.cantidad) || 1,
-              precio_unitario: Number(it.precio_unitario) || 0,
-              exento: it.exento ?? false,
-              subtotal: Number(it.subtotal) || 0,
-              iva_monto: Number(it.iva_monto) || 0,
-              total: Number(it.total) || 0,
-              cuenta_ingreso_id: it.cuenta_ingreso_id,
-              cuenta_costo_id: it.cuenta_costo_id,
-              cuenta_inventario_id: it.cuenta_inventario_id
-            })) : []
-          }));
+
+        if (error) {
+          console.warn("Embed query failed in dbFetchFacturasVenta, retrying with items only:", error.message);
+          const itemsOnlyRes = await supabase
+            .from('facturas_venta')
+            .select(`*, items:facturas_venta_items(*)`)
+            .eq('empresa_id', cid)
+            .order('fecha_emision', { ascending: false });
+          if (!itemsOnlyRes.error && itemsOnlyRes.data) {
+            data = itemsOnlyRes.data;
+            error = null;
+          } else {
+            console.warn("Retrying with simple select for facturas_venta:", itemsOnlyRes.error?.message);
+            const simpleRes = await supabase
+              .from('facturas_venta')
+              .select('*')
+              .eq('empresa_id', cid)
+              .order('fecha_emision', { ascending: false });
+            data = simpleRes.data;
+            error = simpleRes.error;
+          }
+        }
+
+        if (!error && Array.isArray(data)) {
+          let cachedContacts: any[] = [];
+          try {
+            cachedContacts = (await getLocal<any[]>(`erp_local_contactos_${cid}`, [])) || [];
+          } catch {}
+          const contactMap = new Map(cachedContacts.map((c: any) => [c.id, c]));
+
+          const mapped = data.map((row: any) => {
+            const fallbackContact = row.cliente_id ? contactMap.get(row.cliente_id) : null;
+            return {
+              ...row,
+              cliente_nombre: row.cliente_nombre || row.cliente?.name || fallbackContact?.name || fallbackContact?.nombre || '',
+              cliente_rif: row.cliente_rif || row.cliente?.tax_id || fallbackContact?.taxId || fallbackContact?.rif || '',
+              cliente_telefono: row.cliente_telefono || row.cliente?.phone || fallbackContact?.phone || fallbackContact?.telefono || '',
+              cliente_direccion: row.cliente_direccion || row.cliente?.address || fallbackContact?.address || fallbackContact?.direccion || '',
+              items: Array.isArray(row.items) ? row.items.map((it: any) => ({
+                ...it,
+                id: it.id,
+                producto_id: it.producto_id,
+                descripcion: it.descripcion || '',
+                cantidad: Number(it.cantidad) || 1,
+                precio_unitario: Number(it.precio_unitario) || 0,
+                exento: it.exento ?? false,
+                subtotal: Number(it.subtotal) || 0,
+                iva_monto: Number(it.iva_monto) || 0,
+                total: Number(it.total) || 0,
+                cuenta_ingreso_id: it.cuenta_ingreso_id,
+                cuenta_costo_id: it.cuenta_costo_id,
+                cuenta_inventario_id: it.cuenta_inventario_id
+              })) : []
+            };
+          });
           const pending = await getPendingQueue(cid);
           const merged = mergeWithPending(mapped, pending, 'facturas_venta');
           await setLocal(`app_facturas_venta_${cid}`, merged);
@@ -150,6 +182,8 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
           const fallbackPayload = { ...payload };
           delete fallbackPayload.comprobante_id;
           delete fallbackPayload.banco_id;
+          delete fallbackPayload.cliente_id;
+          delete fallbackPayload.vendedor_id;
           const retryRes = await supabase.from('facturas_venta').upsert(fallbackPayload, { onConflict: 'id' });
           error = retryRes.error;
           if (retryRes.error) console.error("Error in retry dbSaveFacturaVenta Supabase:", retryRes.error);
@@ -164,7 +198,19 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
         // Guardar renglones en facturas_venta_items
         if (itemsPayload.length > 0) {
           await supabase.from('facturas_venta_items').delete().eq('factura_id', validId);
-          const { error: itemsErr } = await supabase.from('facturas_venta_items').insert(itemsPayload);
+          let { error: itemsErr } = await supabase.from('facturas_venta_items').insert(itemsPayload);
+          if (itemsErr && itemsErr.code === '23503') {
+            console.warn("Foreign key violation in facturas_venta_items, reintentando sin referencias foráneas:", itemsErr.message);
+            const safeItems = itemsPayload.map((it: any) => ({
+              ...it,
+              producto_id: null,
+              cuenta_ingreso_id: null,
+              cuenta_costo_id: null,
+              cuenta_inventario_id: null
+            }));
+            const { error: retryItemsErr } = await supabase.from('facturas_venta_items').insert(safeItems);
+            itemsErr = retryItemsErr;
+          }
           if (itemsErr) console.error("Error inserting facturas_venta_items Supabase:", itemsErr);
         }
       } catch (err) {
@@ -174,6 +220,18 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
     } else {
       await enqueueMutation(cid, 'facturas_venta', 'UPSERT', formatted);
     }
+
+    // Notificar a otras ventanas, pestañas y componentes para sincronización instantánea
+    try {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('factura-venta-saved', { detail: formatted }));
+        if (typeof BroadcastChannel !== 'undefined') {
+          const bc = new BroadcastChannel('erp_invoices_channel');
+          bc.postMessage({ type: 'INVOICE_SAVED', invoice: formatted, cid });
+          bc.close();
+        }
+      }
+    } catch {}
 
     return true;
   } catch (e) {

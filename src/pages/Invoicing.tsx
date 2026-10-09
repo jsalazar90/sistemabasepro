@@ -14,10 +14,10 @@ import MasterAuthModal from '../components/common/MasterAuthModal';
 import BimonetaryValue from '../components/common/BimonetaryValue';
 import { getTasaForDate, fetchLiveBcvRate } from '../services/exchangeRateService';
 import { FacturaVentaModel } from '../types/database';
-import { formatDate } from '../utils/dateUtils';
+import { formatDate, toInputDateFormat } from '../utils/dateUtils';
 import InvoiceForm from './InvoiceForm';
 import { useCompany } from '../context/CompanyContext';
-import { dbActualizarStockAtomico } from '../services/db';
+import { dbActualizarStockAtomico, dbFetchFacturasVenta } from '../services/db';
 
 // Helpers de formato de fechas en español
 const MESES_ES = [
@@ -28,6 +28,7 @@ const MESES_ES = [
 const DIAS_SEMANA_ES = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 const formatMonthLabel = (monthKey: string) => {
+  if (monthKey === 'todos') return 'Historial Completo';
   if (!monthKey || monthKey.length < 7) return monthKey;
   const [year, month] = monthKey.split('-');
   const idx = parseInt(month, 10) - 1;
@@ -36,7 +37,8 @@ const formatMonthLabel = (monthKey: string) => {
 
 const formatDayDetails = (dateStr: string) => {
   if (!dateStr) return { dayOfWeek: '', dayNumber: '', formatted: '', full: '' };
-  const parts = dateStr.split('-');
+  const normalized = toInputDateFormat(dateStr);
+  const parts = normalized.split('-');
   if (parts.length < 3) return { dayOfWeek: '', dayNumber: dateStr, formatted: dateStr, full: dateStr };
   const [year, month, day] = parts;
   const d = new Date(parseInt(year, 10), parseInt(month, 10) - 1, parseInt(day, 10));
@@ -53,7 +55,7 @@ const formatDayDetails = (dateStr: string) => {
 const getInvoiceDate = (fac: FacturaVentaModel): string => {
   const raw = fac.fecha_emision || fac.created_at || '';
   if (!raw) return '';
-  return String(raw).substring(0, 10);
+  return toInputDateFormat(raw);
 };
 
 
@@ -142,9 +144,35 @@ export default function Invoicing({
     return getTasaForDate(selectedDate || new Date().toISOString().split('T')[0]);
   }, [selectedDate, tasaKey]);
 
+  // Lista de meses disponibles que contienen facturas para navegación rápida
+  const availableMonths = useMemo(() => {
+    const map = new Map<string, number>();
+    facturas.forEach(f => {
+      const d = getInvoiceDate(f);
+      if (d && d.length >= 7) {
+        const mKey = d.substring(0, 7);
+        map.set(mKey, (map.get(mKey) || 0) + 1);
+      }
+    });
+
+    const now = new Date();
+    const currMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    if (!map.has(currMonth)) map.set(currMonth, 0);
+    if (!map.has(prevMonth)) map.set(prevMonth, 0);
+
+    return Array.from(map.entries())
+      .map(([key, count]) => ({ key, label: formatMonthLabel(key), count }))
+      .sort((a, b) => b.key.localeCompare(a.key));
+  }, [facturas]);
+
   // Navegación de Meses
   const handlePrevMonth = () => {
-    const [y, m] = selectedMonth.split('-').map(Number);
+    const currentM = selectedMonth === 'todos' 
+      ? (availableMonths[0]?.key || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+      : selectedMonth;
+    const [y, m] = currentM.split('-').map(Number);
     const prevDate = new Date(y, m - 2, 1);
     const py = prevDate.getFullYear();
     const pm = String(prevDate.getMonth() + 1).padStart(2, '0');
@@ -153,7 +181,10 @@ export default function Invoicing({
   };
 
   const handleNextMonth = () => {
-    const [y, m] = selectedMonth.split('-').map(Number);
+    const currentM = selectedMonth === 'todos' 
+      ? (availableMonths[0]?.key || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`)
+      : selectedMonth;
+    const [y, m] = currentM.split('-').map(Number);
     const nextDate = new Date(y, m, 1);
     const ny = nextDate.getFullYear();
     const nm = String(nextDate.getMonth() + 1).padStart(2, '0');
@@ -161,13 +192,73 @@ export default function Invoicing({
     setSelectedDate(null);
   };
 
-  // Facturas del mes seleccionado
+  // Facturas del mes seleccionado o historial completo
   const monthFacturas = useMemo(() => {
+    if (selectedMonth === 'todos') {
+      return facturas;
+    }
     return facturas.filter(f => {
       const d = getInvoiceDate(f);
       return d.startsWith(selectedMonth);
     });
   }, [facturas, selectedMonth]);
+
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  // Sincronización manual desde la base de datos
+  const handleManualSync = useCallback(async () => {
+    if (!currentCompanyId) return;
+    setIsSyncing(true);
+    try {
+      const fresh = await dbFetchFacturasVenta(currentCompanyId);
+      if (fresh && onSave) {
+        onSave('facturasVenta', fresh);
+      }
+      showToast?.(`Facturas actualizadas: ${fresh?.length || 0} registradas en el sistema`, 'success');
+    } catch (e: any) {
+      console.error('Error refreshing facturas:', e);
+      showToast?.('Error al refrescar facturas desde la base de datos', 'error');
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [currentCompanyId, onSave, showToast]);
+
+  // Escuchar eventos de guardado de facturas en otras ventanas o pestañas
+  useEffect(() => {
+    const handleInvoiceSync = async () => {
+      if (currentCompanyId) {
+        try {
+          const fresh = await dbFetchFacturasVenta(currentCompanyId);
+          if (fresh && onSave) {
+            onSave('facturasVenta', fresh);
+          }
+        } catch (e) {
+          console.warn('Error auto-syncing facturas:', e);
+        }
+      }
+    };
+
+    window.addEventListener('factura-venta-saved', handleInvoiceSync);
+    window.addEventListener('focus', handleInvoiceSync);
+
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel('erp_invoices_channel');
+        bc.onmessage = (ev) => {
+          if (ev.data?.type === 'INVOICE_SAVED') {
+            handleInvoiceSync();
+          }
+        };
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener('factura-venta-saved', handleInvoiceSync);
+      window.removeEventListener('focus', handleInvoiceSync);
+      if (bc) bc.close();
+    };
+  }, [currentCompanyId, onSave]);
 
   // Helpers para normalizar montos: La moneda principal contable y de reportes del sistema es siempre USD
   const getInvoiceTotalUSD = useCallback((f: FacturaVentaModel): number => {
@@ -765,6 +856,17 @@ export default function Invoicing({
               </div>
             </button>
 
+            {/* Botón Actualizar desde DB */}
+            <button
+              onClick={handleManualSync}
+              disabled={isSyncing}
+              className="px-3 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-2xs group"
+              title="Recargar facturas en vivo desde Supabase"
+            >
+              <RefreshCw size={14} className={`text-indigo-600 ${isSyncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`} />
+              <span className="hidden sm:inline">{isSyncing ? 'Actualizando...' : 'Actualizar'}</span>
+            </button>
+
             {/* Botón Conciliar con CxC */}
             <button
               onClick={() => handleReconcileWithCxc(true)}
@@ -787,14 +889,62 @@ export default function Invoicing({
             </button>
 
             {/* Botón Nueva Factura */}
-            <button 
-              onClick={handleOpenInvoiceWindow}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/25 active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> 
-              <span>Nueva Factura</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button 
+                onClick={() => setIsNewInvoiceModalOpen(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/25 active:scale-95 cursor-pointer"
+                title="Emitir nueva factura de venta"
+              >
+                <Plus className="w-4 h-4" /> 
+                <span>Nueva Factura</span>
+              </button>
+              <button
+                onClick={handleOpenInvoiceWindow}
+                className="p-2 rounded-xl border border-indigo-200 text-indigo-700 hover:bg-indigo-50 transition-all cursor-pointer shadow-2xs"
+                title="Abrir factura en ventana independiente"
+              >
+                <FileText size={15} />
+              </button>
+            </div>
           </div>
+        </div>
+
+        {/* SELECTOR RÁPIDO DE MESES & HISTORIAL COMPLETO */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 no-scrollbar">
+          <button
+            onClick={() => { setSelectedMonth('todos'); setSelectedDate(null); }}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 ${
+              selectedMonth === 'todos'
+                ? 'bg-slate-900 text-white shadow-sm ring-2 ring-slate-900/20'
+                : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/80 shadow-2xs'
+            }`}
+          >
+            <CalendarDays size={14} className={selectedMonth === 'todos' ? 'text-indigo-400' : 'text-slate-400'} />
+            <span>Historial Completo</span>
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+              selectedMonth === 'todos' ? 'bg-slate-800 text-indigo-300' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {facturas.length}
+            </span>
+          </button>
+          {availableMonths.map(m => (
+            <button
+              key={m.key}
+              onClick={() => { setSelectedMonth(m.key); setSelectedDate(null); }}
+              className={`px-3.5 py-2 rounded-2xl text-xs font-bold shrink-0 transition-all cursor-pointer flex items-center gap-2 ${
+                selectedMonth === m.key
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/25 ring-2 ring-indigo-600/20'
+                  : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200/80 shadow-2xs'
+              }`}
+            >
+              <span>{m.label}</span>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                selectedMonth === m.key ? 'bg-indigo-700 text-white' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {m.count}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* TARJETAS DE KPIS DEL MES */}
@@ -1557,7 +1707,14 @@ export default function Invoicing({
       {isNewInvoiceModalOpen && (
         <InvoiceForm
           isModal={true}
-          onClose={() => setIsNewInvoiceModalOpen(false)}
+          onClose={() => {
+            setIsNewInvoiceModalOpen(false);
+            if (currentCompanyId) {
+              dbFetchFacturasVenta(currentCompanyId).then(fresh => {
+                if (fresh && onSave) onSave('facturasVenta', fresh);
+              });
+            }
+          }}
           contactos={contactos}
           products={products}
           cuentasContables={cuentasContables}

@@ -512,6 +512,46 @@ function AppContent() {
     };
   }, [activeCompanyId, currentUser?.id]);
 
+  // Sincronización entre pestañas y ventanas emergentes (BroadcastChannel)
+  useEffect(() => {
+    const handleInvoiceSaved = (e: any) => {
+      const inv = e.detail;
+      if (inv && inv.id) {
+        setFacturasVenta((prev) => {
+          if (prev.some((f) => f.id === inv.id)) {
+            return prev.map((f) => (f.id === inv.id ? { ...f, ...inv } : f));
+          }
+          return [inv, ...prev];
+        });
+      }
+    };
+
+    window.addEventListener('factura-venta-saved', handleInvoiceSaved);
+
+    let bc: BroadcastChannel | null = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        bc = new BroadcastChannel('erp_invoices_channel');
+        bc.onmessage = (ev) => {
+          if (ev.data?.type === 'INVOICE_SAVED' && ev.data.invoice) {
+            const inv = ev.data.invoice;
+            setFacturasVenta((prev) => {
+              if (prev.some((f) => f.id === inv.id)) {
+                return prev.map((f) => (f.id === inv.id ? { ...f, ...inv } : f));
+              }
+              return [inv, ...prev];
+            });
+          }
+        };
+      } catch {}
+    }
+
+    return () => {
+      window.removeEventListener('factura-venta-saved', handleInvoiceSaved);
+      if (bc) bc.close();
+    };
+  }, []);
+
   const clientes = contactos.filter((c) => c.type === "customer" || c.type === "both");
   const proveedores = contactos.filter((c) => c.type === "supplier" || c.type === "both");
 
