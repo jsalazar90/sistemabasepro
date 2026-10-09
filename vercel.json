@@ -54,7 +54,7 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/:path*",
+      "source": "/((?!assets/|.*\\.[\\w]+$).*)",
       "destination": "/index.html"
     }
   ]
