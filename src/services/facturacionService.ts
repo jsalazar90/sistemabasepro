@@ -163,19 +163,7 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
           cuenta_inventario_id: (it.cuenta_inventario_id && isUUID(it.cuenta_inventario_id)) ? it.cuenta_inventario_id : null
         }));
 
-        // 1. Intentar registrar de forma atómica mediante RPC en Postgres (ACID)
-        try {
-          const { data: rpcRes, error: rpcErr } = await supabase.rpc('registrar_factura_venta_atomica', {
-            p_factura: payload,
-            p_items: itemsPayload,
-            p_cxc: null
-          });
-          if (!rpcErr && rpcRes && rpcRes.success) {
-            return true;
-          }
-        } catch {}
-
-        // 2. Fallback estándar si RPC aún no fue migrado en Postgres
+        // 1. Guardar de forma directa y segura en Supabase (tabla facturas_venta)
         let { error } = await supabase.from('facturas_venta').upsert(payload, { onConflict: 'id' });
         if (error && error.code === '23503') {
           console.warn("Foreign key violation in dbSaveFacturaVenta, reintentando con fallback seguro:", error.message);
@@ -220,18 +208,6 @@ export async function dbSaveFacturaVenta(factura: any, empresaId: string): Promi
     } else {
       await enqueueMutation(cid, 'facturas_venta', 'UPSERT', formatted);
     }
-
-    // Notificar a otras ventanas, pestañas y componentes para sincronización instantánea
-    try {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('factura-venta-saved', { detail: formatted }));
-        if (typeof BroadcastChannel !== 'undefined') {
-          const bc = new BroadcastChannel('erp_invoices_channel');
-          bc.postMessage({ type: 'INVOICE_SAVED', invoice: formatted, cid });
-          bc.close();
-        }
-      }
-    } catch {}
 
     return true;
   } catch (e) {
